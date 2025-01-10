@@ -1,14 +1,13 @@
 import React from 'react';
 import { Modal, Form, InputNumber, Radio, message } from 'antd';
-import type { Agent, UpdateBalanceForm } from '@/types/agent';
 
 interface Props {
   visible: boolean;
-  onCancel: () => void;
-  agent: Agent | null;
+  onClose: () => void;
+  onSuccess: () => void;
 }
 
-const UpdateBalanceModal: React.FC<Props> = ({ visible, onCancel, agent }) => {
+const UpdateBalanceModal: React.FC<Props> = ({ visible, onClose, onSuccess }) => {
   const [form] = Form.useForm();
 
   const handleOk = async () => {
@@ -16,7 +15,7 @@ const UpdateBalanceModal: React.FC<Props> = ({ visible, onCancel, agent }) => {
       const values = await form.validateFields();
       // TODO: 调用API更新余额
       message.success('余额调整成功');
-      onCancel();
+      onSuccess();
       form.resetFields();
     } catch (error) {
       message.error('请检查表单填写是否正确');
@@ -28,7 +27,7 @@ const UpdateBalanceModal: React.FC<Props> = ({ visible, onCancel, agent }) => {
       title="调整余额"
       open={visible}
       onOk={handleOk}
-      onCancel={onCancel}
+      onCancel={onClose}
       destroyOnClose
     >
       <Form form={form} layout="vertical">
@@ -59,4 +58,4 @@ const UpdateBalanceModal: React.FC<Props> = ({ visible, onCancel, agent }) => {
   );
 };
 
-export default UpdateBalanceModal; 
+export default UpdateBalanceModal;

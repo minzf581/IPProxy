@@ -19,6 +19,8 @@ const AgentPage: React.FC = () => {
   const [remarkModalVisible, setRemarkModalVisible] = useState(false);
   const [dashboardModalVisible, setDashboardModalVisible] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [updateBalanceVisible, setUpdateBalanceVisible] = useState(false);
+  const [updatePasswordVisible, setUpdatePasswordVisible] = useState(false);
 
   const columns = [
     {
@@ -111,12 +113,12 @@ const AgentPage: React.FC = () => {
 
   const handleUpdatePassword = (agent: Agent) => {
     setSelectedAgent(agent);
-    setPasswordModalVisible(true);
+    setUpdatePasswordVisible(true);
   };
 
   const handleUpdateBalance = (agent: Agent) => {
     setSelectedAgent(agent);
-    setBalanceModalVisible(true);
+    setUpdateBalanceVisible(true);
   };
 
   const handleUpdateRemark = (agent: Agent) => {
@@ -132,6 +134,10 @@ const AgentPage: React.FC = () => {
   const handleToggleStatus = (agent: Agent) => {
     // 实现状态切换逻辑
     message.info('状态切换功能待实现');
+  };
+
+  const handleUpdateSuccess = () => {
+    message.success('更新成功');
   };
 
   return (
@@ -192,15 +198,15 @@ const AgentPage: React.FC = () => {
       />
 
       <UpdatePasswordModal
-        visible={passwordModalVisible}
-        onCancel={() => setPasswordModalVisible(false)}
-        agent={selectedAgent}
+        visible={updatePasswordVisible}
+        onClose={() => setUpdatePasswordVisible(false)}
+        onSuccess={handleUpdateSuccess}
       />
 
       <UpdateBalanceModal
-        visible={balanceModalVisible}
-        onCancel={() => setBalanceModalVisible(false)}
-        agent={selectedAgent}
+        visible={updateBalanceVisible}
+        onClose={() => setUpdateBalanceVisible(false)}
+        onSuccess={handleUpdateSuccess}
       />
 
       <UpdateRemarkModal

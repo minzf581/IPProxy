@@ -1,14 +1,13 @@
 import React from 'react';
 import { Modal, Form, Input, message } from 'antd';
-import type { Agent, UpdatePasswordForm } from '@/types/agent';
 
 interface Props {
   visible: boolean;
-  onCancel: () => void;
-  agent: Agent | null;
+  onClose: () => void;
+  onSuccess: () => void;
 }
 
-const UpdatePasswordModal: React.FC<Props> = ({ visible, onCancel, agent }) => {
+const UpdatePasswordModal: React.FC<Props> = ({ visible, onClose, onSuccess }) => {
   const [form] = Form.useForm();
 
   const handleOk = async () => {
@@ -20,7 +19,7 @@ const UpdatePasswordModal: React.FC<Props> = ({ visible, onCancel, agent }) => {
       }
       // TODO: 调用API更新密码
       message.success('密码修改成功');
-      onCancel();
+      onSuccess();
       form.resetFields();
     } catch (error) {
       message.error('请检查表单填写是否正确');
@@ -32,7 +31,7 @@ const UpdatePasswordModal: React.FC<Props> = ({ visible, onCancel, agent }) => {
       title="修改密码"
       open={visible}
       onOk={handleOk}
-      onCancel={onCancel}
+      onCancel={onClose}
       destroyOnClose
     >
       <Form form={form} layout="vertical">
@@ -58,4 +57,4 @@ const UpdatePasswordModal: React.FC<Props> = ({ visible, onCancel, agent }) => {
   );
 };
 
-export default UpdatePasswordModal; 
+export default UpdatePasswordModal;

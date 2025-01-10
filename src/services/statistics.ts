@@ -10,6 +10,15 @@ export interface StatisticsData {
   lastMonthConsumption: number;
 }
 
+export interface OrderInstance {
+  amount: number;
+  createTime: string;
+}
+
+export interface FlowUsageRecord {
+  usedFlow: number;
+}
+
 export const createMainUser = async () => {
   try {
     const response = await ipProxyAPI.createUser({
@@ -74,20 +83,20 @@ export const getStatistics = async (): Promise<StatisticsData> => {
     const orders = await ipProxyAPI.getOrderInfo('', 1, 100);
 
     // 计算统计数据
-    const totalRecharge = orders?.instances?.reduce((acc, order) => acc + (order.amount || 0), 0) || 0;
-    const totalConsumption = (currentMonthUsage?.list || []).reduce((acc, usage) => acc + (usage.usedFlow || 0), 0) + 
-                           (lastMonthUsage?.list || []).reduce((acc, usage) => acc + (usage.usedFlow || 0), 0);
+    const totalRecharge = orders?.instances?.reduce((acc: number, order: OrderInstance) => acc + (order.amount || 0), 0) || 0;
+    const totalConsumption = (currentMonthUsage?.list || []).reduce((acc: number, usage: FlowUsageRecord) => acc + (usage.usedFlow || 0), 0) + 
+                           (lastMonthUsage?.list || []).reduce((acc: number, usage: FlowUsageRecord) => acc + (usage.usedFlow || 0), 0);
     const balance = dynamicProxyInfo?.balance || 0;
     
     const monthlyRecharge = orders?.instances
-      ?.filter(order => {
+      ?.filter((order: OrderInstance) => {
         const orderDate = order.createTime;
         return orderDate >= startOfMonth && orderDate <= endOfMonth;
       })
-      .reduce((acc, order) => acc + (order.amount || 0), 0) || 0;
+      .reduce((acc: number, order: OrderInstance) => acc + (order.amount || 0), 0) || 0;
       
-    const monthlyConsumption = (currentMonthUsage?.list || []).reduce((acc, usage) => acc + (usage.usedFlow || 0), 0);
-    const lastMonthConsumption = (lastMonthUsage?.list || []).reduce((acc, usage) => acc + (usage.usedFlow || 0), 0);
+    const monthlyConsumption = (currentMonthUsage?.list || []).reduce((acc: number, usage: FlowUsageRecord) => acc + (usage.usedFlow || 0), 0);
+    const lastMonthConsumption = (lastMonthUsage?.list || []).reduce((acc: number, usage: FlowUsageRecord) => acc + (usage.usedFlow || 0), 0);
 
     // 返回统计数据
     return {

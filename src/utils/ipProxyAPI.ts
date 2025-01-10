@@ -113,7 +113,7 @@ export class IPProxyAPI {
       console.log('=== End Request Params ===\n');
 
       // 5. 发送请求
-      const response = await axios.post<APIResponse<string>>(
+      const response = await axios.post<APIResponse<T>>(
         `${this.baseURL}${endpoint}`,
         requestBody,
         {
@@ -135,7 +135,7 @@ export class IPProxyAPI {
       }
 
       // 8. 清理和验证响应数据
-      const cleanData = response.data.data.replace(/[\s"']+/g, '');
+      const cleanData = (response.data.data as string).replace(/[\s"']+/g, '');
       if (!/^[A-Za-z0-9+/=]+$/.test(cleanData)) {
         throw new Error('Invalid response data format: not a valid Base64 string');
       }
@@ -152,12 +152,12 @@ export class IPProxyAPI {
   }
 
   // 获取实例信息
-  async getInstanceInfo(instances: string[]) {
+  async getInstanceInfo(instances: string[]): Promise<any> {
     try {
-      const response = await this.request('/api/open/app/instance/v2', {
+      const response = await this.request<any>('/api/open/app/instance/v2', {
         instances
       });
-      return response.data;
+      return response;
     } catch (error) {
       console.error('Failed to get instance info:', error);
       throw error;
@@ -165,14 +165,14 @@ export class IPProxyAPI {
   }
 
   // 获取订单信息
-  async getOrderInfo(orderNo: string = '', page: number = 1, pageSize: number = 10) {
+  async getOrderInfo(orderNo: string = '', page: number = 1, pageSize: number = 10): Promise<any> {
     try {
-      const response = await this.request('/api/open/app/order/v2', {
+      const response = await this.request<any>('/api/open/app/order/v2', {
         orderNo,
         page,
         pageSize
       });
-      return response.data;
+      return response;
     } catch (error) {
       console.error('Failed to get order info:', error);
       throw error;
@@ -180,15 +180,15 @@ export class IPProxyAPI {
   }
 
   // 获取代理余额信息
-  async getProxyBalance(proxyType: number, productNo: string, username?: string, appUsername?: string) {
+  async getProxyBalance(proxyType: number, productNo: string, username?: string, appUsername?: string): Promise<ProxyBalanceInfo> {
     try {
-      const response = await this.request('/api/open/app/proxy/info/v2', {
+      const response = await this.request<ProxyBalanceInfo>('/api/open/app/proxy/info/v2', {
         proxyType,
         productNo,
         ...(username && { username }),
         ...(appUsername && { appUsername })
       });
-      return response.data;
+      return response;
     } catch (error) {
       console.error('Failed to get proxy balance:', error);
       throw error;
@@ -206,7 +206,7 @@ export class IPProxyAPI {
   }): Promise<FlowUsageResponse> {
     try {
       const { startTime, endTime, page = 1, pageSize = 10, username, appUsername } = params;
-      const response = await this.request('/api/open/app/proxy/flow/use/log/v2', {
+      const response = await this.request<FlowUsageResponse>('/api/open/app/proxy/flow/use/log/v2', {
         startTime,
         endTime,
         page,
