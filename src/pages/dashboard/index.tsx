@@ -31,88 +31,78 @@ const Dashboard: React.FC = () => {
     fetchData();
   }, []);
 
+  const monthlyChange = data.monthlyConsumption - data.lastMonthConsumption;
+  const monthlyChangePercent = data.lastMonthConsumption ? 
+    ((monthlyChange / data.lastMonthConsumption) * 100).toFixed(2) : 0;
+
   return (
-    <div className="dashboard-container" style={{ padding: '24px' }}>
-      <Row gutter={[16, 16]}>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              loading={loading}
-              title="累计消费"
-              value={data.totalConsumption}
-              precision={2}
-              prefix="¥"
-              valueStyle={{ color: '#cf1322' }}
-              suffix="元"
-            />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              loading={loading}
-              title="累计充值"
-              value={data.totalRecharge}
-              precision={2}
-              prefix="¥"
-              valueStyle={{ color: '#3f8600' }}
-              suffix="元"
-            />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              loading={loading}
-              title="剩余金额"
-              value={data.balance}
-              precision={2}
-              prefix="¥"
-              suffix="元"
-            />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              loading={loading}
-              title="本月充值"
-              value={data.monthlyRecharge}
-              precision={2}
-              prefix={<ArrowUpOutlined />}
-              valueStyle={{ color: '#3f8600' }}
-              suffix="元"
-            />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              loading={loading}
-              title="本月消费"
-              value={data.monthlyConsumption}
-              precision={2}
-              prefix={<ArrowDownOutlined />}
-              valueStyle={{ color: '#cf1322' }}
-              suffix="元"
-            />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card>
-            <Statistic
-              loading={loading}
-              title="上月消费"
-              value={data.lastMonthConsumption}
-              precision={2}
-              prefix={<ArrowDownOutlined />}
-              valueStyle={{ color: '#cf1322' }}
-              suffix="元"
-            />
-          </Card>
-        </Col>
-      </Row>
-    </div>
+    <Row gutter={[16, 16]}>
+      <Col span={8}>
+        <Statistic
+          loading={loading}
+          title="累计消费"
+          value={data.totalConsumption}
+          precision={2}
+          prefix="¥"
+          valueStyle={{ color: '#cf1322' }}
+          suffix="元"
+        />
+      </Col>
+      <Col span={8}>
+        <Statistic
+          loading={loading}
+          title="累计充值"
+          value={data.totalRecharge}
+          precision={2}
+          prefix="¥"
+          valueStyle={{ color: '#3f8600' }}
+          suffix="元"
+        />
+      </Col>
+      <Col span={8}>
+        <Statistic
+          loading={loading}
+          title="账户余额"
+          value={data.balance}
+          precision={2}
+          prefix="¥"
+          suffix="元"
+        />
+      </Col>
+      <Col span={8}>
+        <Statistic
+          loading={loading}
+          title="本月消费"
+          value={data.monthlyConsumption}
+          precision={2}
+          prefix="¥"
+          suffix="元"
+          valueStyle={{ color: monthlyChange >= 0 ? '#cf1322' : '#3f8600' }}
+        />
+      </Col>
+      <Col span={8}>
+        <Statistic
+          loading={loading}
+          title="本月充值"
+          value={data.monthlyRecharge}
+          precision={2}
+          prefix="¥"
+          valueStyle={{ color: '#3f8600' }}
+          suffix="元"
+        />
+      </Col>
+      <Col span={8}>
+        <Statistic
+          loading={loading}
+          title="环比变化"
+          value={monthlyChangePercent}
+          precision={2}
+          prefix={monthlyChange >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+          valueStyle={{ color: monthlyChange >= 0 ? '#cf1322' : '#3f8600' }}
+          suffix="%"
+        />
+      </Col>
+    </Row>
   );
 };
 

@@ -1,7 +1,7 @@
 import React from 'react';
-import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 import Dashboard from '../pages/dashboard';
-import Layout from '../components/Layout';
+import MainLayout from '../components/MainLayout';
 import ErrorPage from '../pages/error';
 
 // 懒加载其他页面组件
@@ -16,7 +16,7 @@ const SystemSettings = React.lazy(() => import('../pages/settings/system'));
 const router = createBrowserRouter([
   {
     path: '/',
-    element: <Layout />,
+    element: <MainLayout />,
     errorElement: <ErrorPage />,
     children: [
       {
@@ -74,30 +74,20 @@ const router = createBrowserRouter([
         ],
       },
       {
-        path: 'static-ip',
-        children: [
-          {
-            path: 'manage',
-            element: (
-              <React.Suspense fallback={<div>Loading...</div>}>
-                <IPManagement />
-              </React.Suspense>
-            ),
-          },
-        ],
+        path: 'static-ip/manage',
+        element: (
+          <React.Suspense fallback={<div>Loading...</div>}>
+            <IPManagement />
+          </React.Suspense>
+        ),
       },
       {
-        path: 'settings',
-        children: [
-          {
-            path: 'system',
-            element: (
-              <React.Suspense fallback={<div>Loading...</div>}>
-                <SystemSettings />
-              </React.Suspense>
-            ),
-          },
-        ],
+        path: 'settings/system',
+        element: (
+          <React.Suspense fallback={<div>Loading...</div>}>
+            <SystemSettings />
+          </React.Suspense>
+        ),
       },
     ],
   },

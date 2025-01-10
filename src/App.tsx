@@ -1,8 +1,9 @@
 import React from 'react';
-import MainLayout from './components/MainLayout';
+import { RouterProvider } from 'react-router-dom';
+import router from './router';
 
 const App: React.FC = () => {
-  return <MainLayout />;
+  return <RouterProvider router={router} />;
 };
 
 export default App;

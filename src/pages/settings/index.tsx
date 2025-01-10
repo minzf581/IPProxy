@@ -1,6 +1,5 @@
 import React from 'react';
 import { Card, Form, Input, Button, message } from 'antd';
-import DashboardLayout from '@/components/Layout/DashboardLayout';
 
 const SettingsPage: React.FC = () => {
   const [form] = Form.useForm();
@@ -20,7 +19,7 @@ const SettingsPage: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div className="p-6">
         <Card title="修改管理员密码" style={{ maxWidth: 500 }}>
           <Form
@@ -63,7 +62,7 @@ const SettingsPage: React.FC = () => {
           </Form>
         </Card>
       </div>
-    </DashboardLayout>
+    </>
   );
 };
 

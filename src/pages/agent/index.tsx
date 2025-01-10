@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Table, Button, Input, Space, Select, message } from 'antd';
 import { SearchOutlined, PlusOutlined } from '@ant-design/icons';
-import DashboardLayout from '@/components/Layout/DashboardLayout';
 import type { Agent, CreateAgentForm } from '@/types/agent';
 import CreateAgentModal from '@/components/Agent/CreateAgentModal';
 import UpdatePasswordModal from '@/components/Agent/UpdatePasswordModal';
@@ -136,7 +135,7 @@ const AgentPage: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div className="p-6">
         <div className="mb-4 flex justify-between">
           <Space>
@@ -215,7 +214,7 @@ const AgentPage: React.FC = () => {
         onCancel={() => setDashboardModalVisible(false)}
         agent={selectedAgent}
       />
-    </DashboardLayout>
+    </>
   );
 };
 

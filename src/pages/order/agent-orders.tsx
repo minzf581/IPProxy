@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Table, Button, Input, Space, Select, DatePicker, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
-import DashboardLayout from '@/components/Layout/DashboardLayout';
 import type { AgentOrder } from '@/types/order';
 import AgentOrderDetailModal from '@/components/Order/AgentOrderDetailModal';
 
@@ -115,9 +114,9 @@ const AgentOrderPage: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div className="p-6">
-        <div className="mb-4 flex justify-between">
+        <div className="flex justify-between mb-4">
           <Space>
             <Input
               placeholder="请输入订单号"
@@ -188,7 +187,7 @@ const AgentOrderPage: React.FC = () => {
           order={selectedOrder}
         />
       </div>
-    </DashboardLayout>
+    </>
   );
 };
 

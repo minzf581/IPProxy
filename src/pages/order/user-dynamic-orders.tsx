@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Table, Button, Input, Space, Select, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
-import DashboardLayout from '@/components/Layout/DashboardLayout';
 import type { UserDynamicOrder } from '@/types/order';
 import UserDynamicOrderDetailModal from '@/components/Order/UserDynamicOrderDetailModal';
 
@@ -91,7 +90,7 @@ const UserDynamicOrderPage: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div className="p-6">
         <div className="mb-4 flex justify-between">
           <Space>
@@ -156,7 +155,7 @@ const UserDynamicOrderPage: React.FC = () => {
           order={selectedOrder}
         />
       </div>
-    </DashboardLayout>
+    </>
   );
 };
 

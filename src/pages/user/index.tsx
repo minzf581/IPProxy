@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Table, Button, Input, Space, Select, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
-import DashboardLayout from '@/components/Layout/DashboardLayout';
 import UpdatePasswordModal from '@/components/User/UpdatePasswordModal';
 import UserDashboardModal from '@/components/User/UserDashboardModal';
 import type { User } from '@/types/user';
@@ -123,9 +122,9 @@ const UserPage: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div className="p-6">
-        <div className="mb-4 flex justify-between">
+        <div className="flex justify-between mb-4">
           <Space>
             <Input
               placeholder="请输入用户账号"
@@ -197,8 +196,8 @@ const UserPage: React.FC = () => {
           user={selectedUser}
         />
       </div>
-    </DashboardLayout>
+    </>
   );
 };
 
-export default UserPage; 
+export default UserPage;

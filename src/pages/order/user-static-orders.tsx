@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Table, Button, Input, Space, Select, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
-import DashboardLayout from '@/components/Layout/DashboardLayout';
 import type { UserStaticOrder } from '@/types/order';
 import UserStaticOrderDetailModal from '@/components/Order/UserStaticOrderDetailModal';
 
@@ -122,9 +121,9 @@ const UserStaticOrderPage: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div className="p-6">
-        <div className="mb-4 flex justify-between">
+        <div className="flex justify-between mb-4">
           <Space wrap>
             <Input
               placeholder="请输入订单号"
@@ -201,8 +200,8 @@ const UserStaticOrderPage: React.FC = () => {
           order={selectedOrder}
         />
       </div>
-    </DashboardLayout>
+    </>
   );
 };
 
-export default UserStaticOrderPage; 
+export default UserStaticOrderPage;

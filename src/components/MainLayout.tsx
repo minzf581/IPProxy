@@ -1,20 +1,22 @@
 import React, { useState } from 'react';
 import { Layout, Menu } from 'antd';
-import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import {
   DashboardOutlined,
   TeamOutlined,
   ShoppingCartOutlined,
   GlobalOutlined,
   SettingOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
 } from '@ant-design/icons';
+import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 
-const { Sider, Content } = Layout;
+const { Header, Sider, Content } = Layout;
 
 const MainLayout: React.FC = () => {
+  const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
 
   const menuItems = [
     {
@@ -23,7 +25,7 @@ const MainLayout: React.FC = () => {
       label: '仪表盘',
     },
     {
-      key: 'account',
+      key: '/account',
       icon: <TeamOutlined />,
       label: '账户管理',
       children: [
@@ -38,7 +40,7 @@ const MainLayout: React.FC = () => {
       ],
     },
     {
-      key: 'orders',
+      key: '/orders',
       icon: <ShoppingCartOutlined />,
       label: '订单管理',
       children: [
@@ -48,50 +50,36 @@ const MainLayout: React.FC = () => {
         },
         {
           key: '/orders/user/dynamic',
-          label: '用户动态订单',
+          label: '动态代理订单',
         },
         {
           key: '/orders/user/static',
-          label: '用户静态订单',
+          label: '静态代理订单',
         },
       ],
     },
     {
-      key: 'static-ip',
+      key: '/static-ip/manage',
       icon: <GlobalOutlined />,
       label: '静态IP管理',
-      children: [
-        {
-          key: '/static-ip/manage',
-          label: 'IP管理',
-        },
-      ],
     },
     {
-      key: 'settings',
+      key: '/settings/system',
       icon: <SettingOutlined />,
       label: '系统设置',
-      children: [
-        {
-          key: '/settings/system',
-          label: '系统设置',
-        },
-      ],
     },
   ];
 
-  const handleMenuClick = ({ key }: { key: string }) => {
-    navigate(key);
-  };
-
   const getSelectedKeys = () => {
-    return [location.pathname];
+    const pathname = location.pathname;
+    return [pathname];
   };
 
   const getOpenKeys = () => {
-    const pathParts = location.pathname.split('/');
-    if (pathParts.length > 1) {
-      return [pathParts[1]];
+    const pathname = location.pathname;
+    const parts = pathname.split('/').filter(Boolean);
+    if (parts.length > 0) {
+      return ['/' + parts[0]];
     }
     return [];
   };
@@ -99,35 +87,50 @@ const MainLayout: React.FC = () => {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider 
+        trigger={null} 
         collapsible 
-        collapsed={collapsed} 
-        onCollapse={setCollapsed}
+        collapsed={collapsed}
         style={{
-          overflow: 'auto',
-          height: '100vh',
-          position: 'fixed',
-          left: 0,
-          top: 0,
-          bottom: 0,
           backgroundColor: '#fff',
           borderRight: '1px solid #f0f0f0'
         }}
-        theme="light"
       >
-        <div style={{ height: '64px', margin: '16px', fontSize: '18px', textAlign: 'center' }}>
-          IP总管理后台
+        <div style={{ 
+          height: 64, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: collapsed ? 'center' : 'flex-start',
+          padding: collapsed ? '0' : '0 24px',
+          color: '#1890ff',
+          fontSize: '18px',
+          fontWeight: 'bold',
+          borderBottom: '1px solid #f0f0f0'
+        }}>
+          {collapsed ? 'IP' : 'IP总管理后台'}
         </div>
         <Menu
           theme="light"
-          defaultSelectedKeys={getSelectedKeys()}
-          defaultOpenKeys={getOpenKeys()}
           mode="inline"
+          selectedKeys={getSelectedKeys()}
+          defaultOpenKeys={getOpenKeys()}
           items={menuItems}
-          onClick={handleMenuClick}
-          style={{ borderRight: 'none' }}
+          onClick={({ key }) => navigate(key)}
         />
       </Sider>
-      <Layout style={{ marginLeft: collapsed ? 80 : 200, transition: 'all 0.2s' }}>
+      <Layout>
+        <Header style={{ 
+          padding: '0 16px', 
+          background: '#fff', 
+          borderBottom: '1px solid #f0f0f0',
+          display: 'flex',
+          alignItems: 'center'
+        }}>
+          {React.createElement(collapsed ? MenuUnfoldOutlined : MenuFoldOutlined, {
+            className: 'trigger',
+            onClick: () => setCollapsed(!collapsed),
+            style: { fontSize: '18px', cursor: 'pointer' },
+          })}
+        </Header>
         <Content style={{ margin: '24px 16px', padding: 24, background: '#fff', minHeight: 280 }}>
           <Outlet />
         </Content>
