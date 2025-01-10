@@ -1,5 +1,5 @@
 import React from 'react';
-import { createBrowserRouter } from 'react-router-dom';
+import { createHashRouter } from 'react-router-dom';
 import Dashboard from '../pages/dashboard';
 import MainLayout from '../components/MainLayout';
 import ErrorPage from '../pages/error';
@@ -13,7 +13,7 @@ const UserStaticOrders = React.lazy(() => import('../pages/orders/user/static'))
 const IPManagement = React.lazy(() => import('../pages/static-ip/manage'));
 const SystemSettings = React.lazy(() => import('../pages/settings/system'));
 
-const router = createBrowserRouter([
+const router = createHashRouter([
   {
     path: '/',
     element: <MainLayout />,
