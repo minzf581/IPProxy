@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>API Test</title>
+</head>
+<body>
+  <h1>API Test</h1>
+  <button onclick="test()">Test API</button>
+  <pre id="result"></pre>
+
+  <script>
+    async function encrypt(data, key) {
+      const te = new TextEncoder();
+      const keyBytes = te.encode(key.padEnd(32, '0'));
+      const iv = te.encode(key.slice(0, 16));
+      const dataBytes = te.encode(data);
+
+      const cryptoKey = await window.crypto.subtle.importKey(
+        'raw',
+        keyBytes,
+        { name: 'AES-CBC', length: 256 },
+        false,
+        ['encrypt']
+      );
+
+      const encrypted = await window.crypto.subtle.encrypt(
+        { name: 'AES-CBC', iv },
+        cryptoKey,
+        dataBytes
+      );
+
+      return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
+    }
+
+    async function test() {
+      const params = {
+        appUsername: 'test1006',
+        proxyType: 104,
+        reqId: crypto.randomUUID()
+      };
+
+      const APP_ID = 'AK20241120145620';
+      const APP_KEY = 'bf3ffghlt0hpc4omnvc2583jt0fag6a4';
+
+      try {
+        const encrypted = await encrypt(JSON.stringify(params), APP_KEY);
+        
+        const response = await fetch('/api/open/app/proxy/info', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Token': APP_KEY,
+            'X-APP-KEY': APP_ID
+          },
+          body: JSON.stringify({
+            version: 'v2',
+            encrypt: 'AES',
+            appKey: APP_ID,
+            params: encrypted
+          })
+        });
+
+        const result = await response.json();
+        document.getElementById('result').textContent = JSON.stringify(result, null, 2);
+      } catch (error) {
+        document.getElementById('result').textContent = error.toString();
+      }
+    }
+  </script>
+</body>
+</html>
