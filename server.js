@@ -189,6 +189,9 @@ const handleAPIRequest = async (req, res) => {
 app.post('/api/open/app/info/v2', handleAPIRequest);
 app.post('/api/open/app/product/query/v2', handleAPIRequest);
 app.post('/api/open/app/proxy/info/v2', handleAPIRequest);
+app.post('/api/open/app/user/create/v2', handleAPIRequest);
+app.post('/api/open/app/proxy/balance/v2', handleAPIRequest);
+app.post('/api/open/app/user/v2', handleAPIRequest);  // 新增创建主账号的路由
 app.post('/api/open/app/order/v2', handleAPIRequest);
 app.post('/api/open/app/flow/usage/v2', handleAPIRequest);
 

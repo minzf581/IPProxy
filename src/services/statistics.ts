@@ -1,4 +1,6 @@
-import { ipProxyAPI } from '@/utils/ipProxyAPI';
+import ipProxyAPI from '../utils/ipProxyAPI';
+import { ProxyBalanceInfo } from '../utils/ipProxyAPI';
+import { initializeMainUser, getMainUser } from './mainUser';
 import dayjs from 'dayjs';
 
 export interface StatisticsData {
@@ -19,50 +21,47 @@ export interface FlowUsageRecord {
   usedFlow: number;
 }
 
-export const createMainUser = async () => {
+async function createMainUser() {
   try {
-    const response = await ipProxyAPI.createUser({
-      appUsername: 'admin',
-      password: 'admin123',  // Using a stronger password
-      authName: 'admin',     // Using admin as authName
-      no: 'ADMIN001'         // Using a unique identifier
+    const mainUser = await ipProxyAPI.createMainUser({
+      phone: '13800138000',
+      email: 'admin@example.com',
+      authType: 2, // 个人实名
+      authName: 'Admin User',
+      no: 'ADMIN001',
+      status: 1  // 正常状态
     });
-    console.log('Main user created successfully:', response);
-    return response;
-  } catch (error: any) {
-    // Check if error is due to user already existing
-    if (error?.message?.includes('already exists')) {
-      console.log('Main user already exists');
-      return;
-    }
+    console.log('Main user created:', mainUser);
+    return mainUser;
+  } catch (error) {
     console.error('Failed to create main user:', error);
     throw error;
   }
-};
+}
 
 export const getStatistics = async (): Promise<StatisticsData> => {
   try {
+    // 确保主账号已初始化
+    const mainUser = await initializeMainUser();
+
     const now = dayjs();
     const startOfMonth = now.startOf('month').format('YYYY-MM-DD');
     const endOfMonth = now.endOf('month').format('YYYY-MM-DD');
     const startOfLastMonth = now.subtract(1, 'month').startOf('month').format('YYYY-MM-DD');
     const endOfLastMonth = now.subtract(1, 'month').endOf('month').format('YYYY-MM-DD');
 
-    // Try to create main user if not exists
-    try {
-      await createMainUser();
-    } catch (error) {
-      console.log('Error creating main user:', error);
-      // Continue execution even if user creation fails
-    }
-
     // 获取动态代理余额信息
-    const dynamicProxyInfo = await ipProxyAPI.getProxyBalance(104, 'PROXY_DYNAMIC', 'admin', 'admin');
-    
+    const dynamicProxyInfo = await ipProxyAPI.getProxyBalance(
+      104,
+      'PROXY_DYNAMIC',
+      mainUser.username,
+      mainUser.appUsername
+    );
+
     // 获取本月流量使用记录
     const currentMonthUsage = await ipProxyAPI.getFlowUsage({
-      appUsername: 'admin',
-      username: 'admin',
+      appUsername: mainUser.appUsername,
+      username: mainUser.username,
       startTime: startOfMonth,
       endTime: endOfMonth,
       page: 1,
@@ -71,8 +70,8 @@ export const getStatistics = async (): Promise<StatisticsData> => {
 
     // 获取上月流量使用记录
     const lastMonthUsage = await ipProxyAPI.getFlowUsage({
-      appUsername: 'admin',
-      username: 'admin',
+      appUsername: mainUser.appUsername,
+      username: mainUser.username,
       startTime: startOfLastMonth,
       endTime: endOfLastMonth,
       page: 1,

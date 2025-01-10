@@ -208,7 +208,7 @@ export class IPProxyAPI {
   }): Promise<FlowUsageResponse> {
     try {
       const { startTime, endTime, page = 1, pageSize = 10, username, appUsername } = params;
-      const response = await this.request<FlowUsageResponse>('/api/open/app/proxy/flow/use/log/v2', {
+      const response = await this.request<FlowUsageResponse>('/api/open/app/flow/usage/v2', {
         startTime,
         endTime,
         page,
@@ -266,6 +266,40 @@ export class IPProxyAPI {
       return response;
     } catch (error) {
       console.error('Failed to create user:', error);
+      throw error;
+    }
+  }
+
+  // 创建主账号
+  async createMainUser(params: {
+    phone: string;
+    email: string;
+    authType: number;
+    authName: string;
+    no: string;
+    status: number;
+  }): Promise<{
+    appUsername: string;
+    username: string;
+    password: string;
+    status: number;
+    authStatus: number;
+  }> {
+    try {
+      const response = await this.request<{
+        appUsername: string;
+        username: string;
+        password: string;
+        status: number;
+        authStatus: number;
+      }>('/api/open/app/user/v2', {
+        ...params,
+        authType: 2,  // 个人实名
+        status: 1     // 正常状态
+      });
+      return response;
+    } catch (error) {
+      console.error('Failed to create main user:', error);
       throw error;
     }
   }
