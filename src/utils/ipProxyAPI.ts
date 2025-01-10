@@ -196,15 +196,16 @@ export class IPProxyAPI {
   }
 
   // 获取流量使用记录
-  async getFlowUsage(
-    startTime: string,
-    endTime: string,
-    page: number = 1,
-    pageSize: number = 10,
-    username?: string,
-    appUsername?: string
-  ) {
+  async getFlowUsage(params: {
+    startTime: string;
+    endTime: string;
+    page?: number;
+    pageSize?: number;
+    username?: string;
+    appUsername?: string;
+  }): Promise<FlowUsageResponse> {
     try {
+      const { startTime, endTime, page = 1, pageSize = 10, username, appUsername } = params;
       const response = await this.request('/api/open/app/proxy/flow/use/log/v2', {
         startTime,
         endTime,
@@ -213,7 +214,7 @@ export class IPProxyAPI {
         ...(username && { username }),
         ...(appUsername && { appUsername })
       });
-      return response.data;
+      return response;
     } catch (error) {
       console.error('Failed to get flow usage:', error);
       throw error;
@@ -254,6 +255,17 @@ export class IPProxyAPI {
 
   async getInstanceList() {
     return this.request('/api/open/app/instance/v2', {});
+  }
+
+  // 创建用户
+  async createUser(params: { appUsername: string; password: string; authName: string; no: string }) {
+    try {
+      const response = await this.request('/api/open/app/user/create/v2', params);
+      return response;
+    } catch (error) {
+      console.error('Failed to create user:', error);
+      throw error;
+    }
   }
 }
 

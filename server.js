@@ -23,8 +23,10 @@ app.get('/health', (req, res) => {
 function logObject(name, obj) {
   console.log(`\n=== ${name} ===`);
   for (const [key, value] of Object.entries(obj)) {
-    if (key === 'data' && typeof value === 'string' && value.length > 100) {
-      console.log('data:', value.substring(0, 100) + '...');
+    if (typeof value === 'string') {
+      console.log(`${key}:`, value);
+    } else if (typeof value === 'object') {
+      console.log(`${key}:`, JSON.stringify(value, null, 2));
     } else {
       console.log(`${key}:`, value);
     }
@@ -130,14 +132,20 @@ const handleAPIRequest = async (req, res) => {
     const targetUrl = `${PROXY_BASE_URL}${req.url}`;
     console.log('\n[Proxy] Forwarding to:', targetUrl);
 
-    // 5. 发送请求
+    // 5. 添加用户名信息
+    const requestBody = {
+      ...cleanedBody,
+      appUsername: 'admin'  // 添加默认的应用用户名
+    };
+
+    // 6. 发送请求
     console.log('\n=== Sending Request to API ===');
     console.log('Target URL:', targetUrl);
-    console.log('Request Body:', JSON.stringify(cleanedBody, null, 2));
+    console.log('Request Body:', JSON.stringify(requestBody, null, 2));
     
     const response = await axios.post(
       targetUrl,
-      cleanedBody,
+      requestBody,
       {
         headers: {
           'Content-Type': 'application/json',
@@ -151,14 +159,14 @@ const handleAPIRequest = async (req, res) => {
       }
     );
 
-    // 6. 记录响应
+    // 7. 记录响应
     console.log('\n=== API Response Details ===');
     console.log('Status:', response.status);
     console.log('Headers:', JSON.stringify(response.headers, null, 2));
     console.log('Data:', JSON.stringify(response.data, null, 2));
     console.log('=== End Response Details ===\n');
 
-    // 7. 发送响应
+    // 8. 发送响应
     res.status(response.status).json(response.data);
   } catch (error) {
     console.error('\n=== API Error Details ===');
