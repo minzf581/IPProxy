@@ -1,84 +1,80 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Modal, Form, Input, message } from 'antd';
-import type { UserInfo } from '@/utils/ipProxyAPI';
-import ipProxyAPI from '@/utils/ipProxyAPI';
+import { updateUser } from '@/services/userService';
+import { hashPassword } from '@/utils/crypto';
 
 interface UpdatePasswordModalProps {
   visible: boolean;
-  user: UserInfo | null;
-  onCancel: () => void;
-  onSuccess: () => void;
+  userId: number;
+  onClose: () => void;
 }
 
 const UpdatePasswordModal: React.FC<UpdatePasswordModalProps> = ({
   visible,
-  user,
-  onCancel,
-  onSuccess
+  userId,
+  onClose,
 }) => {
   const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = React.useState(false);
 
-  const handleOk = async () => {
+  const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      if (!user) {
-        message.error('用户信息不存在');
-        return;
-      }
-
       setLoading(true);
-      await ipProxyAPI.updateUserPassword(user.id, values.password);
-      onSuccess();
+
+      const hashedOldPassword = await hashPassword(values.oldPassword);
+      const hashedNewPassword = await hashPassword(values.newPassword);
+
+      await updateUser(userId, {
+        oldPassword: hashedOldPassword,
+        password: hashedNewPassword
+      });
+
+      message.success('密码更新成功');
       form.resetFields();
+      onClose();
     } catch (error) {
-      if (error instanceof Error) {
-        message.error(error.message);
-      } else {
-        message.error('修改密码失败');
-      }
+      console.error('Failed to update password:', error);
+      message.error('密码更新失败，请重试');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleCancel = () => {
-    form.resetFields();
-    onCancel();
   };
 
   return (
     <Modal
       title="修改密码"
       open={visible}
-      onOk={handleOk}
-      onCancel={handleCancel}
+      onOk={handleSubmit}
+      onCancel={onClose}
       confirmLoading={loading}
     >
-      <Form
-        form={form}
-        layout="vertical"
-      >
+      <Form form={form} layout="vertical">
         <Form.Item
-          name="password"
+          name="oldPassword"
+          label="原密码"
+          rules={[{ required: true, message: '请输入原密码' }]}
+        >
+          <Input.Password placeholder="请输入原密码" />
+        </Form.Item>
+        <Form.Item
+          name="newPassword"
           label="新密码"
           rules={[
             { required: true, message: '请输入新密码' },
-            { min: 6, message: '密码长度不能小于6位' },
-            { max: 20, message: '密码长度不能大于20位' }
+            { min: 6, message: '密码长度不能小于6位' }
           ]}
         >
           <Input.Password placeholder="请输入新密码" />
         </Form.Item>
         <Form.Item
           name="confirmPassword"
-          label="确认密码"
-          dependencies={['password']}
+          label="确认新密码"
           rules={[
-            { required: true, message: '请确认密码' },
+            { required: true, message: '请确认新密码' },
             ({ getFieldValue }) => ({
               validator(_, value) {
-                if (!value || getFieldValue('password') === value) {
+                if (!value || getFieldValue('newPassword') === value) {
                   return Promise.resolve();
                 }
                 return Promise.reject(new Error('两次输入的密码不一致'));

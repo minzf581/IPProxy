@@ -1,140 +1,192 @@
-import React, { useState } from 'react';
-import { Table, Input, Select, Button, Space, Tag } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import React, { useState, useEffect } from 'react';
+import { Table, Button, Space, Tag, message } from 'antd';
+import { getUserList, updateUser } from '@/services/userService';
+import type { UserInfo } from '@/types/user';
+import CreateUserModal from '@/components/User/CreateUserModal';
+import UpdateUserModal from '@/components/User/UpdateUserModal';
+import UpdatePasswordModal from '@/components/User/UpdatePasswordModal';
+import UpdateBalanceModal from '@/components/User/UpdateBalanceModal';
 
-const { Search } = Input;
+const UsersPage: React.FC = () => {
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<{ list: UserInfo[]; total: number }>({ list: [], total: 0 });
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 10 });
+  const [selectedUser, setSelectedUser] = useState<UserInfo | null>(null);
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [updateModalVisible, setUpdateModalVisible] = useState(false);
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [balanceModalVisible, setBalanceModalVisible] = useState(false);
 
-interface UserData {
-  id: number;
-  account: string;
-  agent: string;
-  remark: string;
-  status: 'normal' | 'disabled';
-  createdAt: string;
-}
+  useEffect(() => {
+    loadUsers();
+  }, [pagination.current, pagination.pageSize]);
 
-const UserManagement: React.FC = () => {
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [selectedAgent, setSelectedAgent] = useState<string>('all');
+  const loadUsers = async () => {
+    try {
+      setLoading(true);
+      const { page, pageSize } = pagination;
+      const result = await getUserList({ page, pageSize });
+      setData(result);
+    } catch (error) {
+      console.error('Failed to load users:', error);
+      message.error('加载用户列表失败');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const columns: ColumnsType<UserData> = [
+  const handleUpdateStatus = async (user: UserInfo) => {
+    try {
+      await updateUser(user.id, { 
+        status: user.status === 'active' ? 'disabled' : 'active' 
+      });
+      message.success('状态更新成功');
+      loadUsers();
+    } catch (error) {
+      console.error('Failed to update user status:', error);
+      message.error('更新用户状态失败');
+    }
+  };
+
+  const columns = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
+      title: '用户名',
+      dataIndex: 'username',
+      key: 'username',
     },
     {
-      title: '账号',
-      dataIndex: 'account',
-      key: 'account',
-    },
-    {
-      title: '所属代理商',
-      dataIndex: 'agent',
-      key: 'agent',
-    },
-    {
-      title: '备注',
-      dataIndex: 'remark',
-      key: 'remark',
+      title: '邮箱',
+      dataIndex: 'email',
+      key: 'email',
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
-        <Tag color={status === 'normal' ? 'success' : 'error'}>
-          {status === 'normal' ? '正常' : '禁用'}
+        <Tag color={status === 'active' ? 'green' : 'red'}>
+          {status === 'active' ? '正常' : '禁用'}
         </Tag>
       ),
     },
     {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
+      title: '余额',
+      dataIndex: 'balance',
+      key: 'balance',
+      render: (balance: number) => `¥${balance.toFixed(2)}`,
     },
     {
       title: '操作',
       key: 'action',
-      render: (_, record) => (
-        <Space size="middle">
-          <Button type="link">修改密码</Button>
-          <Button type="link">查看仪表盘</Button>
-          <Button type="link" danger={record.status === 'normal'}>
-            {record.status === 'normal' ? '停用' : '启用'}
+      render: (_: any, record: UserInfo) => (
+        <Space>
+          <Button
+            size="small"
+            onClick={() => {
+              setSelectedUser(record);
+              setUpdateModalVisible(true);
+            }}
+          >
+            编辑
+          </Button>
+          <Button
+            size="small"
+            onClick={() => {
+              setSelectedUser(record);
+              setPasswordModalVisible(true);
+            }}
+          >
+            修改密码
+          </Button>
+          <Button
+            size="small"
+            onClick={() => {
+              setSelectedUser(record);
+              setBalanceModalVisible(true);
+            }}
+          >
+            修改余额
+          </Button>
+          <Button
+            size="small"
+            danger={record.status === 'active'}
+            type={record.status === 'active' ? 'primary' : 'default'}
+            onClick={() => handleUpdateStatus(record)}
+          >
+            {record.status === 'active' ? '禁用' : '启用'}
           </Button>
         </Space>
       ),
     },
   ];
 
-  const data: UserData[] = [
-    {
-      id: 1,
-      account: 'user001',
-      agent: '代理商1',
-      remark: '测试用户1',
-      status: 'normal',
-      createdAt: '2023-12-28 12:00:00',
-    },
-    {
-      id: 2,
-      account: 'user002',
-      agent: '代理商2',
-      remark: '测试用户2',
-      status: 'disabled',
-      createdAt: '2023-12-28 13:00:00',
-    },
-  ];
-
   return (
-    <div style={{ padding: '24px' }}>
-      <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Space>
-          <Search
-            placeholder="请输入用户账号"
-            style={{ width: 200 }}
-            onSearch={(value) => console.log(value)}
-          />
-          <Select
-            defaultValue="all"
-            style={{ width: 120 }}
-            onChange={(value) => setSelectedAgent(value)}
-            options={[
-              { value: 'all', label: '全部' },
-              { value: 'agent1', label: '代理商1' },
-              { value: 'agent2', label: '代理商2' },
-            ]}
-          />
-          <Select
-            defaultValue="all"
-            style={{ width: 120 }}
-            onChange={(value) => setSelectedStatus(value)}
-            options={[
-              { value: 'all', label: '全部' },
-              { value: 'normal', label: '正常' },
-              { value: 'disabled', label: '禁用' },
-            ]}
-          />
-          <Button type="primary">查询</Button>
-          <Button>重置</Button>
-        </Space>
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <Button
+          type="primary"
+          onClick={() => setCreateModalVisible(true)}
+        >
+          添加用户
+        </Button>
       </div>
 
       <Table
         columns={columns}
-        dataSource={data}
+        dataSource={data.list}
         rowKey="id"
+        loading={loading}
         pagination={{
-          total: 100,
-          pageSize: 10,
-          showQuickJumper: true,
+          ...pagination,
+          total: data.total,
           showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 条`,
+          showQuickJumper: true,
+        }}
+        onChange={(pagination) => setPagination(pagination)}
+      />
+
+      <CreateUserModal
+        visible={createModalVisible}
+        onClose={() => {
+          setCreateModalVisible(false);
+          loadUsers();
         }}
       />
+
+      {selectedUser && (
+        <>
+          <UpdateUserModal
+            visible={updateModalVisible}
+            user={selectedUser}
+            onClose={() => {
+              setUpdateModalVisible(false);
+              setSelectedUser(null);
+              loadUsers();
+            }}
+          />
+
+          <UpdatePasswordModal
+            visible={passwordModalVisible}
+            userId={selectedUser.id}
+            onClose={() => {
+              setPasswordModalVisible(false);
+              setSelectedUser(null);
+            }}
+          />
+
+          <UpdateBalanceModal
+            visible={balanceModalVisible}
+            user={selectedUser}
+            onClose={() => {
+              setBalanceModalVisible(false);
+              setSelectedUser(null);
+              loadUsers();
+            }}
+          />
+        </>
+      )}
     </div>
   );
 };
 
-export default UserManagement;
+export default UsersPage;

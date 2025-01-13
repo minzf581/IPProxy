@@ -1,6 +1,15 @@
 import CryptoJS from 'crypto-js';
 
 /**
+ * 对密码进行哈希处理
+ * @param password 原始密码
+ * @returns 哈希后的密码
+ */
+export async function hashPassword(password: string): Promise<string> {
+  return CryptoJS.SHA256(password).toString();
+}
+
+/**
  * 加密
  * @param text 要加密的文本
  * @param key 密钥

@@ -1,61 +1,96 @@
 import React from 'react';
 import { Modal, Form, Input, message } from 'antd';
+import { agentService } from '@/services/agentService';
 import type { CreateAgentForm } from '@/types/agent';
 
 interface Props {
   visible: boolean;
   onCancel: () => void;
-  onOk: (values: CreateAgentForm) => void;
+  onSuccess?: () => void;
 }
 
-const CreateAgentModal: React.FC<Props> = ({ visible, onCancel, onOk }) => {
-  const [form] = Form.useForm();
+const CreateAgentModal: React.FC<Props> = ({
+  visible,
+  onCancel,
+  onSuccess
+}) => {
+  const [form] = Form.useForm<CreateAgentForm>();
 
-  const handleOk = async () => {
+  const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      onOk(values);
+      await agentService.createAgent(values);
+
+      message.success('代理商创建成功');
       form.resetFields();
+      onSuccess?.();
+      onCancel();
     } catch (error) {
-      message.error('请检查表单填写是否正确');
+      console.error('创建代理商失败:', error);
+      message.error('创建代理商失败');
     }
   };
 
   return (
     <Modal
-      title="新建代理商"
+      title="创建代理商"
       open={visible}
       onCancel={onCancel}
-      onOk={handleOk}
-      destroyOnClose
+      onOk={handleSubmit}
     >
-      <Form form={form} layout="vertical">
+      <Form
+        form={form}
+        layout="vertical"
+      >
         <Form.Item
           name="account"
           label="账号"
           rules={[
             { required: true, message: '请输入账号' },
-            { pattern: /^[a-zA-Z0-9]+$/, message: '账号只能包含英文和数字' }
+            { min: 4, message: '账号长度不能小于4位' }
           ]}
         >
-          <Input placeholder="请输入账号" />
+          <Input />
         </Form.Item>
+
         <Form.Item
           name="password"
           label="密码"
           rules={[
             { required: true, message: '请输入密码' },
-            { pattern: /^[a-zA-Z0-9]+$/, message: '密码只能包含英文和数字' }
+            { min: 6, message: '密码长度不能小于6位' }
           ]}
         >
-          <Input.Password placeholder="请输入密码" />
+          <Input.Password />
         </Form.Item>
-        <Form.Item name="remark" label="备注">
-          <Input.TextArea placeholder="请输入备注信息" />
+
+        <Form.Item
+          name="email"
+          label="邮箱"
+          rules={[
+            { required: true, message: '请输入邮箱' },
+            { type: 'email', message: '请输入有效的邮箱地址' }
+          ]}
+        >
+          <Input />
+        </Form.Item>
+
+        <Form.Item
+          name="name"
+          label="名称"
+        >
+          <Input />
+        </Form.Item>
+
+        <Form.Item
+          name="remark"
+          label="备注"
+        >
+          <Input.TextArea rows={4} />
         </Form.Item>
       </Form>
     </Modal>
   );
 };
 
-export default CreateAgentModal; 
+export default CreateAgentModal;

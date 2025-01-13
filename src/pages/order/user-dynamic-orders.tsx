@@ -1,162 +1,155 @@
-import React, { useState } from 'react';
-import { Table, Button, Input, Space, Select, message } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
-import type { UserDynamicOrder } from '@/types/order';
+import React, { useState, useEffect } from 'react';
+import { Table, Card, Button, Space, message } from 'antd';
+import { orderService } from '@/services/dbService';
+import { formatDateTime } from '@/utils/dateUtils';
 import UserDynamicOrderDetailModal from '@/components/Order/UserDynamicOrderDetailModal';
 
-const { Option } = Select;
+interface OrderData {
+  id: number;
+  orderNumber: string;
+  duration: number;
+  amount: number;
+  status: string;
+  ipAddress: string;
+  location: string;
+  createdAt: string;
+}
 
-const UserDynamicOrderPage: React.FC = () => {
-  const [searchOrderNo, setSearchOrderNo] = useState('');
-  const [searchUserAccount, setSearchUserAccount] = useState('');
-  const [selectedAgent, setSelectedAgent] = useState<string>('');
-  const [detailModalVisible, setDetailModalVisible] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<UserDynamicOrder | null>(null);
+const UserDynamicOrders: React.FC = () => {
+  const [loading, setLoading] = useState(false);
+  const [orders, setOrders] = useState<OrderData[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<number | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [pagination, setPagination] = useState({
+    current: 1,
+    pageSize: 10,
+    total: 0
+  });
 
-  // 模拟数据，实际应从API获取
-  const agents = [
-    { id: '1', name: '代理商1' },
-    { id: '2', name: '代理商2' },
-  ];
+  const fetchOrders = async (page = 1, pageSize = 10) => {
+    setLoading(true);
+    try {
+      const response = await orderService.getDynamicOrders({
+        page,
+        pageSize,
+        userId: 'current' // 获取当前用户的订单
+      });
+      setOrders(response.data);
+      setPagination({
+        ...pagination,
+        current: page,
+        total: response.total
+      });
+    } catch (error) {
+      console.error('获取订单列表失败:', error);
+      message.error('获取订单列表失败');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const orders: UserDynamicOrder[] = [
-    {
-      id: '1',
-      orderNo: 'DD2023122800001',
-      userId: 'user1',
-      userAccount: 'user001',
-      agentId: '1',
-      agentName: '代理商1',
-      duration: '60分钟',
-      remark: '测试订单',
-      createdAt: '2023-12-28 12:00:00',
-    },
-    // ... 更多订单数据
-  ];
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const handleTableChange = (pagination: any) => {
+    fetchOrders(pagination.current, pagination.pageSize);
+  };
+
+  const handleViewDetail = (orderId: number) => {
+    setSelectedOrder(orderId);
+    setShowDetailModal(true);
+  };
+
+  const handleRenew = async (orderId: number) => {
+    try {
+      await orderService.renewDynamicOrder(orderId);
+      message.success('续期成功');
+      fetchOrders(pagination.current, pagination.pageSize);
+    } catch (error) {
+      console.error('续期失败:', error);
+      message.error('续期失败');
+    }
+  };
 
   const columns = [
     {
-      title: '订单号',
-      dataIndex: 'orderNo',
-      key: 'orderNo',
-    },
-    {
-      title: '用户账号',
-      dataIndex: 'userAccount',
-      key: 'userAccount',
-    },
-    {
-      title: '代理商',
-      dataIndex: 'agentName',
-      key: 'agentName',
+      title: '订单编号',
+      dataIndex: 'orderNumber',
+      key: 'orderNumber',
     },
     {
       title: '时长',
       dataIndex: 'duration',
       key: 'duration',
+      render: (duration: number) => `${duration}分钟`
     },
     {
-      title: '备注',
-      dataIndex: 'remark',
-      key: 'remark',
-      ellipsis: true,
+      title: '金额',
+      dataIndex: 'amount',
+      key: 'amount',
+      render: (amount: number) => `¥${amount.toFixed(2)}`
+    },
+    {
+      title: 'IP地址',
+      dataIndex: 'ipAddress',
+      key: 'ipAddress',
+    },
+    {
+      title: '地区',
+      dataIndex: 'location',
+      key: 'location',
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      render: (status: string) => status === 'active' ? '使用中' : '已过期'
     },
     {
       title: '创建时间',
       dataIndex: 'createdAt',
       key: 'createdAt',
+      render: (date: string) => formatDateTime(date)
     },
     {
       title: '操作',
       key: 'action',
-      render: (_: any, record: UserDynamicOrder) => (
+      render: (_: any, record: OrderData) => (
         <Space size="middle">
-          <Button type="link" onClick={() => handleViewDetail(record)}>
+          <Button type="link" onClick={() => handleViewDetail(record.id)}>
             查看详情
           </Button>
+          {record.status === 'active' && (
+            <Button type="link" onClick={() => handleRenew(record.id)}>
+              续期
+            </Button>
+          )}
         </Space>
       ),
     },
   ];
 
-  const handleSearch = () => {
-    // TODO: 实现搜索逻辑
-    message.info('搜索功能待实现');
-  };
-
-  const handleViewDetail = (order: UserDynamicOrder) => {
-    setSelectedOrder(order);
-    setDetailModalVisible(true);
-  };
-
   return (
-    <>
-      <div className="p-6">
-        <div className="mb-4 flex justify-between">
-          <Space>
-            <Input
-              placeholder="请输入订单号"
-              value={searchOrderNo}
-              onChange={e => setSearchOrderNo(e.target.value)}
-              style={{ width: 200 }}
-              prefix={<SearchOutlined />}
-            />
-            <Input
-              placeholder="请输入用户账号"
-              value={searchUserAccount}
-              onChange={e => setSearchUserAccount(e.target.value)}
-              style={{ width: 200 }}
-              prefix={<SearchOutlined />}
-            />
-            <Select
-              placeholder="代理商"
-              style={{ width: 200 }}
-              value={selectedAgent}
-              onChange={value => setSelectedAgent(value)}
-            >
-              <Option value="">全部</Option>
-              {agents.map(agent => (
-                <Option key={agent.id} value={agent.id}>
-                  {agent.name}
-                </Option>
-              ))}
-            </Select>
-            <Button type="primary" onClick={handleSearch}>
-              查询
-            </Button>
-            <Button
-              onClick={() => {
-                setSearchOrderNo('');
-                setSearchUserAccount('');
-                setSelectedAgent('');
-              }}
-            >
-              重置
-            </Button>
-          </Space>
-        </div>
+    <Card title="动态IP订单">
+      <Table
+        columns={columns}
+        dataSource={orders}
+        rowKey="id"
+        loading={loading}
+        pagination={pagination}
+        onChange={handleTableChange}
+      />
 
-        <Table
-          columns={columns}
-          dataSource={orders}
-          rowKey="id"
-          pagination={{
-            total: 100,
-            pageSize: 10,
-            showQuickJumper: true,
-            showSizeChanger: true,
-            showTotal: total => `共 ${total} 条`,
-          }}
-        />
-
+      {selectedOrder && (
         <UserDynamicOrderDetailModal
-          visible={detailModalVisible}
-          onCancel={() => setDetailModalVisible(false)}
-          order={selectedOrder}
+          visible={showDetailModal}
+          onClose={() => setShowDetailModal(false)}
+          orderId={selectedOrder}
         />
-      </div>
-    </>
+      )}
+    </Card>
   );
 };
 
-export default UserDynamicOrderPage; 
+export default UserDynamicOrders;

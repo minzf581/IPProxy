@@ -1,141 +1,108 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Statistic, Row, Col, Card, Spin, message } from 'antd';
-import { ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
-import type { UserInfo } from '@/utils/ipProxyAPI';
-import ipProxyAPI from '@/utils/ipProxyAPI';
+import { Modal, Descriptions, Tag, Spin, message } from 'antd';
+import { getUserStatistics } from '@/services/userService';
+import type { UserInfo, UserStatistics } from '@/types/user';
+import { formatDateTime } from '@/utils/dateUtils';
 
-interface UserDashboardModalProps {
+interface Props {
   visible: boolean;
-  user: UserInfo | null;
   onCancel: () => void;
+  user: UserInfo | null;
 }
 
-interface UserStatistics {
-  balance: number;
-  totalRecharge: number;
-  totalConsumption: number;
-  monthlyRecharge: number;
-  monthlyConsumption: number;
-  lastMonthConsumption: number;
-}
-
-const UserDashboardModal: React.FC<UserDashboardModalProps> = ({
+const UserDashboardModal: React.FC<Props> = ({
   visible,
-  user,
-  onCancel
+  onCancel,
+  user
 }) => {
   const [loading, setLoading] = useState(false);
   const [statistics, setStatistics] = useState<UserStatistics | null>(null);
 
   useEffect(() => {
-    const fetchStatistics = async () => {
-      if (!user || !visible) return;
+    if (visible && user) {
+      loadStatistics();
+    }
+  }, [visible, user]);
 
-      try {
-        setLoading(true);
-        const data = await ipProxyAPI.getUserStatistics(user.id);
-        setStatistics(data);
-      } catch (error) {
-        console.error('获取用户统计数据失败:', error);
-        message.error('获取用户统计数据失败');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const loadStatistics = async () => {
+    if (!user) return;
 
-    fetchStatistics();
-  }, [user, visible]);
+    try {
+      setLoading(true);
+      const data = await getUserStatistics(user.id);
+      setStatistics(data);
+    } catch (error) {
+      console.error('Failed to load user statistics:', error);
+      message.error('加载用户统计数据失败');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  if (!user) return null;
-
-  const monthlyChange = statistics ? 
-    statistics.monthlyConsumption - statistics.lastMonthConsumption : 0;
-  const monthlyChangePercent = statistics?.lastMonthConsumption ? 
-    ((monthlyChange / statistics.lastMonthConsumption) * 100).toFixed(2) : 0;
+  if (!user) {
+    return null;
+  }
 
   return (
     <Modal
-      title={`${user.account} 的统计数据`}
+      title="用户仪表盘"
       open={visible}
       onCancel={onCancel}
       footer={null}
       width={800}
     >
       <Spin spinning={loading}>
+        <Descriptions bordered column={2}>
+          <Descriptions.Item label="用户名">
+            {user.username}
+          </Descriptions.Item>
+          <Descriptions.Item label="状态">
+            <Tag color={user.status === 'active' ? 'green' : 'red'}>
+              {user.status === 'active' ? '正常' : '禁用'}
+            </Tag>
+          </Descriptions.Item>
+          <Descriptions.Item label="邮箱">
+            {user.email}
+          </Descriptions.Item>
+          <Descriptions.Item label="创建时间">
+            {formatDateTime(user.createdAt)}
+          </Descriptions.Item>
+        </Descriptions>
+
         {statistics && (
-          <Row gutter={[16, 16]}>
-            <Col span={8}>
-              <Card>
-                <Statistic
-                  title="累计消费"
-                  value={statistics.totalConsumption}
-                  precision={2}
-                  prefix="¥"
-                  valueStyle={{ color: '#cf1322' }}
-                  suffix="元"
-                />
-              </Card>
-            </Col>
-            <Col span={8}>
-              <Card>
-                <Statistic
-                  title="累计充值"
-                  value={statistics.totalRecharge}
-                  precision={2}
-                  prefix="¥"
-                  valueStyle={{ color: '#3f8600' }}
-                  suffix="元"
-                />
-              </Card>
-            </Col>
-            <Col span={8}>
-              <Card>
-                <Statistic
-                  title="账户余额"
-                  value={statistics.balance}
-                  precision={2}
-                  prefix="¥"
-                  suffix="元"
-                />
-              </Card>
-            </Col>
-            <Col span={8}>
-              <Card>
-                <Statistic
-                  title="本月消费"
-                  value={statistics.monthlyConsumption}
-                  precision={2}
-                  prefix="¥"
-                  suffix="元"
-                  valueStyle={{ color: monthlyChange >= 0 ? '#cf1322' : '#3f8600' }}
-                />
-              </Card>
-            </Col>
-            <Col span={8}>
-              <Card>
-                <Statistic
-                  title="本月充值"
-                  value={statistics.monthlyRecharge}
-                  precision={2}
-                  prefix="¥"
-                  valueStyle={{ color: '#3f8600' }}
-                  suffix="元"
-                />
-              </Card>
-            </Col>
-            <Col span={8}>
-              <Card>
-                <Statistic
-                  title="环比变化"
-                  value={monthlyChangePercent}
-                  precision={2}
-                  prefix={monthlyChange >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
-                  valueStyle={{ color: monthlyChange >= 0 ? '#cf1322' : '#3f8600' }}
-                  suffix="%"
-                />
-              </Card>
-            </Col>
-          </Row>
+          <>
+            <h3 style={{ marginTop: 24, marginBottom: 16 }}>账户统计</h3>
+            <Descriptions bordered column={2}>
+              <Descriptions.Item label="当前余额">
+                ¥{statistics.balance.toFixed(2)}
+              </Descriptions.Item>
+              <Descriptions.Item label="总充值金额">
+                ¥{statistics.totalRecharge.toFixed(2)}
+              </Descriptions.Item>
+              <Descriptions.Item label="本月充值">
+                ¥{statistics.monthRecharge.toFixed(2)}
+              </Descriptions.Item>
+              <Descriptions.Item label="本月消费">
+                ¥{statistics.monthConsumption.toFixed(2)}
+              </Descriptions.Item>
+            </Descriptions>
+
+            <h3 style={{ marginTop: 24, marginBottom: 16 }}>订单统计</h3>
+            <Descriptions bordered column={2}>
+              <Descriptions.Item label="动态订单数">
+                {statistics.dynamicOrders}
+              </Descriptions.Item>
+              <Descriptions.Item label="静态订单数">
+                {statistics.staticOrders}
+              </Descriptions.Item>
+              <Descriptions.Item label="活跃订单数">
+                {statistics.activeOrders}
+              </Descriptions.Item>
+              <Descriptions.Item label="已完成订单数">
+                {statistics.completedOrders}
+              </Descriptions.Item>
+            </Descriptions>
+          </>
         )}
       </Spin>
     </Modal>

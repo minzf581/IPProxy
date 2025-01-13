@@ -1,14 +1,41 @@
-import React from 'react';
-import { Modal, Descriptions } from 'antd';
-import type { UserDynamicOrder } from '@/types/order';
+import React, { useState, useEffect } from 'react';
+import { Modal, Descriptions, Spin, message } from 'antd';
+import { orderService } from '@/services/dbService';
+import type { DynamicOrder } from '@/types/order';
 
 interface Props {
   visible: boolean;
   onCancel: () => void;
-  order: UserDynamicOrder | null;
+  order: DynamicOrder | null;
 }
 
-const UserDynamicOrderDetailModal: React.FC<Props> = ({ visible, onCancel, order }) => {
+const UserDynamicOrderDetailModal: React.FC<Props> = ({
+  visible,
+  onCancel,
+  order
+}) => {
+  const [loading, setLoading] = useState(false);
+  const [orderDetail, setOrderDetail] = useState<DynamicOrder | null>(null);
+
+  useEffect(() => {
+    const fetchOrderDetail = async () => {
+      if (!order || !visible) return;
+
+      try {
+        setLoading(true);
+        const detail = await orderService.getDynamicOrderDetail(order.id);
+        setOrderDetail(detail);
+      } catch (error) {
+        console.error('获取订单详情失败:', error);
+        message.error('获取订单详情失败');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOrderDetail();
+  }, [order, visible]);
+
   if (!order) return null;
 
   return (
@@ -19,33 +46,37 @@ const UserDynamicOrderDetailModal: React.FC<Props> = ({ visible, onCancel, order
       footer={null}
       width={800}
     >
-      <Descriptions bordered column={2}>
-        <Descriptions.Item label="订单号" span={2}>
-          {order.orderNo}
-        </Descriptions.Item>
-        
-        <Descriptions.Item label="用户账号">
-          {order.userAccount}
-        </Descriptions.Item>
-        
-        <Descriptions.Item label="代理商">
-          {order.agentName}
-        </Descriptions.Item>
-        
-        <Descriptions.Item label="时长">
-          {order.duration}
-        </Descriptions.Item>
-        
-        <Descriptions.Item label="创建时间">
-          {order.createdAt}
-        </Descriptions.Item>
-        
-        <Descriptions.Item label="备注" span={2}>
-          {order.remark || '-'}
-        </Descriptions.Item>
-      </Descriptions>
+      <Spin spinning={loading}>
+        {orderDetail && (
+          <Descriptions bordered column={2}>
+            <Descriptions.Item label="订单号" span={2}>
+              {orderDetail.orderNo}
+            </Descriptions.Item>
+            
+            <Descriptions.Item label="用户账号">
+              {orderDetail.userAccount}
+            </Descriptions.Item>
+            
+            <Descriptions.Item label="代理商">
+              {orderDetail.agentName}
+            </Descriptions.Item>
+            
+            <Descriptions.Item label="时长">
+              {orderDetail.duration}
+            </Descriptions.Item>
+            
+            <Descriptions.Item label="创建时间">
+              {orderDetail.createdAt}
+            </Descriptions.Item>
+            
+            <Descriptions.Item label="备注" span={2}>
+              {orderDetail.remark || '-'}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Spin>
     </Modal>
   );
 };
 
-export default UserDynamicOrderDetailModal; 
+export default UserDynamicOrderDetailModal;

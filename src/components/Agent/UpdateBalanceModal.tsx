@@ -1,58 +1,79 @@
 import React from 'react';
-import { Modal, Form, InputNumber, Radio, message } from 'antd';
+import { Modal, Form, InputNumber, Input, message } from 'antd';
+import { updateAgent } from '@/services/agentService';
 
-interface Props {
+interface UpdateBalanceModalProps {
   visible: boolean;
+  agentId: number;
+  currentBalance: number;
   onClose: () => void;
-  onSuccess: () => void;
 }
 
-const UpdateBalanceModal: React.FC<Props> = ({ visible, onClose, onSuccess }) => {
+const UpdateBalanceModal: React.FC<UpdateBalanceModalProps> = ({
+  visible,
+  agentId,
+  currentBalance,
+  onClose,
+}) => {
   const [form] = Form.useForm();
+  const [loading, setLoading] = React.useState(false);
 
-  const handleOk = async () => {
+  const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      // TODO: 调用API更新余额
-      message.success('余额调整成功');
-      onSuccess();
+      setLoading(true);
+
+      await updateAgent(agentId, {
+        balance: currentBalance + values.amount,
+        lastRechargeAmount: values.amount,
+        lastRechargeRemark: values.remark
+      });
+
+      message.success('余额更新成功');
       form.resetFields();
+      onClose();
     } catch (error) {
-      message.error('请检查表单填写是否正确');
+      console.error('Failed to update balance:', error);
+      message.error('余额更新失败，请重试');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
     <Modal
-      title="调整余额"
+      title="修改余额"
       open={visible}
-      onOk={handleOk}
+      onOk={handleSubmit}
       onCancel={onClose}
-      destroyOnClose
+      confirmLoading={loading}
     >
       <Form form={form} layout="vertical">
         <Form.Item
-          name="type"
-          label="操作类型"
-          rules={[{ required: true, message: '请选择操作类型' }]}
-        >
-          <Radio.Group>
-            <Radio value="increase">增加</Radio>
-            <Radio value="decrease">扣减</Radio>
-          </Radio.Group>
-        </Form.Item>
-        <Form.Item
           name="amount"
-          label="金额"
-          rules={[{ required: true, message: '请输入金额' }]}
+          label="变更金额"
+          rules={[
+            { required: true, message: '请输入变更金额' },
+            { type: 'number', message: '请输入有效的金额' }
+          ]}
         >
           <InputNumber
-            min={0}
-            precision={2}
             style={{ width: '100%' }}
-            placeholder="请输入金额"
+            placeholder="请输入变更金额（正数为充值，负数为扣除）"
+            precision={2}
           />
         </Form.Item>
+        <Form.Item
+          name="remark"
+          label="备注"
+          rules={[{ required: true, message: '请输入备注' }]}
+        >
+          <Input.TextArea placeholder="请输入备注信息" rows={4} />
+        </Form.Item>
+        <div style={{ marginBottom: 16 }}>
+          <p>当前余额：{currentBalance}</p>
+          <p>变更后余额：{currentBalance + (form.getFieldValue('amount') || 0)}</p>
+        </div>
       </Form>
     </Modal>
   );

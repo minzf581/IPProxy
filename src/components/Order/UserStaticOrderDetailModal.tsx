@@ -1,21 +1,42 @@
-import React from 'react';
-import { Modal, Descriptions, Tag } from 'antd';
-import type { UserStaticOrder } from '@/types/order';
+import React, { useState, useEffect } from 'react';
+import { Modal, Descriptions, Spin, message } from 'antd';
+import { orderService } from '@/services/dbService';
+import type { StaticOrder } from '@/types/order';
 
 interface Props {
   visible: boolean;
   onCancel: () => void;
-  order: UserStaticOrder | null;
+  order: StaticOrder | null;
 }
 
-const UserStaticOrderDetailModal: React.FC<Props> = ({ visible, onCancel, order }) => {
-  if (!order) return null;
+const UserStaticOrderDetailModal: React.FC<Props> = ({
+  visible,
+  onCancel,
+  order
+}) => {
+  const [loading, setLoading] = useState(false);
+  const [orderDetail, setOrderDetail] = useState<StaticOrder | null>(null);
 
-  const resourceTypeMap = {
-    static1: '静态资源1',
-    static2: '静态资源2',
-    static3: '静态资源3'
-  };
+  useEffect(() => {
+    const fetchOrderDetail = async () => {
+      if (!order || !visible) return;
+
+      try {
+        setLoading(true);
+        const detail = await orderService.getStaticOrderDetail(order.id);
+        setOrderDetail(detail);
+      } catch (error) {
+        console.error('获取订单详情失败:', error);
+        message.error('获取订单详情失败');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOrderDetail();
+  }, [order, visible]);
+
+  if (!order) return null;
 
   return (
     <Modal
@@ -25,51 +46,45 @@ const UserStaticOrderDetailModal: React.FC<Props> = ({ visible, onCancel, order 
       footer={null}
       width={800}
     >
-      <Descriptions bordered column={2}>
-        <Descriptions.Item label="订单号" span={2}>
-          {order.orderNo}
-        </Descriptions.Item>
-        
-        <Descriptions.Item label="用户账号">
-          {order.userAccount}
-        </Descriptions.Item>
-        
-        <Descriptions.Item label="代理商">
-          {order.agentName}
-        </Descriptions.Item>
-
-        <Descriptions.Item label="IP信息" span={2}>
-          {`${order.ipInfo.subnet}:${order.ipInfo.port}:${order.ipInfo.username}:${order.ipInfo.password}`}
-        </Descriptions.Item>
-
-        <Descriptions.Item label="位置">
-          {`${order.ipInfo.country} ${order.ipInfo.city}`}
-        </Descriptions.Item>
-
-        <Descriptions.Item label="资源类型">
-          {resourceTypeMap[order.ipInfo.resourceType]}
-        </Descriptions.Item>
-        
-        <Descriptions.Item label="状态">
-          <Tag color={order.status === 'active' ? 'success' : 'error'}>
-            {order.status === 'active' ? '使用中' : '已过期'}
-          </Tag>
-        </Descriptions.Item>
-        
-        <Descriptions.Item label="创建时间">
-          {order.createdAt}
-        </Descriptions.Item>
-
-        <Descriptions.Item label="到期时间" span={2}>
-          {order.expiredAt}
-        </Descriptions.Item>
-        
-        <Descriptions.Item label="备注" span={2}>
-          {order.remark || '-'}
-        </Descriptions.Item>
-      </Descriptions>
+      <Spin spinning={loading}>
+        {orderDetail && (
+          <Descriptions bordered column={2}>
+            <Descriptions.Item label="订单号" span={2}>
+              {orderDetail.orderNo}
+            </Descriptions.Item>
+            
+            <Descriptions.Item label="用户账号">
+              {orderDetail.userAccount}
+            </Descriptions.Item>
+            
+            <Descriptions.Item label="代理商">
+              {orderDetail.agentName}
+            </Descriptions.Item>
+            
+            <Descriptions.Item label="IP地址">
+              {orderDetail.ipAddress}
+            </Descriptions.Item>
+            
+            <Descriptions.Item label="地区">
+              {orderDetail.location}
+            </Descriptions.Item>
+            
+            <Descriptions.Item label="创建时间">
+              {orderDetail.createdAt}
+            </Descriptions.Item>
+            
+            <Descriptions.Item label="到期时间">
+              {orderDetail.expiredAt}
+            </Descriptions.Item>
+            
+            <Descriptions.Item label="备注" span={2}>
+              {orderDetail.remark || '-'}
+            </Descriptions.Item>
+          </Descriptions>
+        )}
+      </Spin>
     </Modal>
   );
 };
 
-export default UserStaticOrderDetailModal; 
+export default UserStaticOrderDetailModal;

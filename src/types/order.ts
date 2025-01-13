@@ -38,6 +38,88 @@ export const OrderStatusTexts = {
   [OrderStatus.CANCELLED]: '已取消'
 };
 
+export interface BaseOrder {
+  id: number;
+  userId: number;
+  userAccount: string;
+  agentId?: number;
+  agentAccount?: string;
+  status: 'active' | 'expired' | 'cancelled';
+  duration: number;
+  quantity: number;
+  region?: string;
+  remark?: string;
+  amount: number;
+  createdAt: string;
+  expiredAt: string;
+}
+
+export interface DynamicOrder extends BaseOrder {
+  type: 'dynamic';
+  proxyList: Array<{
+    id: number;
+    ipAddress: string;
+    port: number;
+    username: string;
+    password: string;
+    location?: string;
+    lastUsedAt?: string;
+  }>;
+}
+
+export interface StaticOrder extends BaseOrder {
+  type: 'static';
+  proxyList: Array<{
+    id: number;
+    ipAddress: string;
+    port: number;
+    username: string;
+    password: string;
+    location?: string;
+    lastUsedAt?: string;
+  }>;
+}
+
+export interface OrderStatistics {
+  total: {
+    count: number;
+    amount: number;
+  };
+  dynamic: {
+    count: number;
+    amount: number;
+    active: number;
+  };
+  static: {
+    count: number;
+    amount: number;
+    active: number;
+  };
+  daily: Array<{
+    date: string;
+    count: number;
+    amount: number;
+  }>;
+}
+
+export interface CreateDynamicOrderForm {
+  duration: number;
+  quantity: number;
+  region?: string;
+  remark?: string;
+}
+
+export interface CreateStaticOrderForm {
+  duration: number;
+  quantity: number;
+  region?: string;
+  remark?: string;
+}
+
+export interface RenewOrderForm {
+  duration: number;
+}
+
 export interface AgentOrder {
   id: string;
   orderNo: string;
