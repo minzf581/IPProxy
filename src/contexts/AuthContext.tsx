@@ -1,28 +1,74 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import ipProxyAPI from '@/utils/ipProxyAPI';
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  login: (token: string) => void;
+  user: any;
+  login: (token: string) => Promise<void>;
   logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(true); // 暂时默认为已登录状态
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [user, setUser] = useState<any>(null);
 
-  const login = (token: string) => {
-    setIsAuthenticated(true);
-    // TODO: 保存 token
+  // 初始化认证状态
+  const initializeAuth = async () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        // 设置 token 到 API 实例
+        ipProxyAPI.setToken(token);
+        // 获取用户信息
+        const userInfo = await ipProxyAPI.getCurrentUser();
+        setUser(userInfo);
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error('初始化认证状态失败:', error);
+        // 如果获取用户信息失败，清除无效的 token
+        localStorage.removeItem('token');
+        setIsAuthenticated(false);
+        setUser(null);
+      }
+    }
   };
 
-  const logout = () => {
+  useEffect(() => {
+    initializeAuth();
+  }, []);
+
+  const handleLogin = async (token: string) => {
+    try {
+      localStorage.setItem('token', token);
+      ipProxyAPI.setToken(token);
+      const userInfo = await ipProxyAPI.getCurrentUser();
+      setUser(userInfo);
+      setIsAuthenticated(true);
+    } catch (error) {
+      console.error('登录失败:', error);
+      localStorage.removeItem('token');
+      throw error;
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
     setIsAuthenticated(false);
-    // TODO: 清除 token
+    setUser(null);
+    ipProxyAPI.setToken('');
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        user,
+        login: handleLogin,
+        logout: handleLogout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -30,7 +76,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;

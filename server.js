@@ -2,17 +2,26 @@ import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
 import https from 'https';
+import mysql from 'mysql2/promise';
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 const PROXY_BASE_URL = 'https://sandbox.ipipv.com';
 
 // 启用 CORS
 app.use(cors({
-  origin: 'http://localhost:3000'
+  origin: ['http://localhost:5173', 'http://localhost:3001'],
+  credentials: true
 }));
 
+// 启用 JSON 解析
 app.use(express.json());
+
+// 错误处理中间件
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(500).json({ error: err.message });
+});
 
 // 健康检查
 app.get('/health', (req, res) => {
@@ -185,11 +194,35 @@ const handleAPIRequest = async (req, res) => {
   }
 };
 
+// 本地登录验证
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body;
+  
+  // 验证用户名和密码
+  if (username === 'ipadmin' && password === 'ipadmin') {
+    res.json({
+      code: 200,
+      msg: 'success',
+      data: {
+        access_token: 'admin_token',
+        username: 'ipadmin',
+        role: 'admin'
+      }
+    });
+  } else {
+    res.status(401).json({
+      code: 401,
+      msg: '用户名或密码错误',
+      data: null
+    });
+  }
+});
+
 // 注册具体的 API 路由
+app.post('/api/open/app/auth/login/v2', handleAPIRequest);
 app.post('/api/open/app/info/v2', handleAPIRequest);
 app.post('/api/open/app/product/query/v2', handleAPIRequest);
 app.post('/api/open/app/proxy/info/v2', handleAPIRequest);
-app.post('/api/open/app/user/create/v2', handleAPIRequest);
 app.post('/api/open/app/proxy/balance/v2', handleAPIRequest);
 app.post('/api/open/app/user/v2', handleAPIRequest);  // 新增创建主账号的路由
 app.post('/api/open/app/order/v2', handleAPIRequest);
@@ -277,18 +310,140 @@ app.post('/api/open/app/order/v2', async (req, res) => {
   }
 });
 
-// 错误处理中间件
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).json({
-    code: 500,
-    msg: 'Internal Server Error',
-    data: null
+// 数据库配置
+const dbConfig = {
+  host: 'localhost',
+  user: 'root',
+  password: '',
+  database: 'ipproxy',
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  charset: 'utf8mb4',
+  collation: 'utf8mb4_unicode_ci'
+};
+
+// 创建数据库连接池
+const pool = mysql.createPool(dbConfig);
+
+// 测试数据库连接
+pool.getConnection((err, connection) => {
+  if (err) {
+    console.error('Error connecting to the database:', err);
+    return;
+  }
+  console.log('Successfully connected to database');
+  
+  // 设置连接字符集
+  connection.query('SET NAMES utf8mb4', (error) => {
+    if (error) {
+      console.error('Error setting character set:', error);
+    }
+    connection.release();
   });
 });
 
+// 从数据库获取仪表盘数据
+app.get('/api/dashboard/db', async (req, res) => {
+  console.log('Received request for dashboard data');
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    console.log('Transaction started');
+
+    // 获取累计消费
+    const [totalConsumption] = await conn.query(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM consumption_records'
+    );
+    console.log('Total consumption:', totalConsumption);
+
+    // 获取累计充值
+    const [totalRecharge] = await conn.query(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM recharge_records WHERE status = "SUCCESS"'
+    );
+    console.log('Total recharge:', totalRecharge);
+
+    // 获取当前余额
+    const [balance] = await conn.query(
+      'SELECT COALESCE(SUM(balance), 0) as total FROM users'
+    );
+    console.log('Current balance:', balance);
+
+    // 获取本月充值
+    const [monthRecharge] = await conn.query(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM recharge_records WHERE status = "SUCCESS" AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())'
+    );
+    console.log('Month recharge:', monthRecharge);
+
+    // 获取本月消费
+    const [monthConsumption] = await conn.query(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM consumption_records WHERE MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())'
+    );
+    console.log('Month consumption:', monthConsumption);
+
+    // 获取上月消费
+    const [lastMonthConsumption] = await conn.query(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM consumption_records WHERE MONTH(created_at) = MONTH(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH)) AND YEAR(created_at) = YEAR(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH))'
+    );
+    console.log('Last month consumption:', lastMonthConsumption);
+
+    // 获取动态资源使用情况
+    const [dynamicResources] = await conn.query(
+      'SELECT title, total_amount as total, used_amount as used, today_usage as today, last_month_usage as lastMonth, percentage FROM dynamic_resources'
+    );
+    console.log('Dynamic resources:', dynamicResources);
+
+    // 获取静态资源使用情况
+    const [staticResources] = await conn.query(
+      'SELECT title, total_amount as total, used_amount as used, today_usage as today, last_month_usage as lastMonth, available_amount as available, percentage FROM static_resources'
+    );
+    console.log('Static resources:', staticResources);
+
+    await conn.commit();
+    console.log('Transaction committed');
+
+    const result = {
+      total_consumption: Number(totalConsumption[0].total),
+      total_recharge: Number(totalRecharge[0].total),
+      balance: Number(balance[0].total),
+      month_recharge: Number(monthRecharge[0].total),
+      month_consumption: Number(monthConsumption[0].total),
+      last_month_consumption: Number(lastMonthConsumption[0].total),
+      dynamic_resources: dynamicResources.map(r => ({
+        title: r.title,
+        total: `${r.total}G`,
+        used: `${r.used}G`,
+        today: `${r.today}G`,
+        lastMonth: `${r.lastMonth}G`,
+        percentage: Number(r.percentage)
+      })),
+      static_resources: staticResources.map(r => ({
+        title: r.title,
+        total: `${r.total}条`,
+        used: `${r.used}条`,
+        today: `${r.today}条`,
+        lastMonth: `${r.lastMonth}条`,
+        available: `${r.available}条`,
+        percentage: Number(r.percentage)
+      }))
+    };
+    
+    console.log('Sending response:', result);
+    res.setHeader('Content-Type', 'application/json;charset=UTF-8');
+    res.json(result);
+  } catch (error) {
+    console.error('Error in /api/dashboard/db:', error);
+    await conn.rollback();
+    res.status(500).json({ error: error.message });
+  } finally {
+    conn.release();
+  }
+});
+
 // 启动服务器
-app.listen(PORT, () => {
-  console.log(`Proxy server is running on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server is running on port ${PORT}`);
+  console.log(`Access the application at http://localhost:${PORT}`);
+  console.log('CORS enabled for:', ['http://localhost:5173', 'http://localhost:3001']);
   console.log(`Proxying requests to: ${PROXY_BASE_URL}`);
 });

@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, Form, Input, Button, message } from 'antd';
+import ipProxyAPI from '@/utils/ipProxyAPI';
 
 const SettingsPage: React.FC = () => {
   const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
 
   const handleUpdatePassword = async (values: any) => {
     try {
@@ -10,11 +12,16 @@ const SettingsPage: React.FC = () => {
         message.error('两次输入的密码不一致');
         return;
       }
-      // TODO: 调用API更新密码
+      
+      setLoading(true);
+      await ipProxyAPI.updateAdminPassword(values.oldPassword, values.newPassword);
       message.success('密码修改成功');
       form.resetFields();
     } catch (error) {
+      console.error('修改密码失败:', error);
       message.error('修改密码失败');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -55,7 +62,7 @@ const SettingsPage: React.FC = () => {
             </Form.Item>
 
             <Form.Item>
-              <Button type="primary" htmlType="submit">
+              <Button type="primary" htmlType="submit" loading={loading}>
                 修改密码
               </Button>
             </Form.Item>
@@ -66,4 +73,4 @@ const SettingsPage: React.FC = () => {
   );
 };
 
-export default SettingsPage; 
+export default SettingsPage;

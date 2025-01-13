@@ -75,10 +75,48 @@ export interface FlowUsageResponse {
   total: number;
 }
 
+// 用户信息接口
+export interface UserInfo {
+  id: string;
+  account: string;
+  agentId: string;
+  agentName: string;
+  status: string;
+  createdAt: string;
+  remark: string;
+  balance: number;
+  totalRecharge: number;
+  totalConsumption: number;
+}
+
+// 代理商信息接口
+export interface AgentInfo {
+  id: string;
+  name: string;
+  account: string;
+  status: string;
+  createdAt: string;
+  remark: string;
+  balance: number;
+  totalRecharge: number;
+  totalConsumption: number;
+}
+
+// 产品信息接口
+export interface ProductInfo {
+  id: string;
+  name: string;
+  type: string;
+  price: number;
+  description: string;
+  status: string;
+}
+
 export class IPProxyAPI {
   private baseURL: string;
   private appKey: string;
   private appId: string;
+  private token: string | null = null;
 
   constructor() {
     // Check if we're running on GitHub Pages
@@ -86,6 +124,14 @@ export class IPProxyAPI {
     this.baseURL = isGitHubPages ? 'https://sandbox.ipipv.com' : 'http://localhost:3001';
     this.appKey = 'bf3ffghlt0hpc4omnvc2583jt0fag6a4';
     this.appId = 'AK20241120145620';
+  }
+
+  setToken(token: string) {
+    this.token = token;
+  }
+
+  clearToken() {
+    this.token = null;
   }
 
   private async request<T>(endpoint: string, params: Record<string, any>): Promise<T> {
@@ -98,8 +144,8 @@ export class IPProxyAPI {
       const paramsStr = JSON.stringify(params);
       console.log('Params string:', paramsStr);
       
-      // 3. 加密参数（使用 appKey 而不是 this.appKey）
-      const encryptedParams = encrypt(paramsStr, 'bf3ffghlt0hpc4omnvc2583jt0fag6a4');
+      // 3. 加密参数
+      const encryptedParams = encrypt(paramsStr, this.appKey);
       console.log('Encrypted params:', encryptedParams);
       
       // 4. 构建请求体
@@ -115,14 +161,19 @@ export class IPProxyAPI {
       console.log('=== End Request Params ===\n');
 
       // 5. 发送请求
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+
+      // 添加认证头
+      if (this.token) {
+        headers['Authorization'] = `Bearer ${this.token}`;
+      }
+
       const response = await axios.post<APIResponse<T>>(
         `${this.baseURL}${endpoint}`,
         requestBody,
-        {
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
+        { headers }
       );
 
       // 6. 检查响应
@@ -143,7 +194,7 @@ export class IPProxyAPI {
       }
 
       // 9. 解密和解析
-      const decrypted = decrypt(cleanData, 'bf3ffghlt0hpc4omnvc2583jt0fag6a4');
+      const decrypted = decrypt(cleanData, this.appKey);
       console.log('[API Response] Decrypted:', decrypted);
 
       return JSON.parse(decrypted) as T;
@@ -300,6 +351,206 @@ export class IPProxyAPI {
       return response;
     } catch (error) {
       console.error('Failed to create main user:', error);
+      throw error;
+    }
+  }
+
+  // 创建主账号的产品
+  async createMainUserProduct(username: string, appUsername: string): Promise<void> {
+    try {
+      await this.request('/api/open/app/product/create/v2', {
+        proxyType: 104,
+        productNo: 'PROXY_DYNAMIC',
+        username,
+        appUsername,
+        count: 1,
+        autoRenew: 0
+      });
+    } catch (error) {
+      console.error('Failed to create product for main user:', error);
+      throw error;
+    }
+  }
+
+  // 获取用户列表
+  async getUserList(params: {
+    page: number;
+    pageSize: number;
+    searchAccount?: string;
+    agentId?: string;
+    status?: string;
+  }): Promise<{
+    list: UserInfo[];
+    total: number;
+  }> {
+    return this.request('/api/open/app/user/list/v2', params);
+  }
+
+  // 获取代理商列表
+  async getAgentList(params: {
+    page: number;
+    pageSize: number;
+    searchAccount?: string;
+    status?: string;
+  }): Promise<{
+    list: AgentInfo[];
+    total: number;
+  }> {
+    return this.request('/api/open/app/agent/list/v2', params);
+  }
+
+  // 获取用户详细信息
+  async getUserInfo(userId: string): Promise<UserInfo> {
+    return this.request('/api/open/app/user/info/v2', { userId });
+  }
+
+  // 获取代理商详细信息
+  async getAgentInfo(agentId: string): Promise<AgentInfo> {
+    return this.request('/api/open/app/agent/info/v2', { agentId });
+  }
+
+  // 修改用户状态
+  async updateUserStatus(userId: string, status: string): Promise<void> {
+    return this.request('/api/open/app/user/status/v2', { userId, status });
+  }
+
+  // 修改代理商状态
+  async updateAgentStatus(agentId: string, status: string): Promise<void> {
+    return this.request('/api/open/app/agent/status/v2', { agentId, status });
+  }
+
+  // 修改用户密码
+  async updateUserPassword(userId: string, newPassword: string): Promise<void> {
+    return this.request('/api/open/app/user/password/v2', { userId, newPassword });
+  }
+
+  // 修改代理商密码
+  async updateAgentPassword(agentId: string, newPassword: string): Promise<void> {
+    return this.request('/api/open/app/agent/password/v2', { agentId, newPassword });
+  }
+
+  // 获取产品列表
+  async getProductList(): Promise<ProductInfo[]> {
+    return this.request('/api/open/app/product/list/v2', {});
+  }
+
+  // 获取用户统计信息
+  async getUserStatistics(userId: string): Promise<{
+    balance: number;
+    totalRecharge: number;
+    totalConsumption: number;
+    monthlyRecharge: number;
+    monthlyConsumption: number;
+    lastMonthConsumption: number;
+  }> {
+    return this.request('/api/open/app/user/statistics/v2', { userId });
+  }
+
+  // 获取代理商统计信息
+  async getAgentStatistics(agentId: string): Promise<{
+    balance: number;
+    totalRecharge: number;
+    totalConsumption: number;
+    monthlyRecharge: number;
+    monthlyConsumption: number;
+    lastMonthConsumption: number;
+  }> {
+    return this.request('/api/open/app/agent/statistics/v2', { agentId });
+  }
+
+  // 登录
+  async login(username: string, password: string): Promise<{ access_token: string }> {
+    try {
+      const response = await axios.post(`${this.baseURL}/api/auth/login`, {
+        username,
+        password
+      });
+      
+      if (response?.data?.data?.access_token) {
+        this.setToken(response.data.data.access_token);
+        return { access_token: response.data.data.access_token };
+      }
+      throw new Error(response?.data?.msg || '登录失败');
+    } catch (error) {
+      console.error('Login failed:', error);
+      throw error;
+    }
+  }
+
+  // 获取当前用户信息
+  async getCurrentUser(): Promise<UserInfo> {
+    try {
+      // 由于是本地验证，直接返回模拟的用户信息
+      return {
+        id: 'admin',
+        account: 'ipadmin',
+        agentId: 'admin',
+        agentName: '管理员',
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        remark: '',
+        balance: 0,
+        totalRecharge: 0,
+        totalConsumption: 0
+      };
+    } catch (error) {
+      console.error('Failed to get current user:', error);
+      throw error;
+    }
+  }
+
+  // 更新管理员密码
+  async updateAdminPassword(oldPassword: string, newPassword: string): Promise<void> {
+    try {
+      await this.request('/api/admin/password/v2', {
+        oldPassword,
+        newPassword
+      });
+    } catch (error) {
+      console.error('Failed to update admin password:', error);
+      throw error;
+    }
+  }
+
+  // 获取系统设置
+  async getSystemSettings(): Promise<{
+    system: Record<string, any>;
+    proxy: Record<string, any>;
+  }> {
+    try {
+      return await this.request('/api/admin/settings/v2', {});
+    } catch (error) {
+      console.error('Failed to get system settings:', error);
+      throw error;
+    }
+  }
+
+  // 更新系统设置
+  async updateSystemSettings(settings: Record<string, any>): Promise<void> {
+    try {
+      await this.request('/api/admin/settings/system/v2', settings);
+    } catch (error) {
+      console.error('Failed to update system settings:', error);
+      throw error;
+    }
+  }
+
+  // 更新代理设置
+  async updateProxySettings(settings: Record<string, any>): Promise<void> {
+    try {
+      await this.request('/api/admin/settings/proxy/v2', settings);
+    } catch (error) {
+      console.error('Failed to update proxy settings:', error);
+      throw error;
+    }
+  }
+
+  // 重置系统设置
+  async resetSystemSettings(): Promise<void> {
+    try {
+      await this.request('/api/admin/settings/reset/v2', {});
+    } catch (error) {
+      console.error('Failed to reset system settings:', error);
       throw error;
     }
   }

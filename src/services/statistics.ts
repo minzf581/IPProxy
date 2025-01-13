@@ -2,6 +2,7 @@ import ipProxyAPI from '../utils/ipProxyAPI';
 import { ProxyBalanceInfo } from '../utils/ipProxyAPI';
 import { initializeMainUser, getMainUser } from './mainUser';
 import dayjs from 'dayjs';
+import pool from '../utils/db';
 
 export interface StatisticsData {
   totalRecharge: number;
@@ -39,7 +40,61 @@ async function createMainUser() {
   }
 }
 
-export const getStatistics = async (): Promise<StatisticsData> => {
+export async function getStatistics(): Promise<StatisticsData> {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // 获取总充值金额
+    const [totalRecharge] = await conn.query(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM recharge_records WHERE status = "SUCCESS"'
+    );
+
+    // 获取总消费金额
+    const [totalConsumption] = await conn.query(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM consumption_records'
+    );
+
+    // 获取当前余额
+    const [balance] = await conn.query(
+      'SELECT COALESCE(SUM(balance), 0) as total FROM users'
+    );
+
+    // 获取本月充值
+    const [monthlyRecharge] = await conn.query(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM recharge_records WHERE status = "SUCCESS" AND MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())'
+    );
+
+    // 获取本月消费
+    const [monthlyConsumption] = await conn.query(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM consumption_records WHERE MONTH(created_at) = MONTH(CURRENT_DATE()) AND YEAR(created_at) = YEAR(CURRENT_DATE())'
+    );
+
+    // 获取上月消费
+    const [lastMonthConsumption] = await conn.query(
+      'SELECT COALESCE(SUM(amount), 0) as total FROM consumption_records WHERE MONTH(created_at) = MONTH(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH)) AND YEAR(created_at) = YEAR(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH))'
+    );
+
+    await conn.commit();
+
+    return {
+      totalRecharge: totalRecharge[0].total,
+      totalConsumption: totalConsumption[0].total,
+      balance: balance[0].total,
+      monthlyRecharge: monthlyRecharge[0].total,
+      monthlyConsumption: monthlyConsumption[0].total,
+      lastMonthConsumption: lastMonthConsumption[0].total
+    };
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
+}
+
+// 保留API调用的代码，但暂时不使用
+export async function getStatisticsFromAPI(): Promise<StatisticsData> {
   try {
     // 确保主账号已初始化
     const mainUser = await initializeMainUser();
@@ -110,4 +165,4 @@ export const getStatistics = async (): Promise<StatisticsData> => {
     console.error('Failed to fetch statistics:', error);
     throw error;
   }
-};
+}

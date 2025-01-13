@@ -1,0 +1,54 @@
+.dashboard-container {
+  padding: 24px;
+  background: #f0f2f5;
+}
+
+.section-title {
+  margin: 24px 0 16px;
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.stat-card .stat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.stat-card .stat-header span:first-child {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.stat-card .stat-header .stat-icon {
+  font-size: 20px;
+}
+
+.stat-card .stat-value {
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.resource-card .resource-title {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.85);
+  margin-bottom: 16px;
+}
+
+.resource-card .ant-progress {
+  margin-bottom: 16px;
+}
+
+.resource-card .resource-stats .stat-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: rgba(0, 0, 0, 0.65);
+  font-size: 13px;
+}
+
+.resource-card .resource-stats .stat-row:last-child {
+  margin-bottom: 0;
+}

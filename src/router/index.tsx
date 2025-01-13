@@ -1,52 +1,86 @@
 import React from 'react';
 import { createHashRouter } from 'react-router-dom';
-import Dashboard from '../pages/dashboard';
-import MainLayout from '../components/MainLayout';
-import ErrorPage from '../pages/error';
+import AuthGuard, { PublicRoute } from '@/components/AuthGuard';
+import Login from '@/pages/login/index';
+import MainLayout from '@/layouts/MainLayout';
+import ErrorPage from '@/pages/error';
+import Dashboard from '@/pages/dashboard/index';
 
 // 懒加载其他页面组件
-const AgentManagement = React.lazy(() => import('../pages/account/agents'));
-const UserManagement = React.lazy(() => import('../pages/account/users'));
-const AgentOrders = React.lazy(() => import('../pages/orders/agent'));
-const UserDynamicOrders = React.lazy(() => import('../pages/orders/user/dynamic'));
-const UserStaticOrders = React.lazy(() => import('../pages/orders/user/static'));
-const IPManagement = React.lazy(() => import('../pages/static-ip/manage'));
-const SystemSettings = React.lazy(() => import('../pages/settings/system'));
+const UserManagement = React.lazy(() => import('@/pages/user/index'));
+const UserDynamicOrders = React.lazy(() => import('@/pages/order/user-dynamic-orders'));
+const UserStaticOrders = React.lazy(() => import('@/pages/order/user-static-orders'));
+const AgentOrders = React.lazy(() => import('@/pages/order/agent-orders'));
+const DynamicProxy = React.lazy(() => import('@/pages/proxy/dynamic/index'));
+const StaticProxy = React.lazy(() => import('@/pages/proxy/static/index'));
+const Settings = React.lazy(() => import('@/pages/settings/index'));
 
 const router = createHashRouter([
   {
+    path: '/login',
+    element: (
+      <PublicRoute>
+        <Login />
+      </PublicRoute>
+    ),
+  },
+  {
     path: '/',
-    element: <MainLayout />,
+    element: (
+      <AuthGuard>
+        <MainLayout />
+      </AuthGuard>
+    ),
     errorElement: <ErrorPage />,
     children: [
       {
-        index: true,
+        path: '',
         element: <Dashboard />,
       },
       {
-        path: 'account',
+        path: 'dashboard',
         children: [
           {
-            path: 'agents',
-            element: (
-              <React.Suspense fallback={<div>Loading...</div>}>
-                <AgentManagement />
-              </React.Suspense>
-            ),
+            path: '',
+            element: <Dashboard />,
           },
           {
-            path: 'users',
-            element: (
-              <React.Suspense fallback={<div>Loading...</div>}>
-                <UserManagement />
-              </React.Suspense>
-            ),
+            path: 'dynamic',
+            element: <Dashboard />,
+          },
+          {
+            path: 'static',
+            element: <Dashboard />,
           },
         ],
       },
       {
-        path: 'orders',
+        path: 'user',
+        element: (
+          <React.Suspense fallback={<div>Loading...</div>}>
+            <UserManagement />
+          </React.Suspense>
+        ),
+      },
+      {
+        path: 'order',
         children: [
+          {
+            path: 'dynamic',
+            element: (
+              <React.Suspense fallback={<div>Loading...</div>}>
+                <UserDynamicOrders />
+              </React.Suspense>
+            ),
+          },
+          {
+            path: 'static',
+            element: (
+              <React.Suspense fallback={<div>Loading...</div>}>
+                <UserStaticOrders />
+              </React.Suspense>
+            ),
+          },
           {
             path: 'agent',
             element: (
@@ -55,37 +89,34 @@ const router = createHashRouter([
               </React.Suspense>
             ),
           },
+        ],
+      },
+      {
+        path: 'proxy',
+        children: [
           {
-            path: 'user/dynamic',
+            path: 'dynamic',
             element: (
               <React.Suspense fallback={<div>Loading...</div>}>
-                <UserDynamicOrders />
+                <DynamicProxy />
               </React.Suspense>
             ),
           },
           {
-            path: 'user/static',
+            path: 'static',
             element: (
               <React.Suspense fallback={<div>Loading...</div>}>
-                <UserStaticOrders />
+                <StaticProxy />
               </React.Suspense>
             ),
           },
         ],
       },
       {
-        path: 'static-ip/manage',
+        path: 'settings',
         element: (
           <React.Suspense fallback={<div>Loading...</div>}>
-            <IPManagement />
-          </React.Suspense>
-        ),
-      },
-      {
-        path: 'settings/system',
-        element: (
-          <React.Suspense fallback={<div>Loading...</div>}>
-            <SystemSettings />
+            <Settings />
           </React.Suspense>
         ),
       },

@@ -1,30 +1,50 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Modal, Form, Input, message } from 'antd';
-import type { User } from '@/types/user';
+import type { UserInfo } from '@/utils/ipProxyAPI';
+import ipProxyAPI from '@/utils/ipProxyAPI';
 
-interface Props {
+interface UpdatePasswordModalProps {
   visible: boolean;
+  user: UserInfo | null;
   onCancel: () => void;
-  user: User | null;
+  onSuccess: () => void;
 }
 
-const UpdatePasswordModal: React.FC<Props> = ({ visible, onCancel, user }) => {
+const UpdatePasswordModal: React.FC<UpdatePasswordModalProps> = ({
+  visible,
+  user,
+  onCancel,
+  onSuccess
+}) => {
   const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
 
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      if (values.newPassword !== values.confirmPassword) {
-        message.error('两次输入的密码不一致');
+      if (!user) {
+        message.error('用户信息不存在');
         return;
       }
-      // TODO: 调用API更新密码
-      message.success('密码修改成功');
-      onCancel();
+
+      setLoading(true);
+      await ipProxyAPI.updateUserPassword(user.id, values.password);
+      onSuccess();
       form.resetFields();
     } catch (error) {
-      message.error('请检查表单填写是否正确');
+      if (error instanceof Error) {
+        message.error(error.message);
+      } else {
+        message.error('修改密码失败');
+      }
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleCancel = () => {
+    form.resetFields();
+    onCancel();
   };
 
   return (
@@ -32,16 +52,20 @@ const UpdatePasswordModal: React.FC<Props> = ({ visible, onCancel, user }) => {
       title="修改密码"
       open={visible}
       onOk={handleOk}
-      onCancel={onCancel}
-      destroyOnClose
+      onCancel={handleCancel}
+      confirmLoading={loading}
     >
-      <Form form={form} layout="vertical">
+      <Form
+        form={form}
+        layout="vertical"
+      >
         <Form.Item
-          name="newPassword"
+          name="password"
           label="新密码"
           rules={[
             { required: true, message: '请输入新密码' },
-            { pattern: /^[a-zA-Z0-9]+$/, message: '密码只能包含英文和数字' }
+            { min: 6, message: '密码长度不能小于6位' },
+            { max: 20, message: '密码长度不能大于20位' }
           ]}
         >
           <Input.Password placeholder="请输入新密码" />
@@ -49,7 +73,18 @@ const UpdatePasswordModal: React.FC<Props> = ({ visible, onCancel, user }) => {
         <Form.Item
           name="confirmPassword"
           label="确认密码"
-          rules={[{ required: true, message: '请再次输入新密码' }]}
+          dependencies={['password']}
+          rules={[
+            { required: true, message: '请确认密码' },
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                if (!value || getFieldValue('password') === value) {
+                  return Promise.resolve();
+                }
+                return Promise.reject(new Error('两次输入的密码不一致'));
+              },
+            }),
+          ]}
         >
           <Input.Password placeholder="请再次输入新密码" />
         </Form.Item>
@@ -58,4 +93,4 @@ const UpdatePasswordModal: React.FC<Props> = ({ visible, onCancel, user }) => {
   );
 };
 
-export default UpdatePasswordModal; 
+export default UpdatePasswordModal;

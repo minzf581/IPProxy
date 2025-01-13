@@ -1,114 +1,143 @@
-import React from 'react';
-import { Modal, Table } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
-import StatCard from '@/components/Dashboard/StatCard';
-import type { Agent } from '@/types/agent';
+import React, { useState, useEffect } from 'react';
+import { Modal, Statistic, Row, Col, Card, Spin, message } from 'antd';
+import { ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
+import type { AgentInfo } from '@/utils/ipProxyAPI';
+import ipProxyAPI from '@/utils/ipProxyAPI';
 
-interface Props {
+interface AgentDashboardModalProps {
   visible: boolean;
+  agent: AgentInfo | null;
   onCancel: () => void;
-  agent: Agent | null;
 }
 
-interface AgentStats {
-  title: string;
-  value: number;
-  icon: string; // Add icon property
+interface AgentStatistics {
+  balance: number;
+  totalRecharge: number;
+  totalConsumption: number;
+  monthlyRecharge: number;
+  monthlyConsumption: number;
+  lastMonthConsumption: number;
 }
 
-interface AgentOrder {
-  id: string;
-  type: string;
-  amount: number;
-  status: string;
-  createdAt: string;
-}
-
-const AgentDashboardModal: React.FC<Props> = ({
+const AgentDashboardModal: React.FC<AgentDashboardModalProps> = ({
   visible,
-  onCancel,
   agent,
+  onCancel
 }) => {
-  // 模拟数据
-  const stats: AgentStats[] = [
-    { title: '总订单数', value: 100, icon: 'icon1' }, // Add icon
-    { title: '本月订单数', value: 30, icon: 'icon2' }, // Add icon
-    { title: '总消费金额', value: 10000, icon: 'icon3' }, // Add icon
-    { title: '本月消费金额', value: 3000, icon: 'icon4' }, // Add icon
-    { title: '静态IP数量', value: 50, icon: 'icon5' }, // Add icon
-    { title: '动态IP数量', value: 200, icon: 'icon6' }, // Add icon
-  ];
+  const [loading, setLoading] = useState(false);
+  const [statistics, setStatistics] = useState<AgentStatistics | null>(null);
 
-  const columns: ColumnsType<AgentOrder> = [
-    {
-      title: '订单ID',
-      dataIndex: 'id',
-      key: 'id',
-    },
-    {
-      title: '类型',
-      dataIndex: 'type',
-      key: 'type',
-    },
-    {
-      title: '金额',
-      dataIndex: 'amount',
-      key: 'amount',
-      render: (amount: number) => `¥${amount.toLocaleString()}`,
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-    },
-  ];
+  useEffect(() => {
+    const fetchStatistics = async () => {
+      if (!agent || !visible) return;
 
-  const recentOrders: AgentOrder[] = [
-    {
-      id: 'ORDER001',
-      type: '静态IP',
-      amount: 1000,
-      status: '已完成',
-      createdAt: '2024-01-01',
-    },
-    // 更多订单...
-  ];
+      try {
+        setLoading(true);
+        const data = await ipProxyAPI.getAgentStatistics(agent.id);
+        setStatistics(data);
+      } catch (error) {
+        console.error('获取代理商统计数据失败:', error);
+        message.error('获取代理商统计数据失败');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStatistics();
+  }, [agent, visible]);
+
+  if (!agent) return null;
+
+  const monthlyChange = statistics ? 
+    statistics.monthlyConsumption - statistics.lastMonthConsumption : 0;
+  const monthlyChangePercent = statistics?.lastMonthConsumption ? 
+    ((monthlyChange / statistics.lastMonthConsumption) * 100).toFixed(2) : 0;
 
   return (
     <Modal
-      title={`${agent?.account || '代理商'} 的仪表盘`}
+      title={`${agent.name} 的统计数据`}
       open={visible}
       onCancel={onCancel}
       footer={null}
-      width={1200}
+      width={800}
     >
-      <div className="p-4">
-        <div className="grid grid-cols-6 gap-4 mb-6">
-          {stats.map((stat, index) => (
-            <StatCard
-              key={index}
-              title={stat.title}
-              value={stat.value}
-              icon={stat.icon}
-            />
-          ))}
-        </div>
-
-        <div>
-          <h3 className="text-lg font-medium mb-4">最近订单</h3>
-          <Table
-            columns={columns}
-            dataSource={recentOrders}
-            rowKey="id"
-            pagination={false}
-          />
-        </div>
-      </div>
+      <Spin spinning={loading}>
+        {statistics && (
+          <Row gutter={[16, 16]}>
+            <Col span={8}>
+              <Card>
+                <Statistic
+                  title="累计消费"
+                  value={statistics.totalConsumption}
+                  precision={2}
+                  prefix="¥"
+                  valueStyle={{ color: '#cf1322' }}
+                  suffix="元"
+                />
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card>
+                <Statistic
+                  title="累计充值"
+                  value={statistics.totalRecharge}
+                  precision={2}
+                  prefix="¥"
+                  valueStyle={{ color: '#3f8600' }}
+                  suffix="元"
+                />
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card>
+                <Statistic
+                  title="账户余额"
+                  value={statistics.balance}
+                  precision={2}
+                  prefix="¥"
+                  suffix="元"
+                />
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card>
+                <Statistic
+                  title="本月消费"
+                  value={statistics.monthlyConsumption}
+                  precision={2}
+                  prefix="¥"
+                  suffix="元"
+                  valueStyle={{ color: monthlyChange >= 0 ? '#cf1322' : '#3f8600' }}
+                />
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card>
+                <Statistic
+                  title="本月充值"
+                  value={statistics.monthlyRecharge}
+                  precision={2}
+                  prefix="¥"
+                  valueStyle={{ color: '#3f8600' }}
+                  suffix="元"
+                />
+              </Card>
+            </Col>
+            <Col span={8}>
+              <Card>
+                <Statistic
+                  title="环比变化"
+                  value={monthlyChangePercent}
+                  precision={2}
+                  prefix={monthlyChange >= 0 ? <ArrowUpOutlined /> : <ArrowDownOutlined />}
+                  valueStyle={{ color: monthlyChange >= 0 ? '#cf1322' : '#3f8600' }}
+                  suffix="%"
+                />
+              </Card>
+            </Col>
+          </Row>
+        )}
+      </Spin>
     </Modal>
   );
 };
