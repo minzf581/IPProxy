@@ -3,23 +3,43 @@ import dayjs from 'dayjs';
 /**
  * 格式化日期时间
  * @param date 日期时间字符串或Date对象
- * @param format 格式化模式，默认为 'YYYY-MM-DD HH:mm:ss'
  * @returns 格式化后的日期时间字符串
  */
-export const formatDateTime = (date: string | Date, format: string = 'YYYY-MM-DD HH:mm:ss'): string => {
-  if (!date) return '-';
-  return dayjs(date).format(format);
+export const formatDateTime = (date: string | Date): string => {
+  return dayjs(date).format('YYYY-MM-DD HH:mm:ss');
 };
 
 /**
  * 格式化日期
  * @param date 日期字符串或Date对象
- * @param format 格式化模式，默认为 'YYYY-MM-DD'
  * @returns 格式化后的日期字符串
  */
-export const formatDate = (date: string | Date, format: string = 'YYYY-MM-DD'): string => {
-  if (!date) return '-';
-  return dayjs(date).format(format);
+export const formatDate = (date: string | Date): string => {
+  return dayjs(date).format('YYYY-MM-DD');
+};
+
+/**
+ * 格式化时间
+ * @param date 时间字符串或Date对象
+ * @returns 格式化后的时间字符串
+ */
+export const formatTime = (date: string | Date): string => {
+  return dayjs(date).format('HH:mm:ss');
+};
+
+/**
+ * 格式化时长
+ * @param minutes 分钟数
+ * @returns 格式化后的时长字符串
+ */
+export const formatDuration = (minutes: number): string => {
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  
+  if (hours > 0) {
+    return `${hours}小时${remainingMinutes > 0 ? ` ${remainingMinutes}分钟` : ''}`;
+  }
+  return `${minutes}分钟`;
 };
 
 /**

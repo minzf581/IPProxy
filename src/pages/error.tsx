@@ -1,17 +1,18 @@
 import React from 'react';
-import { useRouteError } from 'react-router-dom';
-import { Result, Button } from 'antd';
+import { Button, Result } from 'antd';
+import { useNavigate, useRouteError } from 'react-router-dom';
 
 const ErrorPage: React.FC = () => {
-  const error = useRouteError() as any;
+  const navigate = useNavigate();
+  const error = useRouteError() as Error;
 
   return (
     <Result
-      status="404"
-      title="404"
-      subTitle={error?.statusText || error?.message || '页面未找到'}
+      status="500"
+      title="出错了"
+      subTitle={error?.message || '抱歉，服务器出现了一些问题。'}
       extra={
-        <Button type="primary" onClick={() => window.location.href = '/'}>
+        <Button type="primary" onClick={() => navigate('/')}>
           返回首页
         </Button>
       }

@@ -1,11 +1,29 @@
-export function formatBytes(bytes: number, decimals = 2): string {
-  if (bytes === 0) return '0 B';
+import { 
+  ORDER_STATUS_MAP, 
+  USER_ROLE_MAP, 
+  USER_STATUS_MAP 
+} from './constants';
 
-  const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+export const formatMoney = (amount: number): string => {
+  return `¥${amount.toFixed(2)}`;
+};
 
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+export const formatOrderStatus = (status: string): string => {
+  return ORDER_STATUS_MAP[status] || status;
+};
 
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
-}
+export const formatUserRole = (role: string): string => {
+  return USER_ROLE_MAP[role] || role;
+};
+
+export const formatUserStatus = (status: string): string => {
+  return USER_STATUS_MAP[status] || status;
+};
+
+export const formatNumber = (num: number): string => {
+  return new Intl.NumberFormat().format(num);
+};
+
+export const formatPercent = (num: number): string => {
+  return `${(num * 100).toFixed(2)}%`;
+};

@@ -1,93 +1,24 @@
-import api from '../utils/db';
+import { request } from '@/utils/request';
+import type { User, UserProfile } from '@/types/user';
+import type { DynamicOrder, StaticOrder, OrderSearchParams } from '@/types/order';
+import type { StatisticsData } from '@/types/statistics';
+import type { PaginatedData, PaginationParams } from '@/types/api';
 
-// User API
-export const userAPI = {
-  getCurrentUser: () => api.get('/api/users/current'),
-  updatePassword: (data: { oldPassword: string; newPassword: string }) =>
-    api.put('/api/users/password', data),
-  getUsers: (params: { page: number; pageSize: number }) =>
-    api.get('/api/users', { params }),
-};
+// 用户相关
+export const getUserProfile = () => request.get<UserProfile>('/user/profile');
 
-// Agent API
-export const agentAPI = {
-  getAgentInfo: () => api.get('/api/agents/current'),
-  updateBalance: (data: { amount: number }) =>
-    api.put('/api/agents/balance', data),
-  updatePassword: (data: { oldPassword: string; newPassword: string }) =>
-    api.put('/api/agents/password', data),
-  getAgents: (params: { page: number; pageSize: number }) =>
-    api.get('/api/agents', { params }),
-};
+// 订单相关
+export const getDynamicOrders = (params: OrderSearchParams & PaginationParams) => 
+  request.get<PaginatedData<DynamicOrder>>('/orders/dynamic', { params });
 
-// Resource API
-export const resourceAPI = {
-  // Dynamic Resources
-  getDynamicResources: (params: { page: number; pageSize: number }) =>
-    api.get('/api/resources/dynamic', { params }),
-  getDynamicResourceStats: () => 
-    api.get('/api/resources/dynamic/stats'),
-  
-  // Static Resources
-  getStaticResources: (params: { 
-    page: number; 
-    pageSize: number;
-    country?: string;
-    region?: string;
-    city?: string;
-  }) => api.get('/api/resources/static', { params }),
-  getStaticResourceStats: () => 
-    api.get('/api/resources/static/stats'),
-};
+export const getStaticOrders = (params: OrderSearchParams & PaginationParams) => 
+  request.get<PaginatedData<StaticOrder>>('/orders/static', { params });
 
-// Orders API
-export const orderAPI = {
-  // Dynamic IP Orders
-  getDynamicOrders: (params: { 
-    page: number; 
-    pageSize: number;
-    status?: 'pending' | 'paid';
-  }) => api.get('/api/orders/dynamic', { params }),
-  createDynamicOrder: (data: {
-    duration: number;
-  }) => api.post('/api/orders/dynamic', data),
-  
-  // Static IP Orders
-  getStaticOrders: (params: { 
-    page: number; 
-    pageSize: number;
-    status?: 'active' | 'expired';
-  }) => api.get('/api/orders/static', { params }),
-  createStaticOrder: (data: {
-    resourceType: string;
-    location?: string;
-  }) => api.post('/api/orders/static', data),
-};
+export const getDynamicOrderDetail = (id: string) => 
+  request.get<DynamicOrder>(`/orders/dynamic/${id}`);
 
-// Pricing API
-export const pricingAPI = {
-  getPricing: (params: {
-    resourceType: 'dynamic' | 'static';
-    agentId?: number;
-  }) => api.get('/api/pricing', { params }),
-  updatePricing: (data: {
-    resourceName: string;
-    resourceType: 'dynamic' | 'static';
-    pricePerUnit: number;
-  }) => api.put('/api/pricing', data),
-};
+export const getStaticOrderDetail = (id: string) => 
+  request.get<StaticOrder>(`/orders/static/${id}`);
 
-// Statistics API
-export const statisticsAPI = {
-  getResourceUsage: (params: {
-    startDate: string;
-    endDate: string;
-    resourceType: 'dynamic' | 'static';
-  }) => api.get('/api/statistics/usage', { params }),
-  getOrderStats: (params: {
-    startDate: string;
-    endDate: string;
-    orderType: 'dynamic' | 'static';
-  }) => api.get('/api/statistics/orders', { params }),
-  getSystemStats: () => api.get('/api/statistics/system'),
-};
+// 统计相关
+export const getStatistics = () => request.get<StatisticsData>('/statistics');

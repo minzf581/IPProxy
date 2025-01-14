@@ -1,54 +1,72 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Form, Input, Button, message } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { Form, Input, Button, Card, message } from 'antd';
 import { useAuth } from '@/contexts/AuthContext';
+import { login } from '@/services/auth';
+import styles from './login.module.less';
 
-const Login: React.FC = () => {
+const LoginPage: React.FC = () => {
+  const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { setUser } = useAuth();
 
-  const onFinish = (values: any) => {
-    // TODO: 实现实际的登录逻辑
-    login('dummy-token');
-    message.success('登录成功');
-    navigate('/');
+  const onFinish = async (values: any) => {
+    try {
+      setLoading(true);
+      const response = await login(values.username, values.password);
+      
+      if (response.token && response.user) {
+        localStorage.setItem('token', response.token);
+        setUser(response.user);
+        message.success('登录成功');
+        navigate('/', { replace: true });
+      } else {
+        throw new Error('Invalid response from server');
+      }
+    } catch (error) {
+      message.error('登录失败，请检查用户名和密码');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <Card className="w-96">
-        <h1 className="text-2xl font-bold text-center mb-6">IP总管理后台</h1>
+    <div className={styles.loginContainer}>
+      <div className={styles.loginForm}>
+        <h1>登录</h1>
         <Form
+          form={form}
           name="login"
+          initialValues={{ username: 'ipadmin', password: 'ipadmin' }}
           onFinish={onFinish}
-          autoComplete="off"
-          layout="vertical"
         >
           <Form.Item
-            label="用户名"
             name="username"
             rules={[{ required: true, message: '请输入用户名' }]}
           >
-            <Input />
+            <Input placeholder="用户名" />
           </Form.Item>
-
           <Form.Item
-            label="密码"
             name="password"
             rules={[{ required: true, message: '请输入密码' }]}
           >
-            <Input.Password />
+            <Input.Password placeholder="密码" />
           </Form.Item>
-
           <Form.Item>
-            <Button type="primary" htmlType="submit" block>
+            <Button
+              type="primary"
+              htmlType="submit"
+              loading={loading}
+              block
+            >
               登录
             </Button>
           </Form.Item>
         </Form>
-      </Card>
+      </div>
     </div>
   );
 };
 
-export default Login;
+export default LoginPage;

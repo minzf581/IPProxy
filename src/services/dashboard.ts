@@ -35,21 +35,18 @@ export interface DashboardData {
   }>;
 }
 
-export const getDashboardData = async (): Promise<DashboardData> => {
+export const getDashboardData = async (signal?: AbortSignal): Promise<DashboardData> => {
   try {
-    console.log('Starting getDashboardData');
-    const response = await api.get('/api/dashboard/db');
-    console.log('Dashboard data response:', response.data);
+    const response = await api.get('/statistics', {
+      signal
+    });
     return response.data;
   } catch (error) {
-    console.error('Error in getDashboardData:', error);
-    if (axios.isAxiosError(error)) {
-      console.error('Axios error details:', {
-        message: error.message,
-        code: error.code,
-        config: error.config
-      });
+    if (axios.isAxiosError(error) && error.name === 'CanceledError') {
+      // 请求被取消，不需要处理
+      return Promise.reject(error);
     }
+    console.error('Error in getDashboardData:', error);
     throw error;
   }
 };

@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Card, Row, Col, Progress, message } from 'antd';
 import { getDashboardData, DashboardData } from '../../services/dashboard';
+import axios from 'axios';
 
 const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -15,22 +16,29 @@ const Dashboard: React.FC = () => {
     static_resources: []
   });
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async (signal: AbortSignal) => {
     try {
       setLoading(true);
-      const data = await getDashboardData();
+      const data = await getDashboardData(signal);
       setDashboardData(data);
     } catch (error) {
-      console.error('获取仪表盘数据失败:', error);
-      message.error('获取仪表盘数据失败');
+      if (!axios.isCancel(error)) {
+        console.error('获取仪表盘数据失败:', error);
+        message.error('获取仪表盘数据失败');
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    fetchDashboardData(abortController.signal);
+
+    return () => {
+      abortController.abort();
+    };
+  }, [fetchDashboardData]);
 
   const StatCard = ({ title, value, trend }: { title: string; value: string; trend?: 'up' | 'down' }) => (
     <div className="bg-white p-6 rounded">

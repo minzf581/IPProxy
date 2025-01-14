@@ -1,22 +1,23 @@
 export interface AgentInfo {
-  id: number;
+  id: string;
   account: string;
-  name?: string;
   email: string;
-  balance: number;
   status: 'active' | 'disabled';
+  balance: number;
   createdAt: string;
+  lastLoginAt?: string;
   remark?: string;
 }
 
 export interface AgentStatistics {
   totalUsers: number;
+  activeUsers: number;
+  monthlyNewUsers: number;
+  lastMonthNewUsers: number;
   totalOrders: number;
+  activeOrders: number;
   totalIncome: number;
   monthlyIncome: number;
-  lastMonthIncome: number;
-  activeUsers: number;
-  activeOrders: number;
 }
 
 export interface CreateAgentForm {

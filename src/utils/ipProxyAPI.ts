@@ -554,6 +554,26 @@ export class IPProxyAPI {
       throw error;
     }
   }
+
+  async getDynamicProxies(params: any) {
+    try {
+      const response = await this.request<any>('/api/proxies/dynamic', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get dynamic proxies:', error);
+      return { list: [], total: 0 };
+    }
+  }
+
+  async getStaticOrders(params: any) {
+    try {
+      const response = await this.request<any>('/api/orders/static', { params });
+      return response.data;
+    } catch (error) {
+      console.error('Failed to get static orders:', error);
+      return { data: [], total: 0 };
+    }
+  }
 }
 
 export const ipProxyAPI = new IPProxyAPI();

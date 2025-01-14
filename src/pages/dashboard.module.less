@@ -1,0 +1,87 @@
+.dashboard {
+  padding: 24px;
+
+  .sectionTitle {
+    font-size: 16px;
+    font-weight: 500;
+    margin: 24px 0 16px;
+  }
+
+  .statCard {
+    :global {
+      .ant-card-body {
+        padding: 16px;
+      }
+    }
+
+    .statContent {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      .iconWrapper {
+        width: 48px;
+        height: 48px;
+        border-radius: 8px;
+        background-color: #f0f5ff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        color: #1890ff;
+      }
+
+      .statInfo {
+        flex: 1;
+
+        .title {
+          color: rgba(0, 0, 0, 0.45);
+          font-size: 14px;
+          margin-bottom: 4px;
+        }
+
+        .value {
+          font-size: 20px;
+          font-weight: 500;
+          color: rgba(0, 0, 0, 0.85);
+        }
+      }
+    }
+  }
+
+  .resourceCard {
+    :global {
+      .ant-card-body {
+        padding: 16px;
+      }
+
+      .ant-progress {
+        margin: 16px 0;
+      }
+    }
+
+    .resourceTitle {
+      font-size: 16px;
+      font-weight: 500;
+      margin-bottom: 8px;
+    }
+
+    .resourceStats {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 16px;
+      font-size: 14px;
+      color: rgba(0, 0, 0, 0.65);
+
+      > div {
+        > div {
+          margin-bottom: 4px;
+
+          &:last-child {
+            margin-bottom: 0;
+          }
+        }
+      }
+    }
+  }
+}
