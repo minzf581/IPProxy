@@ -1,300 +1,221 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, Row, Col, Progress } from 'antd';
-import { DollarOutlined, LineChartOutlined } from '@ant-design/icons';
+import { ShoppingCartOutlined, DollarOutlined, LineChartOutlined } from '@ant-design/icons';
 import styles from './dashboard.module.less';
 
-interface Statistics {
-  // 财务数据
+interface StatisticsData {
   totalRecharge: number;
   totalConsumption: number;
-  balance: number;
+  remainingBalance: number;
   monthlyRecharge: number;
   monthlyConsumption: number;
   lastMonthConsumption: number;
-  
-  // 动态资源数据
-  dynamic1: {
-    total: number;
-    monthly: number;
-    daily: number;
-    lastMonth: number;
-    percent: number;
-  };
-  dynamic2: {
-    total: number;
-    monthly: number;
-    daily: number;
-    lastMonth: number;
-    percent: number;
-  };
-  dynamic3: {
-    total: number;
-    monthly: number;
-    daily: number;
-    lastMonth: number;
-    percent: number;
-  };
-  
-  // 静态资源数据
-  static1: {
-    total: number;
-    monthlyAvailable: number;
-    remainingAvailable: number;
-    lastMonth: number;
-    used: number;
-    percent: number;
-  };
-  static2: {
-    total: number;
-    monthlyAvailable: number;
-    remainingAvailable: number;
-    lastMonth: number;
-    used: number;
-    percent: number;
-  };
-  static3: {
-    total: number;
-    monthlyAvailable: number;
-    remainingAvailable: number;
-    lastMonth: number;
-    used: number;
-    percent: number;
-  };
+}
+
+interface ResourceData {
+  name: string;
+  total: string;
+  monthly: string;
+  today: string;
+  lastMonth: string;
+  percentage: number;
+}
+
+interface StaticResourceData {
+  name: string;
+  total: string;
+  monthlyAvailable: string;
+  remainingAvailable: string;
+  expired: string;
+  percentage: number;
 }
 
 const Dashboard: React.FC = () => {
-  const [statistics, setStatistics] = useState<Statistics | null>(null);
+  const [statistics, setStatistics] = useState<StatisticsData>({
+    totalRecharge: 168880,
+    totalConsumption: 17780,
+    remainingBalance: 151100,
+    monthlyRecharge: 28660,
+    monthlyConsumption: 8520,
+    lastMonthConsumption: 9260
+  });
 
-  useEffect(() => {
-    // Mock data for now
-    setStatistics({
-      totalRecharge: 168880,
-      totalConsumption: 17780,
-      balance: 151100,
-      monthlyRecharge: 28660,
-      monthlyConsumption: 8520,
-      lastMonthConsumption: 9260,
-      
-      dynamic1: {
-        total: 1024,
-        monthly: 256,
-        daily: 28,
-        lastMonth: 320,
-        percent: 50
-      },
-      dynamic2: {
-        total: 2048,
-        monthly: 512,
-        daily: 64,
-        lastMonth: 486,
-        percent: 75
-      },
-      dynamic3: {
-        total: 4096,
-        monthly: 1024,
-        daily: 128,
-        lastMonth: 896,
-        percent: 25
-      },
-      
-      static1: {
-        total: 1000,
-        monthlyAvailable: 200,
-        remainingAvailable: 300,
-        lastMonth: 180,
-        used: 120,
-        percent: 60
-      },
-      static2: {
-        total: 2000,
-        monthlyAvailable: 400,
-        remainingAvailable: 600,
-        lastMonth: 380,
-        used: 220,
-        percent: 80
-      },
-      static3: {
-        total: 3000,
-        monthlyAvailable: 600,
-        remainingAvailable: 900,
-        lastMonth: 550,
-        used: 350,
-        percent: 40
-      }
-    });
-  }, []);
+  const dynamicResources: ResourceData[] = [
+    {
+      name: '动态资源1',
+      total: '1024G',
+      monthly: '256G',
+      today: '28G',
+      lastMonth: '320G',
+      percentage: 50
+    },
+    {
+      name: '动态资源2',
+      total: '2048G',
+      monthly: '512G',
+      today: '64G',
+      lastMonth: '486G',
+      percentage: 75
+    },
+    {
+      name: '动态资源3',
+      total: '4096G',
+      monthly: '1024G',
+      today: '128G',
+      lastMonth: '896G',
+      percentage: 25
+    }
+  ];
 
-  if (!statistics) {
-    return <div>Loading...</div>;
-  }
-
-  const StatCard = ({ title, value, icon }: { title: string; value: number | string; icon: React.ReactNode }) => (
-    <Card className={styles.statCard}>
-      <div className={styles.statContent}>
-        <div className={styles.iconWrapper}>{icon}</div>
-        <div className={styles.statInfo}>
-          <div className={styles.title}>{title}</div>
-          <div className={styles.value}>{value}</div>
-        </div>
-      </div>
-    </Card>
-  );
-
-  const ResourceCard = ({ 
-    title, 
-    total, 
-    monthly, 
-    daily, 
-    lastMonth,
-    percent 
-  }: { 
-    title: string;
-    total: number;
-    monthly: number;
-    daily: number;
-    lastMonth: number;
-    percent: number;
-  }) => (
-    <Card className={styles.resourceCard}>
-      <div className={styles.resourceTitle}>{title}</div>
-      <Progress percent={percent} showInfo={false} strokeWidth={8} />
-      <div className={styles.resourceStats}>
-        <div>
-          <div>累计：{total}G</div>
-          <div>上月：{lastMonth}G</div>
-        </div>
-        <div>
-          <div>本月：{monthly}G</div>
-          <div>今日：{daily}G</div>
-        </div>
-      </div>
-    </Card>
-  );
-
-  const StaticResourceCard = ({ 
-    title, 
-    total,
-    monthlyAvailable,
-    remainingAvailable,
-    lastMonth,
-    used,
-    percent 
-  }: { 
-    title: string;
-    total: number;
-    monthlyAvailable: number;
-    remainingAvailable: number;
-    lastMonth: number;
-    used: number;
-    percent: number;
-  }) => (
-    <Card className={styles.resourceCard}>
-      <div className={styles.resourceTitle}>{title}</div>
-      <Progress percent={percent} showInfo={false} strokeWidth={8} />
-      <div className={styles.resourceStats}>
-        <div>
-          <div>总开通：{total}条</div>
-          <div>本月可用：{monthlyAvailable}条</div>
-          <div>上月：{lastMonth}条</div>
-        </div>
-        <div>
-          <div>剩余可用：{remainingAvailable}条</div>
-          <div>已过期：{used}条</div>
-        </div>
-      </div>
-    </Card>
-  );
+  const staticResources: StaticResourceData[] = [
+    {
+      name: '静态资源1',
+      total: '1000条',
+      monthlyAvailable: '200条',
+      remainingAvailable: '300条',
+      expired: '120条',
+      percentage: 60
+    },
+    {
+      name: '静态资源2',
+      total: '2000条',
+      monthlyAvailable: '400条',
+      remainingAvailable: '600条',
+      expired: '220条',
+      percentage: 80
+    },
+    {
+      name: '静态资源3',
+      total: '3000条',
+      monthlyAvailable: '600条',
+      remainingAvailable: '900条',
+      expired: '350条',
+      percentage: 40
+    }
+  ];
 
   return (
     <div className={styles.dashboard}>
       <Row gutter={[16, 16]}>
         <Col span={4}>
-          <StatCard 
-            title="累计充值" 
-            value={statistics.totalRecharge} 
-            icon={<DollarOutlined />} 
-          />
+          <Card className={styles.statisticCard}>
+            <div className={styles.title}>累计充值</div>
+            <div className={styles.value}>
+              <ShoppingCartOutlined className={styles.icon} />
+              {statistics.totalRecharge.toLocaleString()}
+            </div>
+          </Card>
         </Col>
         <Col span={4}>
-          <StatCard 
-            title="累计消费" 
-            value={statistics.totalConsumption} 
-            icon={<DollarOutlined />} 
-          />
+          <Card className={styles.statisticCard}>
+            <div className={styles.title}>累计消费</div>
+            <div className={styles.value}>
+              <DollarOutlined className={styles.icon} />
+              {statistics.totalConsumption.toLocaleString()}
+            </div>
+          </Card>
         </Col>
         <Col span={4}>
-          <StatCard 
-            title="剩余金额" 
-            value={statistics.balance} 
-            icon={<DollarOutlined />} 
-          />
+          <Card className={styles.statisticCard}>
+            <div className={styles.title}>剩余金额</div>
+            <div className={styles.value}>
+              <DollarOutlined className={styles.icon} />
+              {statistics.remainingBalance.toLocaleString()}
+            </div>
+          </Card>
         </Col>
         <Col span={4}>
-          <StatCard 
-            title="本月充值" 
-            value={statistics.monthlyRecharge} 
-            icon={<LineChartOutlined />} 
-          />
+          <Card className={styles.statisticCard}>
+            <div className={styles.title}>本月充值</div>
+            <div className={styles.value}>
+              <LineChartOutlined className={styles.icon} />
+              {statistics.monthlyRecharge.toLocaleString()}
+            </div>
+          </Card>
         </Col>
         <Col span={4}>
-          <StatCard 
-            title="本月消费" 
-            value={statistics.monthlyConsumption} 
-            icon={<LineChartOutlined />} 
-          />
+          <Card className={styles.statisticCard}>
+            <div className={styles.title}>本月消费</div>
+            <div className={styles.value}>
+              <LineChartOutlined className={styles.icon} />
+              {statistics.monthlyConsumption.toLocaleString()}
+            </div>
+          </Card>
         </Col>
         <Col span={4}>
-          <StatCard 
-            title="上月消费" 
-            value={statistics.lastMonthConsumption} 
-            icon={<LineChartOutlined />} 
-          />
+          <Card className={styles.statisticCard}>
+            <div className={styles.title}>上月消费</div>
+            <div className={styles.value}>
+              <LineChartOutlined className={styles.icon} />
+              {statistics.lastMonthConsumption.toLocaleString()}
+            </div>
+          </Card>
         </Col>
       </Row>
 
-      <div className={styles.sectionTitle}>动态资源使用情况</div>
-      <Row gutter={[16, 16]}>
-        <Col span={8}>
-          <ResourceCard 
-            title="动态资源1" 
-            {...statistics.dynamic1}
-          />
-        </Col>
-        <Col span={8}>
-          <ResourceCard 
-            title="动态资源2" 
-            {...statistics.dynamic2}
-          />
-        </Col>
-        <Col span={8}>
-          <ResourceCard 
-            title="动态资源3" 
-            {...statistics.dynamic3}
-          />
-        </Col>
-      </Row>
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>动态资源使用情况</div>
+        <Row gutter={[16, 16]}>
+          {dynamicResources.map((resource, index) => (
+            <Col span={8} key={index}>
+              <Card className={styles.resourceCard}>
+                <div className={styles.resourceTitle}>{resource.name}</div>
+                <Progress percent={resource.percentage} />
+                <div className={styles.resourceInfo}>
+                  <div className={styles.infoItem}>
+                    <span className={styles.label}>累计：</span>
+                    <span className={styles.value}>{resource.total}</span>
+                  </div>
+                  <div className={styles.infoItem}>
+                    <span className={styles.label}>本月：</span>
+                    <span className={styles.value}>{resource.monthly}</span>
+                  </div>
+                  <div className={styles.infoItem}>
+                    <span className={styles.label}>上月：</span>
+                    <span className={styles.value}>{resource.lastMonth}</span>
+                  </div>
+                  <div className={styles.infoItem}>
+                    <span className={styles.label}>今日：</span>
+                    <span className={styles.value}>{resource.today}</span>
+                  </div>
+                </div>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      </div>
 
-      <div className={styles.sectionTitle}>静态资源使用情况</div>
-      <Row gutter={[16, 16]}>
-        <Col span={8}>
-          <StaticResourceCard 
-            title="静态资源1" 
-            {...statistics.static1}
-          />
-        </Col>
-        <Col span={8}>
-          <StaticResourceCard 
-            title="静态资源2" 
-            {...statistics.static2}
-          />
-        </Col>
-        <Col span={8}>
-          <StaticResourceCard 
-            title="静态资源3" 
-            {...statistics.static3}
-          />
-        </Col>
-      </Row>
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>静态资源使用情况</div>
+        <Row gutter={[16, 16]}>
+          {staticResources.map((resource, index) => (
+            <Col span={8} key={index}>
+              <Card className={styles.resourceCard}>
+                <div className={styles.resourceTitle}>{resource.name}</div>
+                <Progress percent={resource.percentage} />
+                <div className={styles.resourceInfo}>
+                  <div className={styles.infoItem}>
+                    <span className={styles.label}>总开通：</span>
+                    <span className={styles.value}>{resource.total}</span>
+                  </div>
+                  <div className={styles.infoItem}>
+                    <span className={styles.label}>本月可用：</span>
+                    <span className={styles.value}>{resource.monthlyAvailable}</span>
+                  </div>
+                  <div className={styles.infoItem}>
+                    <span className={styles.label}>剩余可用：</span>
+                    <span className={styles.value}>{resource.remainingAvailable}</span>
+                  </div>
+                  <div className={styles.infoItem}>
+                    <span className={styles.label}>已过期：</span>
+                    <span className={styles.value}>{resource.expired}</span>
+                  </div>
+                </div>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      </div>
     </div>
   );
 };

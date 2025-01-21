@@ -1,127 +1,102 @@
-import db from './index';
-import { UserInfo, UserStatistics } from '@/types/user';
+import { message } from 'antd';
 
-export async function getUserList(params: { page: number; pageSize: number; status?: string }) {
-  const offset = (params.page - 1) * params.pageSize;
-  const query = db.users;
+// 模拟数据
+const mockUsers = Array(100).fill(null).map((_, index) => ({
+  id: `${index + 1}`,
+  username: `user${index + 1}`,
+  email: `user${index + 1}@example.com`,
+  status: Math.random() > 0.3 ? 'active' : 'inactive',
+  role: ['普通用户', 'VIP用户'][Math.floor(Math.random() * 2)],
+  balance: Math.floor(Math.random() * 10000) / 100,
+  lastLoginTime: new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000).toISOString(),
+  createTime: new Date(Date.now() - Math.floor(Math.random() * 365) * 24 * 60 * 60 * 1000).toISOString(),
+}));
+
+export async function getUserList(params: any) {
+  const { current = 1, pageSize = 10, username, email, status, role, dateRange } = params;
   
-  if (params.status) {
-    query.where('status').equals(params.status);
+  // 过滤数据
+  let filteredUsers = [...mockUsers];
+  
+  if (username) {
+    filteredUsers = filteredUsers.filter(user => user.username.includes(username));
   }
-
-  const total = await query.count();
-  const list = await query
-    .offset(offset)
-    .limit(params.pageSize)
-    .toArray();
-
+  
+  if (email) {
+    filteredUsers = filteredUsers.filter(user => user.email.includes(email));
+  }
+  
+  if (status) {
+    filteredUsers = filteredUsers.filter(user => user.status === status);
+  }
+  
+  if (role) {
+    filteredUsers = filteredUsers.filter(user => user.role === role);
+  }
+  
+  if (dateRange) {
+    const [start, end] = dateRange;
+    filteredUsers = filteredUsers.filter(user => {
+      const createTime = new Date(user.createTime);
+      return createTime >= start && createTime <= end;
+    });
+  }
+  
+  // 分页
+  const total = filteredUsers.length;
+  const data = filteredUsers.slice((current - 1) * pageSize, current * pageSize);
+  
   return {
+    data,
     total,
-    list
+    current,
+    pageSize,
   };
 }
 
-export async function getUserById(userId: number): Promise<UserInfo | undefined> {
-  return db.users.get(userId);
+export async function createUser(userData: any) {
+  const newUser = {
+    id: `${mockUsers.length + 1}`,
+    ...userData,
+    createTime: new Date().toISOString(),
+    lastLoginTime: null,
+  };
+  mockUsers.push(newUser);
+  return newUser;
 }
 
-export async function createUser(params: {
-  username: string;
-  password: string;
-  email: string;
-}): Promise<UserInfo> {
-  const now = new Date();
-  const userId = await db.users.add({
-    ...params,
-    status: 'active',
-    createdAt: now,
-    updatedAt: now
-  });
-  
-  return getUserById(userId);
+export async function updateUser(userId: string, userData: any) {
+  const index = mockUsers.findIndex(user => user.id === userId);
+  if (index === -1) {
+    throw new Error('用户不存在');
+  }
+  mockUsers[index] = { ...mockUsers[index], ...userData };
+  return mockUsers[index];
 }
 
-export async function updateUser(userId: number, params: Partial<UserInfo>): Promise<void> {
-  await db.users.update(userId, {
-    ...params,
-    updatedAt: new Date()
-  });
+export async function deleteUser(userId: string) {
+  const index = mockUsers.findIndex(user => user.id === userId);
+  if (index === -1) {
+    throw new Error('用户不存在');
+  }
+  mockUsers.splice(index, 1);
+  return true;
 }
 
-export async function getUserStatistics(userId: number): Promise<UserStatistics> {
-  const user = await getUserById(userId);
+export async function updateUserBalance(userId: string, amount: number) {
+  const user = mockUsers.find(user => user.id === userId);
   if (!user) {
-    throw new Error('User not found');
+    throw new Error('用户不存在');
   }
-
-  const transactions = await db.transactions
-    .where('userId')
-    .equals(userId)
-    .toArray();
-
-  const totalRecharge = transactions
-    .filter(t => t.type === 'recharge')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const totalConsumption = transactions
-    .filter(t => t.type === 'consumption')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const balance = totalRecharge - totalConsumption;
-
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const monthTransactions = transactions.filter(t => new Date(t.createdAt) >= monthStart);
-
-  const monthRecharge = monthTransactions
-    .filter(t => t.type === 'recharge')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const monthConsumption = monthTransactions
-    .filter(t => t.type === 'consumption')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  return {
-    totalRecharge,
-    totalConsumption,
-    balance,
-    monthRecharge,
-    monthConsumption
-  };
+  user.balance = Number((user.balance + amount).toFixed(2));
+  return user;
 }
 
-export async function getBalanceHistory(params: {
-  userId: number;
-  page: number;
-  pageSize: number;
-}) {
-  const offset = (params.page - 1) * params.pageSize;
-  const query = db.transactions
-    .where('userId')
-    .equals(params.userId);
-
-  const total = await query.count();
-  const list = await query
-    .reverse()
-    .offset(offset)
-    .limit(params.pageSize)
-    .toArray();
-
-  return {
-    total,
-    list
-  };
-}
-
-export async function getLoginHistory(params: {
-  userId: number;
-  page: number;
-  pageSize: number;
-}) {
-  // 由于登录历史是一个新的需求，我们需要创建一个新的表来存储
-  // 这里暂时返回空数据
-  return {
-    total: 0,
-    list: []
-  };
-}
+export async function updateUserPassword(userId: string, oldPassword: string, newPassword: string) {
+  const user = mockUsers.find(user => user.id === userId);
+  if (!user) {
+    throw new Error('用户不存在');
+  }
+  // 在实际应用中，这里需要验证旧密码
+  return true;
+} 

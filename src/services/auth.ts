@@ -24,27 +24,28 @@ interface LoginResponse {
 }
 
 export const login = async (username: string, password: string): Promise<{ token: string; user: User }> => {
-  debug.log('Login request:', { username, password: '[REDACTED]' });
-
+  debug.log('Login request with username:', username);
   try {
-    const response = await request.post<LoginResponse>('/auth/login', {
-      username,
-      password
+    const response = await request('/auth/login', {
+      method: 'POST',
+      data: { username, password }
     });
-
-    debug.log('Login response:', {
-      status: response.status,
-      code: response.data.code,
-      msg: response.data.msg,
-      hasToken: !!response.data.data?.token,
-      hasUser: !!response.data.data?.user
-    });
-
+    debug.log('Raw login response:', response);
+    
     if (response.data.code !== 200) {
+      debug.error('Login failed with code:', response.data.code);
       throw new Error(response.data.msg || '登录失败');
     }
-
-    return response.data.data;
+    
+    const { token, user } = response.data.data;
+    debug.log('Extracted token and user:', { 
+      hasToken: !!token, 
+      tokenValue: token,
+      user: user,
+      userFields: user ? Object.keys(user) : []
+    });
+    
+    return { token, user };
   } catch (error) {
     debug.error('Login error:', error);
     throw error;

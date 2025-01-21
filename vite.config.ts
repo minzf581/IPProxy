@@ -4,22 +4,7 @@ import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [
-    react({
-      // Disable StrictMode to prevent double rendering in development
-      strictMode: false,
-      // Add more React plugin options for debugging
-      jsxRuntime: 'automatic',
-      babel: {
-        plugins: [
-          // Add console.log to track component rendering
-          ['@babel/plugin-transform-react-jsx', {
-            pragma: 'console.log("Rendering JSX"); React.createElement',
-          }]
-        ]
-      }
-    })
-  ],
+  plugins: [react()],
   base: '/',  // Changed to absolute path for React Router
   resolve: {
     alias: {
@@ -27,56 +12,29 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:8080',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
-        configure: (proxy, options) => {
-          // Log all proxy events
-          proxy.on('error', (err, req, res) => {
-            console.error('[Proxy Error]', {
-              error: err.message,
-              url: req.url,
-              method: req.method,
-              headers: req.headers
-            });
-          });
-
-          proxy.on('proxyReq', (proxyReq, req, res) => {
-            console.log('[Proxy Request]', {
-              url: req.url,
-              method: req.method,
-              headers: req.headers,
-              body: req.body
-            });
-          });
-
-          proxy.on('proxyRes', (proxyRes, req, res) => {
-            console.log('[Proxy Response]', {
-              url: req.url,
-              method: req.method,
-              statusCode: proxyRes.statusCode,
-              headers: proxyRes.headers
-            });
-
-            // Log response body for debugging
-            let body = '';
-            proxyRes.on('data', chunk => {
-              body += chunk;
-            });
-            proxyRes.on('end', () => {
-              try {
-                const parsedBody = JSON.parse(body);
-                console.log('[Proxy Response Body]', parsedBody);
-              } catch (e) {
-                console.log('[Proxy Response Body]', body);
-              }
-            });
-          });
-        }
-      }
+      },
+      '/dynamic-orders': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/static-orders': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/dynamic-ips': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      '/static-ips': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
     },
     hmr: {
       // Log HMR events

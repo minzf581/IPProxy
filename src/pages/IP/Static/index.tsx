@@ -18,8 +18,8 @@ import {
   SearchOutlined,
   ReloadOutlined,
   EyeOutlined,
-  ClockCircleOutlined,
-  CopyOutlined
+  SyncOutlined,
+  ClockCircleOutlined
 } from '@ant-design/icons';
 import type { TableProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -28,78 +28,74 @@ import styles from './index.module.less';
 
 const { RangePicker } = DatePicker;
 
-interface StaticOrderData {
+interface StaticIPData {
   id: string;
-  orderNo: string;
-  userId: string;
-  agentId: string;
-  amount: number;
-  status: 'active' | 'expired' | 'pending';
+  ip: string;
+  port: number;
+  username: string;
+  password: string;
+  location: string;
+  status: 'active' | 'inactive' | 'expired';
   type: string;
-  bandwidth: {
-    total: number;
-    used: number;
-    unit: string;
-  };
+  bandwidth: string;
   expireTime: string;
   createTime: string;
-  proxyInfo?: {
-    host: string;
-    port: number;
-    username: string;
-    password: string;
-  };
+  lastActiveTime: string;
 }
 
-const StaticOrderPage: React.FC = () => {
+const StaticIPPage: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<StaticOrderData[]>([]);
+  const [data, setData] = useState<StaticIPData[]>([]);
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
     total: 0
   });
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
 
   // 表格列配置
-  const columns: ColumnsType<StaticOrderData> = [
+  const columns: ColumnsType<StaticIPData> = [
     {
-      title: '订单号',
-      dataIndex: 'orderNo',
-      key: 'orderNo',
-      width: 180,
+      title: 'IP地址',
+      dataIndex: 'ip',
+      key: 'ip',
+      width: 150,
       fixed: 'left',
     },
     {
-      title: '用户账号',
-      dataIndex: 'userId',
-      key: 'userId',
-      width: 120,
+      title: '端口',
+      dataIndex: 'port',
+      key: 'port',
+      width: 100,
     },
     {
-      title: '代理商',
-      dataIndex: 'agentId',
-      key: 'agentId',
-      width: 120,
+      title: '认证信息',
+      key: 'auth',
+      width: 200,
+      render: (_, record) => (
+        <>
+          <div>用户名：{record.username}</div>
+          <div>密码：{record.password}</div>
+        </>
+      ),
     },
     {
-      title: '金额',
-      dataIndex: 'amount',
-      key: 'amount',
-      width: 120,
-      align: 'right',
-      render: (amount: number) => `¥${amount.toFixed(2)}`,
+      title: '位置',
+      dataIndex: 'location',
+      key: 'location',
+      width: 150,
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 100,
+      width: 120,
       render: (status: string) => {
         const statusMap = {
-          active: { color: 'success', text: '使用中' },
+          active: { color: 'success', text: '活跃' },
+          inactive: { color: 'warning', text: '不活跃' },
           expired: { color: 'error', text: '已过期' },
-          pending: { color: 'warning', text: '待支付' },
         };
         const { color, text } = statusMap[status as keyof typeof statusMap];
         return <Badge status={color as any} text={text} />;
@@ -112,28 +108,10 @@ const StaticOrderPage: React.FC = () => {
       width: 120,
     },
     {
-      title: '带宽使用',
+      title: '带宽',
+      dataIndex: 'bandwidth',
       key: 'bandwidth',
-      width: 180,
-      render: (_, record) => (
-        <div>
-          <div>{record.bandwidth.used}/{record.bandwidth.total} {record.bandwidth.unit}</div>
-          <div style={{ 
-            width: '100%', 
-            height: 4, 
-            background: '#f0f0f0', 
-            borderRadius: 2,
-            marginTop: 4
-          }}>
-            <div style={{
-              width: `${(record.bandwidth.used / record.bandwidth.total) * 100}%`,
-              height: '100%',
-              background: '#1890ff',
-              borderRadius: 2,
-            }} />
-          </div>
-        </div>
-      ),
+      width: 120,
     },
     {
       title: '到期时间',
@@ -153,9 +131,9 @@ const StaticOrderPage: React.FC = () => {
       },
     },
     {
-      title: '创建时间',
-      dataIndex: 'createTime',
-      key: 'createTime',
+      title: '最后活跃',
+      dataIndex: 'lastActiveTime',
+      key: 'lastActiveTime',
       width: 180,
     },
     {
@@ -163,17 +141,15 @@ const StaticOrderPage: React.FC = () => {
       key: 'action',
       fixed: 'right',
       width: 150,
-      render: (_, record: StaticOrderData) => (
+      render: (_, record: StaticIPData) => (
         <Space size="middle">
-          {record.status === 'active' && record.proxyInfo && (
-            <Button 
-              type="link" 
-              icon={<CopyOutlined />}
-              onClick={() => handleCopyProxy(record)}
-            >
-              复制代理
-            </Button>
-          )}
+          <Button 
+            type="link" 
+            icon={<SyncOutlined />}
+            onClick={() => handleRefreshIP(record.id)}
+          >
+            刷新
+          </Button>
           <Button 
             type="link" 
             icon={<EyeOutlined />}
@@ -187,7 +163,7 @@ const StaticOrderPage: React.FC = () => {
   ];
 
   // 处理表格变化
-  const handleTableChange: TableProps<StaticOrderData>['onChange'] = (
+  const handleTableChange: TableProps<StaticIPData>['onChange'] = (
     pagination,
     filters,
     sorter
@@ -204,7 +180,7 @@ const StaticOrderPage: React.FC = () => {
     setLoading(true);
     try {
       // TODO: 替换为实际的API调用
-      const response = await fetch('/api/static-orders', {
+      const response = await fetch('/api/static-ips', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -214,27 +190,19 @@ const StaticOrderPage: React.FC = () => {
       const result = await response.json();
       
       // 模拟数据
-      const mockData: StaticOrderData[] = Array(10).fill(null).map((_, index) => ({
+      const mockData: StaticIPData[] = Array(10).fill(null).map((_, index) => ({
         id: `${index + 1}`,
-        orderNo: `SD${dayjs().format('YYYYMMDD')}${String(index + 1).padStart(6, '0')}`,
-        userId: `user${index + 1}`,
-        agentId: `agent${Math.floor(index / 3) + 1}`,
-        amount: Math.floor(Math.random() * 10000) / 100,
-        status: ['active', 'expired', 'pending'][Math.floor(Math.random() * 3)] as any,
+        ip: `192.168.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`,
+        port: Math.floor(Math.random() * 60000) + 1024,
+        username: `user${index + 1}`,
+        password: `pass${index + 1}`,
+        location: ['中国', '美国', '日本', '韩国', '新加坡'][Math.floor(Math.random() * 5)],
+        status: ['active', 'inactive', 'expired'][Math.floor(Math.random() * 3)] as any,
         type: ['HTTP', 'HTTPS', 'SOCKS5'][Math.floor(Math.random() * 3)],
-        bandwidth: {
-          total: 100,
-          used: Math.floor(Math.random() * 100),
-          unit: 'Mbps'
-        },
+        bandwidth: ['1Mbps', '5Mbps', '10Mbps', '20Mbps'][Math.floor(Math.random() * 4)],
         expireTime: dayjs().add(Math.floor(Math.random() * 30), 'day').format('YYYY-MM-DD HH:mm:ss'),
         createTime: dayjs().subtract(index, 'day').format('YYYY-MM-DD HH:mm:ss'),
-        proxyInfo: Math.random() > 0.3 ? {
-          host: `proxy${index + 1}.example.com`,
-          port: Math.floor(Math.random() * 60000) + 1024,
-          username: `user${index + 1}`,
-          password: `pass${index + 1}`,
-        } : undefined,
+        lastActiveTime: dayjs().subtract(Math.floor(Math.random() * 24), 'hour').format('YYYY-MM-DD HH:mm:ss'),
       }));
       
       setData(mockData);
@@ -268,72 +236,87 @@ const StaticOrderPage: React.FC = () => {
     });
   };
 
-  // 复制代理信息
-  const handleCopyProxy = (record: StaticOrderData) => {
-    if (record.proxyInfo) {
-      const { host, port, username, password } = record.proxyInfo;
-      const proxyString = `${username}:${password}@${host}:${port}`;
-      navigator.clipboard.writeText(proxyString).then(() => {
-        message.success('代理信息已复制到剪贴板');
-      }).catch(() => {
-        message.error('复制失败，请手动复制');
-        Modal.info({
-          title: '代理信息',
-          content: (
-            <div>
-              <p>请手动复制以下内容：</p>
-              <pre style={{ 
-                background: '#f5f5f5', 
-                padding: '8px', 
-                borderRadius: '4px',
-                marginTop: '8px'
-              }}>
-                {proxyString}
-              </pre>
-            </div>
-          ),
-        });
+  // 刷新IP
+  const handleRefreshIP = async (id: string) => {
+    try {
+      // TODO: 替换为实际的API调用
+      await fetch(`/api/static-ips/${id}/refresh`, {
+        method: 'POST',
       });
+      message.success('IP刷新成功');
+      fetchData({
+        current: pagination.current,
+        pageSize: pagination.pageSize,
+        ...form.getFieldsValue(),
+      });
+    } catch (error) {
+      message.error('IP刷新失败');
     }
   };
 
   // 查看详情
-  const handleViewDetails = (record: StaticOrderData) => {
+  const handleViewDetails = (record: StaticIPData) => {
     Modal.info({
-      title: '订单详情',
+      title: 'IP详情',
       width: 600,
       content: (
-        <div className={styles.orderDetail}>
-          <p><strong>订单号：</strong>{record.orderNo}</p>
-          <p><strong>用户账号：</strong>{record.userId}</p>
-          <p><strong>代理商：</strong>{record.agentId}</p>
-          <p><strong>金额：</strong>¥{record.amount.toFixed(2)}</p>
+        <div className={styles.ipDetail}>
+          <p><strong>IP地址：</strong>{record.ip}</p>
+          <p><strong>端口：</strong>{record.port}</p>
+          <p><strong>用户名：</strong>{record.username}</p>
+          <p><strong>密码：</strong>{record.password}</p>
+          <p><strong>位置：</strong>{record.location}</p>
           <p><strong>状态：</strong>
             <Badge 
               status={
                 record.status === 'active' ? 'success' :
-                record.status === 'expired' ? 'error' : 'warning'
+                record.status === 'inactive' ? 'warning' : 'error'
               } 
               text={
-                record.status === 'active' ? '使用中' :
-                record.status === 'expired' ? '已过期' : '待支付'
+                record.status === 'active' ? '活跃' :
+                record.status === 'inactive' ? '不活跃' : '已过期'
               }
             />
           </p>
           <p><strong>类型：</strong>{record.type}</p>
-          <p><strong>带宽使用：</strong>{record.bandwidth.used}/{record.bandwidth.total} {record.bandwidth.unit}</p>
+          <p><strong>带宽：</strong>{record.bandwidth}</p>
           <p><strong>到期时间：</strong>{record.expireTime}</p>
           <p><strong>创建时间：</strong>{record.createTime}</p>
-          {record.proxyInfo && (
-            <>
-              <p><strong>代理地址：</strong>{record.proxyInfo.host}</p>
-              <p><strong>端口：</strong>{record.proxyInfo.port}</p>
-              <p><strong>用户名：</strong>{record.proxyInfo.username}</p>
-              <p><strong>密码：</strong>{record.proxyInfo.password}</p>
-            </>
-          )}
+          <p><strong>最后活跃：</strong>{record.lastActiveTime}</p>
         </div>
       ),
+    });
+  };
+
+  // 批量操作
+  const handleBatchOperation = (operation: string) => {
+    Modal.confirm({
+      title: `确认${operation}选中的IP？`,
+      content: `您选择了 ${selectedRowKeys.length} 个IP，确定要${operation}吗？`,
+      onOk: async () => {
+        try {
+          // TODO: 替换为实际的API调用
+          await fetch('/api/static-ips/batch', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              operation,
+              ids: selectedRowKeys,
+            }),
+          });
+          message.success(`批量${operation}成功`);
+          setSelectedRowKeys([]);
+          fetchData({
+            current: pagination.current,
+            pageSize: pagination.pageSize,
+            ...form.getFieldsValue(),
+          });
+        } catch (error) {
+          message.error(`批量${operation}失败`);
+        }
+      },
     });
   };
 
@@ -346,7 +329,7 @@ const StaticOrderPage: React.FC = () => {
   }, []);
 
   return (
-    <div className={styles.staticOrder}>
+    <div className={styles.staticIP}>
       <Card bordered={false}>
         <Form
           form={form}
@@ -354,42 +337,35 @@ const StaticOrderPage: React.FC = () => {
           className={styles.searchForm}
           onFinish={handleSearch}
         >
-          <Form.Item name="orderNo">
+          <Form.Item name="ip">
             <Input
-              placeholder="请输入订单号"
+              placeholder="请输入IP地址"
               allowClear
               style={{ width: 200 }}
             />
           </Form.Item>
-          <Form.Item name="userId">
+          <Form.Item name="location">
             <Input
-              placeholder="请输入用户账号"
-              allowClear
-              style={{ width: 200 }}
-            />
-          </Form.Item>
-          <Form.Item name="agentId">
-            <Input
-              placeholder="请输入代理商账号"
+              placeholder="请输入位置"
               allowClear
               style={{ width: 200 }}
             />
           </Form.Item>
           <Form.Item name="status">
             <Select
-              placeholder="订单状态"
+              placeholder="IP状态"
               allowClear
               style={{ width: 120 }}
               options={[
-                { label: '使用中', value: 'active' },
+                { label: '活跃', value: 'active' },
+                { label: '不活跃', value: 'inactive' },
                 { label: '已过期', value: 'expired' },
-                { label: '待支付', value: 'pending' },
               ]}
             />
           </Form.Item>
           <Form.Item name="type">
             <Select
-              placeholder="代理类型"
+              placeholder="IP类型"
               allowClear
               style={{ width: 120 }}
               options={[
@@ -424,10 +400,34 @@ const StaticOrderPage: React.FC = () => {
           </Form.Item>
         </Form>
 
+        <div className={styles.batchOperations}>
+          <Space>
+            <Button
+              disabled={selectedRowKeys.length === 0}
+              onClick={() => handleBatchOperation('刷新')}
+            >
+              批量刷新
+            </Button>
+            <Button
+              disabled={selectedRowKeys.length === 0}
+              onClick={() => handleBatchOperation('续期')}
+            >
+              批量续期
+            </Button>
+          </Space>
+          <span className={styles.selectedCount}>
+            已选择 {selectedRowKeys.length} 项
+          </span>
+        </div>
+
         <Table
           columns={columns}
           dataSource={data}
           rowKey="id"
+          rowSelection={{
+            selectedRowKeys,
+            onChange: setSelectedRowKeys,
+          }}
           pagination={{
             ...pagination,
             showQuickJumper: true,
@@ -444,4 +444,4 @@ const StaticOrderPage: React.FC = () => {
   );
 };
 
-export default StaticOrderPage;
+export default StaticIPPage; 

@@ -3,6 +3,7 @@ import cors from 'cors';
 import axios from 'axios';
 import https from 'https';
 import mysql from 'mysql2/promise';
+import bodyParser from 'body-parser';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -16,6 +17,7 @@ app.use(cors({
 
 // 启用 JSON 解析
 app.use(express.json());
+app.use(bodyParser.json());
 
 // 错误处理中间件
 app.use((err, req, res, next) => {
@@ -437,6 +439,32 @@ app.get('/api/dashboard/db', async (req, res) => {
     res.status(500).json({ error: error.message });
   } finally {
     conn.release();
+  }
+});
+
+// 模拟用户数据
+const mockUser = {
+  id: 1,
+  username: 'admin',
+  role: 'admin',
+  email: 'admin@example.com'
+};
+
+// 用户信息接口
+app.get('/user/info', (req, res) => {
+  res.json(mockUser);
+});
+
+// 登录接口
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
+  if (username === 'admin' && password === 'admin') {
+    res.json({
+      token: 'mock-token',
+      user: mockUser
+    });
+  } else {
+    res.status(401).json({ message: '用户名或密码错误' });
   }
 });
 

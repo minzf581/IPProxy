@@ -5,7 +5,6 @@ import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import router from './router/router';
 import { AuthProvider } from './contexts/AuthContext';
-import './index.css';
 
 // Create a wrapper component to prevent double rendering
 const App = () => {

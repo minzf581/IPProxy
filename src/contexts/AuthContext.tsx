@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, UserRole } from '@/types/user';
-import { getCurrentUser } from '@/services/auth';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { User } from '@/types/user';
+import { getCurrentUser, login as authLogin } from '@/services/auth';
 
 // Debug 函数
 const debug = {
@@ -17,90 +17,94 @@ const debug = {
 
 interface AuthContextType {
   user: User | null;
+  isAuthenticated: boolean;
   loading: boolean;
-  error: Error | null;
-  setUser: (user: User | null) => void;
+  login: (username: string, password: string) => Promise<void>;
+  logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  loading: true,
-  error: null,
-  setUser: () => {}
-});
+// 导出 AuthContext
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+// 导出 AuthProvider 组件
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
 
   debug.log('AuthProvider mounted');
 
-  useEffect(() => {
-    const initAuth = async () => {
-      const token = localStorage.getItem('token');
-      debug.log('Auth initialization - Token:', !!token);
-
-      if (!token) {
-        debug.warn('No token found, skipping user fetch');
-        setLoading(false);
-        return;
-      }
-
-      try {
-        debug.log('Fetching current user');
-        const userData = await getCurrentUser();
-        debug.log('User data received:', userData);
-
-        // 验证用户数据
-        if (!userData.id || !userData.username || !userData.role) {
-          debug.error('Invalid user data:', userData);
-          throw new Error('Invalid user data received');
-        }
-
-        // 验证用户角色
-        if (!Object.values(UserRole).includes(userData.role)) {
-          debug.error('Invalid user role:', userData.role);
-          throw new Error('Invalid user role');
-        }
-
-        debug.log('Setting user data:', userData);
-        setUser(userData);
-      } catch (err) {
-        debug.error('Auth initialization error:', err);
-        setError(err as Error);
-        // 如果获取用户信息失败，清除 token
-        localStorage.removeItem('token');
+  const checkAuth = useCallback(async () => {
+    try {
+      debug.log('Checking authentication status...');
+      setLoading(true);
+      const currentUser = await getCurrentUser();
+      debug.log('Current user check result:', currentUser);
+      if (currentUser) {
+        setUser(currentUser);
+        debug.log('User authenticated:', currentUser);
+      } else {
         setUser(null);
-      } finally {
-        debug.log('Auth initialization completed');
-        setLoading(false);
+        debug.log('No authenticated user found');
       }
-    };
-
-    initAuth();
+    } catch (error) {
+      debug.error('Error checking authentication:', error);
+      setUser(null);
+    } finally {
+      setLoading(false);
+      debug.log('Authentication check complete, loading:', false);
+    }
   }, []);
 
-  debug.log('Auth state:', { user, loading, error });
+  useEffect(() => {
+    debug.log('Initial authentication check');
+    checkAuth();
+  }, [checkAuth]);
+
+  const login = async (username: string, password: string) => {
+    try {
+      debug.log('Login attempt for user:', username);
+      setLoading(true);
+      const { token, user: userData } = await authLogin(username, password);
+      debug.log('Login successful:', { token: '***', user: userData });
+      localStorage.setItem('token', token);
+      setUser(userData);
+      debug.log('User state updated after login');
+    } catch (error) {
+      debug.error('Login failed:', error);
+      throw error;
+    } finally {
+      setLoading(false);
+      debug.log('Login process complete, loading:', false);
+    }
+  };
+
+  const logout = useCallback(() => {
+    debug.log('Logging out user');
+    localStorage.removeItem('token');
+    setUser(null);
+    debug.log('User logged out, state cleared');
+  }, []);
+
+  useEffect(() => {
+    debug.log('Auth state:', { user, isAuthenticated: !!user, loading });
+  }, [user, loading]);
 
   const value = {
     user,
+    isAuthenticated: !!user,
     loading,
-    error,
-    setUser
+    login,
+    logout,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+// 导出 useAuth hook
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}

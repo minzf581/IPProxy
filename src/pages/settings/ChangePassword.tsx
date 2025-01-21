@@ -4,12 +4,12 @@ import { LockOutlined } from '@ant-design/icons';
 import styles from './index.module.less';
 
 interface ChangePasswordForm {
-  currentPassword: string;
+  oldPassword: string;
   newPassword: string;
   confirmPassword: string;
 }
 
-const SettingsPage: React.FC = () => {
+const ChangePasswordPage: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = React.useState(false);
 
@@ -28,7 +28,7 @@ const SettingsPage: React.FC = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          oldPassword: values.currentPassword,
+          oldPassword: values.oldPassword,
           newPassword: values.newPassword,
         }),
       });
@@ -42,22 +42,24 @@ const SettingsPage: React.FC = () => {
   };
 
   return (
-    <div className={styles.settings}>
+    <div className={styles.changePassword}>
       <Card
         title="修改管理员密码"
         bordered={false}
+        className={styles.card}
       >
         <Form
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
-          className={styles.settingsForm}
+          className={styles.form}
         >
           <Form.Item
-            name="currentPassword"
+            name="oldPassword"
             label="当前密码"
             rules={[
-              { required: true, message: '请输入当前密码' }
+              { required: true, message: '请输入当前密码' },
+              { min: 6, message: '密码长度不能小于6位' }
             ]}
           >
             <Input.Password
@@ -70,7 +72,8 @@ const SettingsPage: React.FC = () => {
             name="newPassword"
             label="新密码"
             rules={[
-              { required: true, message: '请输入新密码' }
+              { required: true, message: '请输入新密码' },
+              { min: 6, message: '密码长度不能小于6位' }
             ]}
           >
             <Input.Password
@@ -84,6 +87,7 @@ const SettingsPage: React.FC = () => {
             label="确认新密码"
             rules={[
               { required: true, message: '请再次输入新密码' },
+              { min: 6, message: '密码长度不能小于6位' },
               ({ getFieldValue }) => ({
                 validator(_, value) {
                   if (!value || getFieldValue('newPassword') === value) {
@@ -105,6 +109,7 @@ const SettingsPage: React.FC = () => {
               type="primary"
               htmlType="submit"
               loading={loading}
+              block
             >
               修改密码
             </Button>
@@ -115,4 +120,4 @@ const SettingsPage: React.FC = () => {
   );
 };
 
-export default SettingsPage;
+export default ChangePasswordPage; 

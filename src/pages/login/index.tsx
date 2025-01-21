@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { message } from 'antd';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { login } from '@/services/auth';
 import styles from './index.module.less';
 
-// 在全局范围添加调试函数
-(window as any).debugLogin = {
-  log: function(...args: any[]) {
+// Debug 函数
+const debug = {
+  log: (...args: any[]) => {
     const timestamp = new Date().toISOString();
+    console.log(`[Login Debug ${timestamp}]`, ...args);
     const debugDiv = document.getElementById('debug-output');
     if (debugDiv) {
       const p = document.createElement('p');
@@ -18,46 +18,32 @@ import styles from './index.module.less';
       debugDiv.appendChild(p);
       debugDiv.scrollTop = debugDiv.scrollHeight;
     }
-    console.log(`[Debug ${timestamp}]`, ...args);
   },
-  testLogin: async function() {
-    try {
-      this.log('Testing login...');
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username: 'ipadmin',
-          password: 'ipadmin'
-        })
-      });
-      this.log('Response status:', response.status);
-      const data = await response.json();
-      this.log('Response data:', data);
-    } catch (error) {
-      this.log('Error:', error);
+  error: (...args: any[]) => {
+    console.error('[Login Error]', ...args);
+  },
+  state: (...args: any[]) => {
+    console.log('[Login State]', ...args);
+    const debugDiv = document.getElementById('debug-output');
+    if (debugDiv) {
+      const p = document.createElement('p');
+      p.style.color = 'blue';
+      p.textContent = `[State] ${args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg) : arg
+      ).join(' ')}`;
+      debugDiv.appendChild(p);
     }
   },
-  checkNetwork: async function() {
-    try {
-      this.log('Checking network...');
-      const response = await fetch('/api');
-      this.log('API root response:', response.status);
-    } catch (error) {
-      this.log('Network error:', error);
-    }
-  },
-  checkLocalStorage: function() {
-    try {
-      this.log('Checking localStorage...');
-      localStorage.setItem('test', 'test');
-      const value = localStorage.getItem('test');
-      this.log('localStorage test:', value);
-      localStorage.removeItem('test');
-    } catch (error) {
-      this.log('localStorage error:', error);
+  auth: (...args: any[]) => {
+    console.log('[Login Auth]', ...args);
+    const debugDiv = document.getElementById('debug-output');
+    if (debugDiv) {
+      const p = document.createElement('p');
+      p.style.color = 'green';
+      p.textContent = `[Auth] ${args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg) : arg
+      ).join(' ')}`;
+      debugDiv.appendChild(p);
     }
   }
 };
@@ -67,40 +53,65 @@ const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('ipadmin');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const { setUser } = useAuth();
+  const location = useLocation();
+  const { login, user, loading } = useAuth();
 
-  // 组件加载时运行一些诊断
+  // 记录组件挂载
   useEffect(() => {
-    (window as any).debugLogin.log('Component mounted');
-    (window as any).debugLogin.checkLocalStorage();
+    debug.log('LoginPage mounted');
+    debug.state('Initial state:', { username, password, isLoading });
+    debug.auth('Initial auth state:', { user, loading });
+    debug.log('Current location:', location);
+
+    return () => {
+      debug.log('LoginPage will unmount');
+    };
   }, []);
+
+  // 监听认证状态变化
+  useEffect(() => {
+    debug.auth('Auth state changed:', { user, loading });
+  }, [user, loading]);
+
+  // 如果用户已登录，直接跳转到首页
+  useEffect(() => {
+    if (user) {
+      debug.log('User already logged in, redirecting to home');
+      debug.auth('Redirect triggered by user:', user);
+      debug.log('Navigation state:', { pathname: '/', replace: true });
+      navigate('/', { replace: true });
+    }
+  }, [user, navigate]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    (window as any).debugLogin.log('Form submitted');
+    debug.log('Form submitted');
+    debug.state('Submit state:', { username, password, isLoading });
 
     try {
-      (window as any).debugLogin.log('Starting login process');
+      debug.log('Starting login process');
       setIsLoading(true);
+      debug.state('Loading state set to true');
 
-      const response = await login(username, password);
-      (window as any).debugLogin.log('Login response:', response);
+      debug.log('Calling login function');
+      await login(username, password);
+      debug.log('Login function completed');
+      debug.auth('Post-login auth state:', { user, loading });
 
-      if (response.token && response.user) {
-        (window as any).debugLogin.log('Login successful');
-        localStorage.setItem('token', response.token);
-        setUser(response.user);
-        message.success('登录成功');
-        navigate('/', { replace: true });
-      } else {
-        (window as any).debugLogin.log('Invalid response:', response);
-        throw new Error('Invalid response from server');
-      }
+      debug.log('Login successful');
+      message.success('登录成功');
+
+      debug.log('Initiating navigation to home');
+      navigate('/', { replace: true });
+      debug.log('Navigation initiated');
     } catch (error) {
-      (window as any).debugLogin.log('Login failed:', error);
-      message.error('登录失败，请检查用户名和密码');
+      debug.error('Login failed:', error);
+      debug.state('Error state:', { error });
+      message.error('登录失败：' + (error as Error).message);
     } finally {
       setIsLoading(false);
+      debug.state('Loading state set to false');
+      debug.log('Login process complete');
     }
   };
 
@@ -111,7 +122,7 @@ const LoginPage: React.FC = () => {
         
         {/* 调试面板 */}
         <div id="debug-output" style={{
-          maxHeight: '150px',
+          maxHeight: '200px',
           overflow: 'auto',
           marginBottom: '20px',
           padding: '10px',
@@ -121,23 +132,10 @@ const LoginPage: React.FC = () => {
           backgroundColor: '#f5f5f5',
           whiteSpace: 'pre-wrap',
           fontFamily: 'monospace'
-        }}></div>
-
-        {/* 调试按钮 */}
-        <div style={{ marginBottom: '20px' }}>
-          <button
-            type="button"
-            onClick={() => (window as any).debugLogin.testLogin()}
-            style={{ marginRight: '10px' }}
-          >
-            Test Login API
-          </button>
-          <button
-            type="button"
-            onClick={() => (window as any).debugLogin.checkNetwork()}
-          >
-            Check Network
-          </button>
+        }}>
+          <div style={{ marginBottom: '10px', borderBottom: '1px solid #ccc', padding: '5px' }}>
+            <strong>Debug Log</strong> (蓝色=状态变化, 绿色=认证状态)
+          </div>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -148,7 +146,8 @@ const LoginPage: React.FC = () => {
               id="username"
               value={username}
               onChange={(e) => {
-                (window as any).debugLogin.log('Username changed:', e.target.value);
+                debug.log('Username changed:', e.target.value);
+                debug.state('Username updating to:', e.target.value);
                 setUsername(e.target.value);
               }}
               disabled={isLoading}
@@ -162,7 +161,8 @@ const LoginPage: React.FC = () => {
               id="password"
               value={password}
               onChange={(e) => {
-                (window as any).debugLogin.log('Password changed');
+                debug.log('Password changed');
+                debug.state('Password updated');
                 setPassword(e.target.value);
               }}
               disabled={isLoading}

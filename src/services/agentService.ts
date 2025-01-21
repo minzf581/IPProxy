@@ -1,20 +1,37 @@
 import type { AgentInfo, AgentStatistics } from '@/types/agent';
-import * as dbService from '@/database/agentService';
+import { request } from '@/utils/request';
+
+interface ApiResponse<T> {
+  code: number;
+  msg: string;
+  data: T;
+}
 
 export async function getAgentList(params: { page: number; pageSize: number; status?: string }) {
-  return dbService.getAgentList(params);
+  const response = await request.get<ApiResponse<{ list: AgentInfo[]; total: number }>>('/agent/list', { params });
+  if (response.data.code !== 200) {
+    throw new Error(response.data.msg);
+  }
+  return response.data.data;
 }
 
 export async function getAgentById(agentId: number): Promise<AgentInfo> {
-  const agent = await dbService.getAgentById(agentId);
-  if (!agent) {
+  const response = await request.get<ApiResponse<AgentInfo>>(`/agent/${agentId}`);
+  if (response.data.code !== 200) {
+    throw new Error(response.data.msg);
+  }
+  if (!response.data.data) {
     throw new Error('Agent not found');
   }
-  return agent;
+  return response.data.data;
 }
 
 export async function getAgentStatistics(agentId: number): Promise<AgentStatistics> {
-  return dbService.getAgentStatistics(agentId);
+  const response = await request.get<ApiResponse<AgentStatistics>>(`/agent/${agentId}/statistics`);
+  if (response.data.code !== 200) {
+    throw new Error(response.data.msg);
+  }
+  return response.data.data;
 }
 
 export async function createAgent(params: {
@@ -22,11 +39,18 @@ export async function createAgent(params: {
   email: string;
   password: string;
 }): Promise<AgentInfo> {
-  return dbService.createAgent(params);
+  const response = await request.post<ApiResponse<AgentInfo>>('/agent', params);
+  if (response.data.code !== 200) {
+    throw new Error(response.data.msg);
+  }
+  return response.data.data;
 }
 
 export async function updateAgent(agentId: number, params: Partial<AgentInfo>): Promise<void> {
-  return dbService.updateAgent(agentId, params);
+  const response = await request.put<ApiResponse<void>>(`/agent/${agentId}`, params);
+  if (response.data.code !== 200) {
+    throw new Error(response.data.msg);
+  }
 }
 
 export async function getAgentOrders(params: {
@@ -35,7 +59,17 @@ export async function getAgentOrders(params: {
   pageSize: number;
   status?: string;
 }) {
-  return dbService.getAgentOrders(params);
+  const response = await request.get<ApiResponse<{ list: any[]; total: number }>>(`/agent/${params.agentId}/orders`, {
+    params: {
+      page: params.page,
+      pageSize: params.pageSize,
+      status: params.status,
+    },
+  });
+  if (response.data.code !== 200) {
+    throw new Error(response.data.msg);
+  }
+  return response.data.data;
 }
 
 export async function getAgentUsers(params: {
@@ -44,5 +78,15 @@ export async function getAgentUsers(params: {
   pageSize: number;
   status?: string;
 }) {
-  return dbService.getAgentUsers(params);
+  const response = await request.get<ApiResponse<{ list: any[]; total: number }>>(`/agent/${params.agentId}/users`, {
+    params: {
+      page: params.page,
+      pageSize: params.pageSize,
+      status: params.status,
+    },
+  });
+  if (response.data.code !== 200) {
+    throw new Error(response.data.msg);
+  }
+  return response.data.data;
 }

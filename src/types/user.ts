@@ -7,10 +7,11 @@ export enum UserRole {
 export interface User {
   id: string;
   username: string;
-  email: string;
   role: UserRole;
   status: 'active' | 'disabled';
+  email?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface UserProfile extends User {
