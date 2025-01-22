@@ -64,11 +64,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       debug.log('Login attempt for user:', username);
       setLoading(true);
-      const { token, user: userData } = await authLogin(username, password);
-      debug.log('Login successful:', { token: '***', user: userData });
-      localStorage.setItem('token', token);
-      setUser(userData);
-      debug.log('User state updated after login');
+      const response = await authLogin(username, password);
+      debug.log('Login response:', response);
+
+      if (response.code === 0 && response.data.token && response.data.user) {
+        debug.log('Login successful, setting token and user');
+        localStorage.setItem('token', response.data.token);
+        setUser(response.data.user);
+        debug.log('User state updated:', response.data.user);
+      } else {
+        debug.error('Invalid login response:', response);
+        throw new Error(response.message || 'Login failed');
+      }
     } catch (error) {
       debug.error('Login failed:', error);
       throw error;

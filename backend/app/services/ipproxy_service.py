@@ -5,6 +5,7 @@ from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
 import requests
 import os
+from typing import Dict, Any
 
 class IPProxyService:
     def __init__(self):
@@ -60,84 +61,71 @@ class IPProxyService:
             print(f"解密失败: {str(e)}")
             return None
             
-    def _make_request(self, endpoint, params=None):
-        """发送API请求"""
-        url = f"{self.base_url}{endpoint}"
+    def _make_request(self, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        """发送请求到IPIPV API"""
+        # 添加时间戳
+        params['timestamp'] = str(int(time.time()))
         
-        # 准备请求数据
+        # 加密参数
+        encrypted_params = self._encrypt_params(params)
+        
+        # 构造请求数据
         request_data = {
-            "version": "v2",
-            "encrypt": "AES",
-            "appKey": self.app_key,
-            "reqId": f"reqId_{int(time.time() * 1000000)}"
+            'version': 'v2',
+            'encrypt': 'AES',
+            'appKey': self.app_key,
+            'params': encrypted_params
         }
         
-        # 如果有参数，加密它们
-        if params is not None:
-            encrypted_params = self._encrypt_params(params)
-            request_data["params"] = encrypted_params
-            
         # 发送请求
+        url = f"{self.base_url}{endpoint}"
+        response = requests.post(url, json=request_data)
+        
+        if response.status_code != 200:
+            raise Exception(f"API请求失败: {response.status_code}")
+            
+        # 解析响应
+        result = response.json()
+        if result.get('code') != '200':
+            raise Exception(f"API返回错误: {result.get('msg')}")
+            
+        # 解密响应数据
+        decrypted_data = self._decrypt_response(result.get('data'))
+        return decrypted_data
+
+    def get_app_info(self) -> Dict[str, Any]:
+        """获取应用信息（余额、总充值、总消费）"""
         try:
-            response = requests.post(url, json=request_data)
-            response.raise_for_status()
-            
-            # 解析响应
-            resp_data = response.json()
-            if resp_data["code"] != 200:
-                raise Exception(f"API错误: {resp_data['msg']}")
-                
-            # 如果有加密数据，解密它
-            if "data" in resp_data and resp_data["data"]:
-                return self._decrypt_response(resp_data["data"])
-            return resp_data
-            
-        except Exception as e:
-            print(f"请求失败: {str(e)}")
-            raise
-            
-    def get_dashboard_data(self):
-        """获取仪表盘数据"""
-        try:
-            # 获取应用信息
-            app_info = self._make_request("/api/open/app/info/v2")
-            
-            # 获取统计信息
-            statistics = self._make_request("/api/open/app/statistics/v2")
-            
-            # 合并数据
-            dashboard_data = {
-                "total_consumption": app_info.get("totalConsumption", 0),  # 累计消费
-                "total_recharge": app_info.get("totalRecharge", 0),       # 累计充值
-                "balance": app_info.get("balance", 0),                    # 剩余金额
-                "month_recharge": statistics.get("monthRecharge", 0),     # 本月充值
-                "month_consumption": statistics.get("monthConsumption", 0), # 本月消费
-                "last_month_consumption": statistics.get("lastMonthConsumption", 0)  # 上月消费
+            data = self._make_request('/api/open/app/proxy/info/v2', {})
+            return {
+                'balance': data.get('balance', 0),
+                'totalRecharge': data.get('totalRecharge', 0),
+                'totalConsumption': data.get('totalConsumption', 0)
             }
-            
-            return dashboard_data
-            
         except Exception as e:
-            print(f"获取仪表盘数据失败: {str(e)}")
-            raise
+            print(f"获取应用信息失败: {str(e)}")
+            return {
+                'balance': 0,
+                'totalRecharge': 0,
+                'totalConsumption': 0
+            }
 
-    def get_app_info(self):
-        """获取应用信息"""
-        # 模拟数据，实际项目中应该调用真实的API
-        return {
-            "totalRecharge": 10000.00,
-            "totalConsumption": 8000.00,
-            "balance": 2000.00
-        }
-
-    def get_statistics(self):
-        """获取统计信息"""
-        # 模拟数据，实际项目中应该调用真实的API
-        return {
-            "monthRecharge": 1500.00,
-            "monthConsumption": 1200.00,
-            "lastMonthConsumption": 1100.00
-        }
+    def get_statistics(self) -> Dict[str, Any]:
+        """获取流量使用统计"""
+        try:
+            data = self._make_request('/api/open/app/proxy/flow/use/log/v2', {})
+            return {
+                'monthlyUsage': data.get('monthlyUsage', 0),
+                'dailyUsage': data.get('dailyUsage', 0),
+                'lastMonthUsage': data.get('lastMonthUsage', 0)
+            }
+        except Exception as e:
+            print(f"获取流量统计失败: {str(e)}")
+            return {
+                'monthlyUsage': 0,
+                'dailyUsage': 0,
+                'lastMonthUsage': 0
+            }
 
     def encrypt_params(self, params: dict) -> str:
         """AES-256-CBC加密参数"""

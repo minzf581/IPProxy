@@ -1,27 +1,67 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
-from datetime import timedelta
-from .. import auth
-from ..database import get_db
-from ..models.user import User
+from fastapi.security import OAuth2PasswordBearer
+from app.models.user import User
+from app.schemas.user import UserCreate, UserLogin, UserResponse
+from app.services.auth import (
+    authenticate_user,
+    create_access_token,
+    get_current_user,
+    get_password_hash
+)
 
-router = APIRouter()
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+router = APIRouter(tags=["auth"])
 
-@router.post("/token")
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    # 这里应该查询数据库验证用户
-    # 为了测试，我们先硬编码一个用户
-    if form_data.username != "admin" or form_data.password != "admin":
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+
+@router.post("/auth/login")
+async def login(user_data: UserLogin):
+    try:
+        user = await authenticate_user(user_data.username, user_data.password)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="用户名或密码错误",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        access_token = create_access_token(data={"sub": user.username})
+        return {
+            "code": 0,
+            "message": "登录成功",
+            "data": {
+                "token": access_token,
+                "user": UserResponse.from_orm(user)
+            }
+        }
+    except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
+
+@router.get("/auth/current-user")
+async def get_current_user_info(current_user: User = Depends(get_current_user)):
+    return {
+        "code": 0,
+        "message": "获取用户信息成功",
+        "data": UserResponse.from_orm(current_user)
+    }
+
+@router.post("/auth/password")
+async def update_password(
+    old_password: str,
+    new_password: str,
+    current_user: User = Depends(get_current_user)
+):
+    if not authenticate_user(current_user.username, old_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="原密码错误"
         )
     
-    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = auth.create_access_token(
-        data={"sub": form_data.username}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
+    current_user.password = get_password_hash(new_password)
+    return {
+        "code": 0,
+        "message": "密码修改成功",
+        "data": None
+    }

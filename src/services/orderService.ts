@@ -1,5 +1,5 @@
 import type { DynamicOrder, StaticOrder, OrderStatistics } from '@/types/order';
-import * as dbService from '@/database/orderService';
+import { api } from '@/utils/request';
 
 export async function getDynamicOrderList(params: {
   page: number;
@@ -7,8 +7,9 @@ export async function getDynamicOrderList(params: {
   userId?: number;
   agentId?: number;
   status?: string;
-}) {
-  return dbService.getDynamicOrderList(params);
+}): Promise<{ list: DynamicOrder[]; total: number }> {
+  const response = await api.get<{ code: number; message: string; data: { list: DynamicOrder[]; total: number } }>('/api/orders/dynamic', { params });
+  return response.data.data;
 }
 
 export async function getStaticOrderList(params: {
@@ -17,8 +18,9 @@ export async function getStaticOrderList(params: {
   userId?: number;
   agentId?: number;
   status?: string;
-}) {
-  return dbService.getStaticOrderList(params);
+}): Promise<{ list: StaticOrder[]; total: number }> {
+  const response = await api.get<{ code: number; message: string; data: { list: StaticOrder[]; total: number } }>('/api/orders/static', { params });
+  return response.data.data;
 }
 
 export async function createDynamicOrder(params: {
@@ -27,7 +29,8 @@ export async function createDynamicOrder(params: {
   resourceId: number;
   duration: number;
 }): Promise<DynamicOrder> {
-  return dbService.createDynamicOrder(params);
+  const response = await api.post<{ code: number; message: string; data: DynamicOrder }>('/api/orders/dynamic', params);
+  return response.data.data;
 }
 
 export async function createStaticOrder(params: {
@@ -36,27 +39,28 @@ export async function createStaticOrder(params: {
   resourceId: number;
   quantity: number;
 }): Promise<StaticOrder> {
-  return dbService.createStaticOrder(params);
+  const response = await api.post<{ code: number; message: string; data: StaticOrder }>('/api/orders/static', params);
+  return response.data.data;
 }
 
-export async function getDynamicOrderById(orderId: number): Promise<DynamicOrder> {
-  const order = await dbService.getDynamicOrderById(orderId);
-  if (!order) {
+export async function getDynamicOrderDetail(orderId: number): Promise<DynamicOrder> {
+  const response = await api.get<{ code: number; message: string; data: DynamicOrder }>(`/api/orders/dynamic/${orderId}`);
+  if (!response.data.data) {
     throw new Error('Dynamic order not found');
   }
-  return order;
+  return response.data.data;
 }
 
-export async function getStaticOrderById(orderId: number): Promise<StaticOrder> {
-  const order = await dbService.getStaticOrderById(orderId);
-  if (!order) {
+export async function getStaticOrderDetail(orderId: number): Promise<StaticOrder> {
+  const response = await api.get<{ code: number; message: string; data: StaticOrder }>(`/api/orders/static/${orderId}`);
+  if (!response.data.data) {
     throw new Error('Static order not found');
   }
-  return order;
+  return response.data.data;
 }
 
 export async function updateOrder(orderId: number, params: Partial<DynamicOrder | StaticOrder>): Promise<void> {
-  return dbService.updateOrder(orderId, params);
+  await api.put<{ code: number; message: string }>(`/api/orders/${orderId}`, params);
 }
 
 export async function getOrderStatistics(params: {
@@ -65,5 +69,22 @@ export async function getOrderStatistics(params: {
   startDate?: Date;
   endDate?: Date;
 }): Promise<OrderStatistics> {
-  return dbService.getOrderStatistics(params);
+  const response = await api.get<{ code: number; message: string; data: OrderStatistics }>('/api/orders/statistics', { params });
+  return response.data.data;
+}
+
+export async function renewDynamicOrder(orderId: number, duration: number): Promise<void> {
+  await api.post<{ code: number; message: string }>(`/api/orders/dynamic/${orderId}/renew`, { duration });
+}
+
+export async function renewStaticOrder(orderId: number, duration: number): Promise<void> {
+  await api.post<{ code: number; message: string }>(`/api/orders/static/${orderId}/renew`, { duration });
+}
+
+export async function cancelDynamicOrder(orderId: number): Promise<void> {
+  await api.post<{ code: number; message: string }>(`/api/orders/dynamic/${orderId}/cancel`);
+}
+
+export async function cancelStaticOrder(orderId: number): Promise<void> {
+  await api.post<{ code: number; message: string }>(`/api/orders/static/${orderId}/cancel`);
 }

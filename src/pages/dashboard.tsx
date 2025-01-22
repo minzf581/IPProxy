@@ -1,98 +1,89 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Progress } from 'antd';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Card, Row, Col, Progress, Spin } from 'antd';
 import { ShoppingCartOutlined, DollarOutlined, LineChartOutlined } from '@ant-design/icons';
+import { getDashboardData } from '@/services/dashboard';
 import styles from './dashboard.module.less';
 
-interface StatisticsData {
-  totalRecharge: number;
-  totalConsumption: number;
-  remainingBalance: number;
-  monthlyRecharge: number;
-  monthlyConsumption: number;
-  lastMonthConsumption: number;
-}
-
-interface ResourceData {
-  name: string;
-  total: string;
-  monthly: string;
-  today: string;
-  lastMonth: string;
-  percentage: number;
-}
-
-interface StaticResourceData {
-  name: string;
-  total: string;
-  monthlyAvailable: string;
-  remainingAvailable: string;
-  expired: string;
-  percentage: number;
-}
-
 const Dashboard: React.FC = () => {
-  const [statistics, setStatistics] = useState<StatisticsData>({
-    totalRecharge: 168880,
-    totalConsumption: 17780,
-    remainingBalance: 151100,
-    monthlyRecharge: 28660,
-    monthlyConsumption: 8520,
-    lastMonthConsumption: 9260
+  const [loading, setLoading] = useState(true);
+  const [statistics, setStatistics] = useState({
+    totalRecharge: 0,
+    totalConsumption: 0,
+    remainingBalance: 0,
+    monthlyRecharge: 0,
+    monthlyConsumption: 0,
+    lastMonthConsumption: 0
   });
 
-  const dynamicResources: ResourceData[] = [
-    {
-      name: '动态资源1',
-      total: '1024G',
-      monthly: '256G',
-      today: '28G',
-      lastMonth: '320G',
-      percentage: 50
-    },
-    {
-      name: '动态资源2',
-      total: '2048G',
-      monthly: '512G',
-      today: '64G',
-      lastMonth: '486G',
-      percentage: 75
-    },
-    {
-      name: '动态资源3',
-      total: '4096G',
-      monthly: '1024G',
-      today: '128G',
-      lastMonth: '896G',
-      percentage: 25
-    }
-  ];
+  const [dynamicResources, setDynamicResources] = useState<Array<{
+    name: string;
+    total: string;
+    monthly: string;
+    today: string;
+    lastMonth: string;
+    percentage: number;
+  }>>([]);
 
-  const staticResources: StaticResourceData[] = [
-    {
-      name: '静态资源1',
-      total: '1000条',
-      monthlyAvailable: '200条',
-      remainingAvailable: '300条',
-      expired: '120条',
-      percentage: 60
-    },
-    {
-      name: '静态资源2',
-      total: '2000条',
-      monthlyAvailable: '400条',
-      remainingAvailable: '600条',
-      expired: '220条',
-      percentage: 80
-    },
-    {
-      name: '静态资源3',
-      total: '3000条',
-      monthlyAvailable: '600条',
-      remainingAvailable: '900条',
-      expired: '350条',
-      percentage: 40
+  const [staticResources, setStaticResources] = useState<Array<{
+    name: string;
+    total: string;
+    monthlyAvailable: string;
+    remainingAvailable: string;
+    expired: string;
+    percentage: number;
+  }>>([]);
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await getDashboardData();
+      
+      // 更新统计数据
+      setStatistics({
+        totalRecharge: data.total_recharge,
+        totalConsumption: data.total_consumption,
+        remainingBalance: data.balance,
+        monthlyRecharge: data.month_recharge,
+        monthlyConsumption: data.month_consumption,
+        lastMonthConsumption: data.last_month_consumption
+      });
+
+      // 更新动态资源数据
+      setDynamicResources(data.dynamic_resources.map(resource => ({
+        name: resource.title,
+        total: resource.total,
+        monthly: resource.used,
+        today: resource.today,
+        lastMonth: resource.lastMonth,
+        percentage: resource.percentage
+      })));
+
+      // 更新静态资源数据
+      setStaticResources(data.static_resources.map(resource => ({
+        name: resource.title,
+        total: resource.total,
+        monthlyAvailable: resource.used,
+        remainingAvailable: resource.available,
+        expired: resource.lastMonth,
+        percentage: resource.percentage
+      })));
+    } catch (error) {
+      console.error('获取仪表盘数据失败:', error);
+    } finally {
+      setLoading(false);
     }
-  ];
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    // 设置自动刷新间隔（每5分钟）
+    const interval = setInterval(fetchData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  if (loading) {
+    return <div className={styles.loading}><Spin size="large" /></div>;
+  }
 
   return (
     <div className={styles.dashboard}>
@@ -102,7 +93,7 @@ const Dashboard: React.FC = () => {
             <div className={styles.title}>累计充值</div>
             <div className={styles.value}>
               <ShoppingCartOutlined className={styles.icon} />
-              {statistics.totalRecharge.toLocaleString()}
+              ¥ {statistics.totalRecharge.toLocaleString()}
             </div>
           </Card>
         </Col>
@@ -111,7 +102,7 @@ const Dashboard: React.FC = () => {
             <div className={styles.title}>累计消费</div>
             <div className={styles.value}>
               <DollarOutlined className={styles.icon} />
-              {statistics.totalConsumption.toLocaleString()}
+              ¥ {statistics.totalConsumption.toLocaleString()}
             </div>
           </Card>
         </Col>
@@ -120,7 +111,7 @@ const Dashboard: React.FC = () => {
             <div className={styles.title}>剩余金额</div>
             <div className={styles.value}>
               <DollarOutlined className={styles.icon} />
-              {statistics.remainingBalance.toLocaleString()}
+              ¥ {statistics.remainingBalance.toLocaleString()}
             </div>
           </Card>
         </Col>
@@ -129,7 +120,7 @@ const Dashboard: React.FC = () => {
             <div className={styles.title}>本月充值</div>
             <div className={styles.value}>
               <LineChartOutlined className={styles.icon} />
-              {statistics.monthlyRecharge.toLocaleString()}
+              ¥ {statistics.monthlyRecharge.toLocaleString()}
             </div>
           </Card>
         </Col>
@@ -138,7 +129,7 @@ const Dashboard: React.FC = () => {
             <div className={styles.title}>本月消费</div>
             <div className={styles.value}>
               <LineChartOutlined className={styles.icon} />
-              {statistics.monthlyConsumption.toLocaleString()}
+              ¥ {statistics.monthlyConsumption.toLocaleString()}
             </div>
           </Card>
         </Col>
@@ -147,7 +138,7 @@ const Dashboard: React.FC = () => {
             <div className={styles.title}>上月消费</div>
             <div className={styles.value}>
               <LineChartOutlined className={styles.icon} />
-              {statistics.lastMonthConsumption.toLocaleString()}
+              ¥ {statistics.lastMonthConsumption.toLocaleString()}
             </div>
           </Card>
         </Col>

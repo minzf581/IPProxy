@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Descriptions, Table, Tag, Button, InputNumber, message, Spin } from 'antd';
-import { dbService } from '@/services/dbService';
+import * as orderService from '@/services/orderService';
 import type { DynamicOrder } from '@/types/order';
 import { formatDateTime } from '@/utils/dateUtils';
 
@@ -32,7 +32,7 @@ const DynamicOrderDetailModal: React.FC<Props> = ({
   const fetchOrderDetail = async () => {
     try {
       setLoading(true);
-      const data = await dbService.getDynamicOrderDetail(orderId);
+      const data = await orderService.getDynamicOrderDetail(orderId);
       setOrder(data);
     } catch (error) {
       console.error('获取订单详情失败:', error);
@@ -47,7 +47,7 @@ const DynamicOrderDetailModal: React.FC<Props> = ({
 
     try {
       setRenewLoading(true);
-      await dbService.renewDynamicOrder(order.id, renewDuration);
+      await orderService.renewDynamicOrder(order.id, renewDuration);
       message.success('续费成功');
       fetchOrderDetail();
       onSuccess?.();
@@ -64,7 +64,7 @@ const DynamicOrderDetailModal: React.FC<Props> = ({
 
     try {
       setCancelLoading(true);
-      await dbService.cancelDynamicOrder(order.id);
+      await orderService.cancelDynamicOrder(order.id);
       message.success('取消成功');
       fetchOrderDetail();
       onSuccess?.();

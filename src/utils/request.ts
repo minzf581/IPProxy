@@ -1,31 +1,28 @@
-import axios from 'axios';
+import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import { message } from 'antd';
 import { UserRole } from '@/types/user';
+import { debug } from '@/utils/debug';
 
-// Debug 函数
-const debug = {
-  log: (...args: any[]) => {
-    console.log('[Request Debug]', ...args);
-  },
-  error: (...args: any[]) => {
-    console.error('[Request Error]', ...args);
-  },
-  warn: (...args: any[]) => {
-    console.warn('[Request Warning]', ...args);
-  }
-};
+const { request: debugRequest } = debug;
 
-// 创建 axios 实例
-const request = axios.create({
-  baseURL: '/api',
+// 创建axios实例
+const request: AxiosInstance = axios.create({
+  baseURL: 'http://localhost:8000',
   timeout: 10000,
+  headers: {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json;charset=UTF-8'
+  }
 });
+
+// 导出 api 作为 request 的别名
+export const api = request;
 
 // Mock 数据
 const mockData: Record<string, any> = {
   '/auth/login': {
-    code: 200,
-    msg: 'success',
+    code: 0,
+    message: 'success',
     data: {
       token: 'admin_token',
       user: {
@@ -38,8 +35,8 @@ const mockData: Record<string, any> = {
     }
   },
   '/auth/current-user': {
-    code: 200,
-    msg: 'success',
+    code: 0,
+    message: 'success',
     data: {
       id: '1',
       username: 'ipadmin',
@@ -112,9 +109,26 @@ const mockData: Record<string, any> = {
   }
 };
 
+interface MockResponse {
+  isAxiosMockResponse: boolean;
+  response: {
+    data: any;
+    status: number;
+    statusText: string;
+    headers: Record<string, string>;
+    config: any;
+  };
+}
+
+interface APIResponse {
+  code: number;
+  message: string;
+  data: any;
+}
+
 // 检查是否有对应的 mock 数据
 const hasMockData = (url: string): boolean => {
-  return !!mockData[url];
+  return import.meta.env.VITE_API_MOCK && !!mockData[url];
 };
 
 // 获取 mock 数据
@@ -125,27 +139,24 @@ const getMockData = (url: string): any => {
 // 请求拦截器
 request.interceptors.request.use(
   async (config) => {
-    debug.log('Request interceptor start:', {
-      method: config.method,
-      url: config.url,
-      baseURL: config.baseURL,
-      data: config.data,
-      params: config.params
-    });
+    debugRequest.group('Request Interceptor');
+    debugRequest.info('Starting request interceptor');
+    debugRequest.request(config);
 
     const token = localStorage.getItem('token');
     const hasToken = !!token;
 
     if (hasToken) {
       config.headers.Authorization = `Bearer ${token}`;
-      debug.log('Added token to request');
+      debugRequest.info('Added token to request headers');
     } else {
-      debug.warn('No token found in localStorage');
+      debugRequest.warn('No token found in localStorage');
     }
 
     // 检查是否需要返回 mock 数据
     if (config.url && hasMockData(config.url)) {
-      debug.log('Using mock data for:', config.url);
+      debugRequest.info('Using mock data for:', config.url);
+      debugRequest.groupEnd();
       return Promise.reject({
         isAxiosMockResponse: true,
         response: {
@@ -155,77 +166,104 @@ request.interceptors.request.use(
           headers: {},
           config: config,
         }
-      });
+      } as MockResponse);
     }
 
-    debug.log('Request will be sent to server');
+    debugRequest.info('Request will be sent to server');
+    debugRequest.groupEnd();
     return config;
   },
   (error) => {
-    debug.error('Request interceptor error:', error);
+    debugRequest.group('Request Interceptor Error');
+    debugRequest.error('Error in request interceptor');
+    debugRequest.logError(error);
+    debugRequest.groupEnd();
     return Promise.reject(error);
   }
 );
 
 // 响应拦截器
 request.interceptors.response.use(
-  (response) => {
-    debug.log('Response success:', {
-      url: response.config.url,
-      status: response.status,
-      data: response.data
-    });
+  (response: AxiosResponse) => {
+    debugRequest.group('Response Interceptor');
+    debugRequest.info('Starting response interceptor');
+    debugRequest.response(response);
+
+    const { data } = response;
+
+    // 如果是 mock 数据，直接返回
+    if (import.meta.env.VITE_API_MOCK) {
+      debugRequest.info('Using mock data');
+      debugRequest.groupEnd();
+      return response;
+    }
+
+    // 检查响应状态
+    if (data.code && data.code !== 0 && data.code !== 200) {
+      debugRequest.error('API error response:', data);
+      message.error(data.message || '请求失败');
+      debugRequest.groupEnd();
+      return Promise.reject(new Error(data.message || '请求失败'));
+    }
+
+    debugRequest.info('Response processed successfully');
+    debugRequest.groupEnd();
     return response;
   },
-  async (error) => {
+  (error: AxiosError | MockResponse) => {
+    debugRequest.group('Response Error Handler');
+
     // 检查是否是 mock 响应
-    if (error.isAxiosMockResponse) {
-      debug.log('Returning mock response:', error.response.data);
+    if ('isAxiosMockResponse' in error && error.isAxiosMockResponse) {
+      debugRequest.info('Processing mock response');
+      debugRequest.log('Mock response data:', error.response.data);
+      debugRequest.groupEnd();
       return error.response;
     }
 
-    debug.error('Response error:', {
-      url: error.config?.url,
-      status: error.response?.status,
-      message: error.message,
-      error
-    });
+    if (axios.isAxiosError(error)) {
+      debugRequest.error('Axios error occurred');
+      debugRequest.logError(error);
 
-    if (!error.response) {
-      debug.error('Network error:', error);
-      message.error('网络错误，请检查网络连接');
-      return Promise.reject(error);
+      if (!error.response) {
+        debugRequest.error('Network error - no response received');
+        message.error('网络错误，请检查网络连接');
+        debugRequest.groupEnd();
+        return Promise.reject(error);
+      }
+
+      const { response } = error;
+      const data = response.data as APIResponse;
+
+      // 处理不同的错误状态码
+      switch (response.status) {
+        case 401:
+          debugRequest.warn('401 Unauthorized - redirecting to login');
+          message.error('未登录或登录已过期');
+          localStorage.removeItem('token');
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
+          break;
+        case 403:
+          debugRequest.warn('403 Forbidden - access denied');
+          message.error('没有权限访问该资源');
+          break;
+        case 404:
+          debugRequest.warn('404 Not Found - resource does not exist');
+          message.error('请求的资源不存在');
+          break;
+        case 500:
+          debugRequest.error('500 Server Error');
+          message.error('服务器错误，请稍后重试');
+          break;
+        default:
+          debugRequest.error(`Unexpected error status: ${response.status}`);
+          message.error(data?.message || '未知错误，请稍后重试');
+      }
     }
 
-    const { response } = error;
-
-    // 处理不同的错误状态码
-    switch (response.status) {
-      case 401:
-        debug.warn('Unauthorized access, redirecting to login');
-        message.error('未登录或登录已过期');
-        localStorage.removeItem('token');
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
-        break;
-      case 403:
-        debug.warn('Forbidden access');
-        message.error('没有权限访问该资源');
-        break;
-      case 404:
-        debug.warn('Resource not found');
-        message.error('请求的资源不存在');
-        break;
-      case 500:
-        debug.error('Server error');
-        message.error('服务器错误，请稍后重试');
-        break;
-      default:
-        debug.error('Unknown error:', response.status);
-        message.error(response.data?.message || '未知错误，请稍后重试');
-    }
-
+    debugRequest.groupEnd();
     return Promise.reject(error);
   }
 );

@@ -1,28 +1,26 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer
-from app.routers import auth, dashboard
-from app.database import engine, Base
 
-app = FastAPI()
+from app.database import engine, Base, init_test_data
+from app.routers import dashboard, auth
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
 
+# 初始化测试数据
+init_test_data()
+
+app = FastAPI()
+
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 在生产环境中应该设置具体的源
+    allow_origins=["http://localhost:3000"],  # 只允许前端开发服务器
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
 )
 
-# 包含认证路由
-app.include_router(auth.router, prefix="/api")
-# 包含仪表盘路由
-app.include_router(dashboard.router, prefix="/api/dashboard")
-
-@app.get("/")
-async def root():
-    return {"message": "Welcome to IP Proxy Management System"}
+# 注册路由
+app.include_router(auth.router, prefix="/api")  # 添加/api前缀
+app.include_router(dashboard.router, prefix="/api")

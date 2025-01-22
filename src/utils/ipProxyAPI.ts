@@ -121,7 +121,7 @@ export class IPProxyAPI {
   constructor() {
     // Check if we're running on GitHub Pages
     const isGitHubPages = window.location.hostname === 'minzf581.github.io';
-    this.baseURL = isGitHubPages ? 'https://sandbox.ipipv.com' : 'http://localhost:3001';
+    this.baseURL = isGitHubPages ? 'https://sandbox.ipipv.com' : 'http://localhost:8000';
     this.appKey = 'bf3ffghlt0hpc4omnvc2583jt0fag6a4';
     this.appId = 'AK20241120145620';
   }

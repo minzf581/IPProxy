@@ -1,33 +1,55 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Form, Input, Button, message } from 'antd';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { login } from '@/services/auth';
 import styles from './login.module.less';
+
+// Debug 函数
+const debug = {
+  log: (...args: any[]) => {
+    console.log('[Login Page Debug]', ...args);
+  },
+  error: (...args: any[]) => {
+    console.error('[Login Page Error]', ...args);
+  }
+};
 
 const LoginPage: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { setUser } = useAuth();
+  const location = useLocation();
+  const { login } = useAuth();
+
+  debug.log('Rendering login page');
+  debug.log('Current location:', location);
+
+  useEffect(() => {
+    debug.log('Login page mounted');
+    return () => {
+      debug.log('Login page will unmount');
+    };
+  }, []);
 
   const onFinish = async (values: any) => {
+    debug.log('Form submitted with values:', values);
     try {
       setLoading(true);
-      const response = await login(values.username, values.password);
+      debug.log('Starting login process');
+      await login(values.username, values.password);
+      debug.log('Login successful');
+      message.success('登录成功');
       
-      if (response.token && response.user) {
-        localStorage.setItem('token', response.token);
-        setUser(response.user);
-        message.success('登录成功');
-        navigate('/', { replace: true });
-      } else {
-        throw new Error('Invalid response from server');
-      }
-    } catch (error) {
-      message.error('登录失败，请检查用户名和密码');
+      // 获取重定向路径
+      const from = (location.state as any)?.from?.pathname || '/dashboard';
+      debug.log('Redirecting to:', from);
+      navigate(from, { replace: true });
+    } catch (error: any) {
+      debug.error('Login failed:', error);
+      message.error(error.message || '登录失败，请检查用户名和密码');
     } finally {
       setLoading(false);
+      debug.log('Login process complete');
     }
   };
 
@@ -38,7 +60,7 @@ const LoginPage: React.FC = () => {
         <Form
           form={form}
           name="login"
-          initialValues={{ username: 'ipadmin', password: 'ipadmin' }}
+          initialValues={{ username: 'admin', password: 'admin123' }}
           onFinish={onFinish}
         >
           <Form.Item

@@ -12,11 +12,19 @@ import AgentManagement from '@/pages/agents';
 import UserManagement from '@/pages/users';
 import Settings from '@/pages/Settings';
 import ChangePassword from '@/pages/Settings/ChangePassword';
+import AuthGuard, { PublicRoute } from '@/components/AuthGuard';
+
+// Debug 函数
+const debug = {
+  log: (...args: any[]) => {
+    console.log('[Router Debug]', ...args);
+  }
+};
 
 const routes: RouteObject[] = [
   {
     path: '/',
-    element: <Layout />,
+    element: <AuthGuard><Layout /></AuthGuard>,
     children: [
       {
         path: '',
@@ -81,10 +89,11 @@ const routes: RouteObject[] = [
   },
   {
     path: '/login',
-    element: <Login />,
+    element: <PublicRoute><Login /></PublicRoute>,
   },
 ];
 
+debug.log('Creating router with routes:', routes);
 const router = createBrowserRouter(routes);
 
 export default router;

@@ -1,108 +1,145 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from typing import List
+from typing import Dict, Any, List
+import requests
+import json
+from datetime import datetime
+
 from app.database import get_db
-from app.models import user, agent, order, ip_resource
-from sqlalchemy import func
-from datetime import datetime, date
+from app.models.dashboard import ProxyInfo, ResourceUsage
+from app.config import settings
 
 router = APIRouter()
 
-@router.get("/statistics")
-async def get_dashboard_statistics(db: Session = Depends(get_db)):
-    # 获取当前月份的开始日期和上月开始日期
-    today = date.today()
-    current_month_start = date(today.year, today.month, 1)
-    if today.month == 1:
-        last_month_start = date(today.year - 1, 12, 1)
-    else:
-        last_month_start = date(today.year, today.month - 1, 1)
-    
+def fetch_from_ipipv_api(endpoint: str) -> Dict[str, Any]:
+    """从IPIPV API获取数据"""
     try:
-        # 获取用户统计
-        total_users = db.query(func.count(user.User.id)).scalar() or 0
-        active_users = db.query(func.count(user.User.id))\
-            .filter(user.User.status == 'active')\
-            .scalar() or 0
+        response = requests.get(f"{settings.IPIPV_API_BASE_URL}{endpoint}")
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch data from IPIPV API: {str(e)}")
+
+def get_proxy_info_from_db(db: Session) -> ProxyInfo:
+    """从数据库获取代理信息"""
+    proxy_info = db.query(ProxyInfo).first()
+    if not proxy_info:
+        raise HTTPException(status_code=404, detail="Proxy info not found in database")
+    return proxy_info
+
+def get_resource_usage_from_db(db: Session) -> tuple[List[ResourceUsage], List[ResourceUsage]]:
+    """从数据库获取资源使用信息"""
+    dynamic_resources = db.query(ResourceUsage).filter_by(resource_type="dynamic").all()
+    static_resources = db.query(ResourceUsage).filter_by(resource_type="static").all()
+    if not dynamic_resources or not static_resources:
+        raise HTTPException(status_code=404, detail="Resource usage data not found in database")
+    return dynamic_resources, static_resources
+
+def update_proxy_balance_from_api(db: Session, proxy_info: ProxyInfo) -> ProxyInfo:
+    """从API更新代理余额信息"""
+    try:
+        api_data = fetch_from_ipipv_api("/api/open/app/proxy/info/v2")
+        if api_data.get("code") == 0:
+            data = api_data.get("data", {})
+            proxy_info.balance = data.get("balance", proxy_info.balance)
+            proxy_info.updated_at = datetime.now()
+            db.commit()
+            db.refresh(proxy_info)
+    except Exception as e:
+        # API获取失败时继续使用数据库中的数据
+        pass
+    return proxy_info
+
+def update_resource_usage_from_api(db: Session, dynamic_resources: List[ResourceUsage], 
+                                 static_resources: List[ResourceUsage]) -> tuple[List[ResourceUsage], List[ResourceUsage]]:
+    """从API更新资源使用信息"""
+    try:
+        api_data = fetch_from_ipipv_api("/api/open/app/proxy/info/v2")
+        if api_data.get("code") == 0:
+            data = api_data.get("data", {})
             
-        # 获取代理商统计
-        total_agents = db.query(func.count(agent.Agent.id)).scalar() or 0
-        active_agents = db.query(func.count(agent.Agent.id))\
-            .filter(agent.Agent.status == 'active')\
-            .scalar() or 0
+            # 更新动态资源
+            for item in data.get("dynamic_resource", []):
+                resource = next((r for r in dynamic_resources if r.title == item.get("title")), None)
+                if resource:
+                    resource.used = item.get("used", resource.used)
+                    resource.today = item.get("today", resource.today)
+                    resource.percentage = item.get("percentage", resource.percentage)
+                    resource.updated_at = datetime.now()
             
-        # 获取收入统计
-        total_recharge = db.query(func.sum(order.Order.amount))\
-            .filter(order.Order.type == 'recharge')\
-            .scalar() or 0
+            # 更新静态资源
+            for item in data.get("static_resource", []):
+                resource = next((r for r in static_resources if r.title == item.get("title")), None)
+                if resource:
+                    resource.used = item.get("used", resource.used)
+                    resource.today = item.get("today", resource.today)
+                    resource.available = item.get("available", resource.available)
+                    resource.percentage = item.get("percentage", resource.percentage)
+                    resource.updated_at = datetime.now()
             
-        total_consumption = db.query(func.sum(order.Order.amount))\
-            .filter(order.Order.type == 'consumption')\
-            .scalar() or 0
-            
-        monthly_recharge = db.query(func.sum(order.Order.amount))\
-            .filter(order.Order.type == 'recharge')\
-            .filter(order.Order.created_at >= current_month_start)\
-            .scalar() or 0
-            
-        monthly_consumption = db.query(func.sum(order.Order.amount))\
-            .filter(order.Order.type == 'consumption')\
-            .filter(order.Order.created_at >= current_month_start)\
-            .scalar() or 0
-            
-        last_month_consumption = db.query(func.sum(order.Order.amount))\
-            .filter(order.Order.type == 'consumption')\
-            .filter(order.Order.created_at >= last_month_start)\
-            .filter(order.Order.created_at < current_month_start)\
-            .scalar() or 0
-            
-        # 获取IP资源统计
-        static_ips = db.query(func.count(ip_resource.IpResource.id))\
-            .filter(ip_resource.IpResource.type == 'static')\
-            .scalar() or 0
-            
-        dynamic_ips = db.query(func.count(ip_resource.IpResource.id))\
-            .filter(ip_resource.IpResource.type == 'dynamic')\
-            .scalar() or 0
-            
-        # 获取最近订单
-        recent_orders = db.query(order.Order)\
-            .order_by(order.Order.created_at.desc())\
-            .limit(5)\
-            .all()
-            
+            db.commit()
+            for resource in dynamic_resources + static_resources:
+                db.refresh(resource)
+    except Exception as e:
+        # API获取失败时继续使用数据库中的数据
+        pass
+    return dynamic_resources, static_resources
+
+@router.get("/dashboard/info")
+async def get_dashboard_info(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """获取仪表盘信息"""
+    try:
+        # 首先从数据库获取所有数据
+        proxy_info = get_proxy_info_from_db(db)
+        dynamic_resources, static_resources = get_resource_usage_from_db(db)
+        
+        # 尝试从API更新部分数据
+        proxy_info = update_proxy_balance_from_api(db, proxy_info)
+        dynamic_resources, static_resources = update_resource_usage_from_api(db, dynamic_resources, static_resources)
+        
+        # 返回数据
         return {
-            "users": {
-                "total": total_users,
-                "active": active_users
-            },
-            "agents": {
-                "total": total_agents,
-                "active": active_agents
-            },
-            "income": {
-                "total": total_recharge - total_consumption,
-                "monthly": monthly_recharge - monthly_consumption
-            },
-            "ips": {
-                "static": static_ips,
-                "dynamic": dynamic_ips
-            },
-            "totalRecharge": total_recharge,
-            "totalConsumption": total_consumption,
-            "balance": total_recharge - total_consumption,
-            "monthlyRecharge": monthly_recharge,
-            "monthlyConsumption": monthly_consumption,
-            "lastMonthConsumption": last_month_consumption,
-            "recentOrders": [{
-                "id": str(order.id),
-                "type": order.type,
-                "username": order.username,
-                "amount": order.amount,
-                "status": order.status,
-                "createdAt": order.created_at.isoformat()
-            } for order in recent_orders]
+            "balance": proxy_info.balance,
+            "total_recharge": proxy_info.total_recharge,
+            "total_consumption": proxy_info.total_consumption,
+            "month_recharge": proxy_info.month_recharge,
+            "month_consumption": proxy_info.month_consumption,
+            "last_month_consumption": proxy_info.last_month_consumption,
+            "dynamic_resource": [
+                {
+                    "title": r.title,
+                    "total": r.total,
+                    "used": r.used,
+                    "today": r.today,
+                    "last_month": r.last_month,
+                    "percentage": r.percentage
+                } for r in dynamic_resources
+            ],
+            "static_resource": [
+                {
+                    "title": r.title,
+                    "total": r.total,
+                    "used": r.used,
+                    "today": r.today,
+                    "last_month": r.last_month,
+                    "available": r.available,
+                    "percentage": r.percentage
+                } for r in static_resources
+            ]
         }
     except Exception as e:
-        print(f"Error getting dashboard statistics: {e}")
-        raise
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/dashboard/statistics")
+async def get_dashboard_statistics(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """获取流量使用统计"""
+    try:
+        # 从数据库获取数据
+        proxy_info = get_proxy_info_from_db(db)
+        
+        return {
+            "month_consumption": proxy_info.month_consumption,
+            "last_month_consumption": proxy_info.last_month_consumption
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

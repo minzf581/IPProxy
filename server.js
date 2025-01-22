@@ -201,20 +201,25 @@ app.post('/api/auth/login', (req, res) => {
   const { username, password } = req.body;
   
   // 验证用户名和密码
-  if (username === 'ipadmin' && password === 'ipadmin') {
+  if (username === 'admin' && password === 'admin123') {
     res.json({
-      code: 200,
-      msg: 'success',
+      code: 0,  // 修改为前端期望的 0
+      message: '登录成功',  // 使用 message 而不是 msg
       data: {
-        access_token: 'admin_token',
-        username: 'ipadmin',
-        role: 'admin'
+        token: 'admin_token',  // 使用 token 而不是 access_token
+        user: {
+          id: 1,
+          username: 'admin',
+          role: 'admin',
+          status: 'active',
+          createdAt: new Date().toISOString()
+        }
       }
     });
   } else {
     res.status(401).json({
       code: 401,
-      msg: '用户名或密码错误',
+      message: '用户名或密码错误',
       data: null
     });
   }
