@@ -3,14 +3,12 @@ import { RouteObject, createBrowserRouter } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import Login from '@/pages/login';
 import Dashboard from '@/pages/dashboard';
-import StaticIP from '@/pages/IP/Static';
-import DynamicOrders from '@/pages/Order/dynamic';
-import StaticOrders from '@/pages/Order/static';
+import DynamicOrderPage from '@/pages/Order/dynamic';
+import StaticOrderPage from '@/pages/Order/static';
 import AgentOrders from '@/pages/Order/agent-orders';
 import AgentManagement from '@/pages/agents';
-import UserManagement from '@/pages/agents/users';
-import Settings from '@/pages/Settings';
-import ChangePassword from '@/pages/Settings/ChangePassword';
+import UserManagement from '@/pages/users';
+import SettingsPage from '@/pages/Settings/index';
 import AuthGuard, { PublicRoute } from '@/components/AuthGuard';
 
 // Debug 函数
@@ -34,19 +32,15 @@ const routes: RouteObject[] = [
         element: <Dashboard />,
       },
       {
-        path: 'static-ip',
-        element: <StaticIP />,
-      },
-      {
         path: 'order',
         children: [
           {
             path: 'dynamic',
-            element: <DynamicOrders />,
+            element: <DynamicOrderPage />,
           },
           {
             path: 'static',
-            element: <StaticOrders />,
+            element: <StaticOrderPage />,
           },
           {
             path: 'agent',
@@ -62,18 +56,14 @@ const routes: RouteObject[] = [
             element: <AgentManagement />,
           },
           {
-            path: 'user',
+            path: 'users',
             element: <UserManagement />,
           },
         ],
       },
       {
-        path: 'system',
-        element: <Settings />,
-      },
-      {
-        path: 'settings/change-password',
-        element: <ChangePassword />,
+        path: 'settings',
+        element: <SettingsPage />,
       },
     ],
   },

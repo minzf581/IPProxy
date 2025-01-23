@@ -1,261 +1,230 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Card, Row, Col, Spin, Progress } from 'antd';
-import { getDashboardData, DashboardData } from '@/services/dashboard';
+import React from 'react';
+import { Card, Row, Col, Progress, Select, Typography } from 'antd';
+import { getDashboardData } from '@/services/dashboard';
+import { getAgentList } from '@/services/agentService';
+import { useLocation } from 'react-router-dom';
+import type { AgentInfo } from '@/types/agent';
 import styles from './dashboard.module.less';
 
-// 预设的默认资源数据
-const defaultDashboardData: DashboardData = {
-  balance: 0,
-  total_recharge: 0,
-  total_consumption: 0,
-  month_recharge: 0,
-  month_consumption: 0,
-  last_month_consumption: 0,
-  dynamic_resources: [
-    {
-      title: '动态资源1',
-      total: '1024',
-      used: '28',
-      today: '256',
-      lastMonth: '320',
-      percentage: 50
-    },
-    {
-      title: '动态资源2',
-      total: '2048',
-      used: '64',
-      today: '512',
-      lastMonth: '486',
-      percentage: 75
-    },
-    {
-      title: '动态资源3',
-      total: '4096',
-      used: '128',
-      today: '1024',
-      lastMonth: '896',
-      percentage: 25
-    }
-  ],
-  static_resources: [
-    {
-      title: '静态资源1',
-      total: '1000',
-      used: '120',
-      today: '200',
-      lastMonth: '180',
-      available: '300',
-      percentage: 60
-    },
-    {
-      title: '静态资源2',
-      total: '2000',
-      used: '220',
-      today: '400',
-      lastMonth: '380',
-      available: '600',
-      percentage: 80
-    },
-    {
-      title: '静态资源3',
-      total: '3000',
-      used: '350',
-      today: '600',
-      lastMonth: '550',
-      available: '900',
-      percentage: 40
-    },
-    {
-      title: '静态资源4',
-      total: '1500',
-      used: '150',
-      today: '300',
-      lastMonth: '280',
-      available: '450',
-      percentage: 55
-    },
-    {
-      title: '静态资源5',
-      total: '2500',
-      used: '250',
-      today: '500',
-      lastMonth: '480',
-      available: '750',
-      percentage: 70
-    },
-    {
-      title: '静态资源7',
-      total: '3500',
-      used: '450',
-      today: '700',
-      lastMonth: '680',
-      available: '1050',
-      percentage: 45
-    }
-  ]
-};
+const { Title } = Typography;
+const { Option } = Select;
 
 const Dashboard: React.FC = () => {
-  const [loading, setLoading] = useState(true);
-  const [dashboardData, setDashboardData] = useState<DashboardData>(defaultDashboardData);
+  const location = useLocation();
+  const [loading, setLoading] = React.useState(false);
+  const [currentAgent, setCurrentAgent] = React.useState<AgentInfo | null>(null);
+  const [agents, setAgents] = React.useState<AgentInfo[]>([]);
+  const [dashboardData, setDashboardData] = React.useState<any>(null);
 
-  const fetchData = useCallback(async () => {
+  // 从 URL 参数中获取代理商 ID
+  const searchParams = new URLSearchParams(location.search);
+  const agentId = searchParams.get('agentId');
+
+  // 加载代理商列表
+  const loadAgents = async () => {
+    try {
+      const result = await getAgentList({ page: 1, pageSize: 100 });
+      setAgents(result.list);
+    } catch (error) {
+      console.error('Failed to load agents:', error);
+    }
+  };
+
+  // 加载仪表盘数据
+  const loadDashboardData = async (id?: string) => {
     try {
       setLoading(true);
-      const response = await getDashboardData();
-      if (response.code === 0) {
-        setDashboardData(response.data);
-      }
+      const data = await getDashboardData(id);
+      setDashboardData(data);
     } catch (error) {
-      console.error('获取仪表盘数据失败:', error);
+      console.error('Failed to load dashboard data:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  // 处理代理商切换
+  const handleAgentChange = (value: string) => {
+    const agent = agents.find(a => String(a.id) === value);
+    setCurrentAgent(agent || null);
+    loadDashboardData(value);
+  };
+
+  React.useEffect(() => {
+    loadAgents();
   }, []);
 
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+  React.useEffect(() => {
+    if (agentId) {
+      const agent = agents.find(a => String(a.id) === agentId);
+      if (agent) {
+        setCurrentAgent(agent);
+        loadDashboardData(agentId);
+      }
+    } else {
+      loadDashboardData();
+    }
+  }, [agentId, agents]);
 
-  if (loading) {
-    return <div className={styles.loading}><Spin size="large" /></div>;
+  if (!dashboardData) {
+    return null;
   }
-
-  const formatNumber = (num: string | number | null | undefined) => {
-    if (num == null) return '0';
-    const value = typeof num === 'string' ? parseFloat(num) : num;
-    return value.toLocaleString();
-  };
 
   return (
     <div className={styles.dashboard}>
+      <div className={styles.header}>
+        <Title level={4} style={{ margin: 0 }}>
+          {currentAgent ? `${currentAgent.app_username} 的仪表盘` : '我的仪表盘'}
+        </Title>
+        <Select
+          style={{ width: 200 }}
+          placeholder="切换用户"
+          value={currentAgent?.id}
+          onChange={handleAgentChange}
+          allowClear
+        >
+          <Option value="">我的仪表盘</Option>
+          {agents.map(agent => (
+            <Option key={agent.id} value={agent.id}>
+              {agent.app_username}
+            </Option>
+          ))}
+        </Select>
+      </div>
+
       <Row gutter={[16, 16]}>
         <Col span={4}>
-          <Card className={styles.statisticCard}>
-            <div className={styles.title}>累计充值</div>
-            <div className={styles.value}>
-              {formatNumber(dashboardData.total_recharge)}
+          <Card>
+            <div className={styles.statisticCard}>
+              <div className={styles.title}>累计充值</div>
+              <div className={styles.value}>
+                ¥{dashboardData.statistics?.total_recharge?.toLocaleString() || 0}
+              </div>
             </div>
           </Card>
         </Col>
         <Col span={4}>
-          <Card className={styles.statisticCard}>
-            <div className={styles.title}>累计消费</div>
-            <div className={styles.value}>
-              {formatNumber(dashboardData.total_consumption)}
+          <Card>
+            <div className={styles.statisticCard}>
+              <div className={styles.title}>累计消费</div>
+              <div className={styles.value}>
+                ¥{dashboardData.statistics?.total_consumption?.toLocaleString() || 0}
+              </div>
             </div>
           </Card>
         </Col>
         <Col span={4}>
-          <Card className={styles.statisticCard}>
-            <div className={styles.title}>剩余金额</div>
-            <div className={styles.value}>
-              {formatNumber(dashboardData.balance)}
+          <Card>
+            <div className={styles.statisticCard}>
+              <div className={styles.title}>剩余金额</div>
+              <div className={styles.value}>
+                ¥{dashboardData.statistics?.balance?.toLocaleString() || 0}
+              </div>
             </div>
           </Card>
         </Col>
         <Col span={4}>
-          <Card className={styles.statisticCard}>
-            <div className={styles.title}>本月充值</div>
-            <div className={styles.value}>
-              {formatNumber(dashboardData.month_recharge)}
+          <Card>
+            <div className={styles.statisticCard}>
+              <div className={styles.title}>本月充值</div>
+              <div className={styles.value}>
+                ¥{dashboardData.statistics?.monthly_recharge?.toLocaleString() || 0}
+              </div>
             </div>
           </Card>
         </Col>
         <Col span={4}>
-          <Card className={styles.statisticCard}>
-            <div className={styles.title}>本月消费</div>
-            <div className={styles.value}>
-              {formatNumber(dashboardData.month_consumption)}
+          <Card>
+            <div className={styles.statisticCard}>
+              <div className={styles.title}>本月消费</div>
+              <div className={styles.value}>
+                ¥{dashboardData.statistics?.monthly_consumption?.toLocaleString() || 0}
+              </div>
             </div>
           </Card>
         </Col>
         <Col span={4}>
-          <Card className={styles.statisticCard}>
-            <div className={styles.title}>上月消费</div>
-            <div className={styles.value}>
-              {formatNumber(dashboardData.last_month_consumption)}
+          <Card>
+            <div className={styles.statisticCard}>
+              <div className={styles.title}>上月消费</div>
+              <div className={styles.value}>
+                ¥{dashboardData.statistics?.last_month_consumption?.toLocaleString() || 0}
+              </div>
             </div>
           </Card>
         </Col>
       </Row>
 
-      <div className={styles.sectionTitle}>动态资源使用情况</div>
-      <Row gutter={[16, 16]}>
-        {dashboardData.dynamic_resources.map((resource, index) => (
-          <Col span={8} key={`dynamic-${index}`}>
-            <Card className={styles.resourceCard}>
-              <div className={styles.resourceTitle}>{resource.title}</div>
-              <div className={styles.resourceContent}>
-                <div className={styles.resourceInfo}>
-                  <div className={styles.infoItem}>
-                    <span className={styles.label}>累计：</span>
-                    <span className={styles.value}>{formatNumber(resource.total)}G</span>
-                  </div>
-                  <div className={styles.infoItem}>
-                    <span className={styles.label}>本月：</span>
-                    <span className={styles.value}>{formatNumber(resource.today)}G</span>
-                  </div>
-                  <div className={styles.infoItem}>
-                    <span className={styles.label}>上月：</span>
-                    <span className={styles.value}>{formatNumber(resource.lastMonth)}G</span>
-                  </div>
-                  <div className={styles.infoItem}>
-                    <span className={styles.label}>今日：</span>
-                    <span className={styles.value}>{formatNumber(resource.used)}G</span>
-                  </div>
-                </div>
-                <Progress 
-                  percent={resource.percentage} 
-                  status="active"
-                  format={(percent) => `${percent}%`}
-                />
-              </div>
-            </Card>
-          </Col>
-        ))}
+      <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
+        <Col span={24}>
+          <Card title="动态资源使用情况">
+            <Row gutter={[16, 16]}>
+              {dashboardData.dynamic_resources?.map((resource: any, index: number) => (
+                <Col span={8} key={index}>
+                  <Card title={`动态资源${index + 1}`} size="small">
+                    <Progress percent={resource.usage_rate} />
+                    <div className={styles.resourceInfo}>
+                      <div className={styles.infoItem}>
+                        <span className={styles.label}>累计：</span>
+                        <span className={styles.value}>{resource.total_usage}G</span>
+                      </div>
+                      <div className={styles.infoItem}>
+                        <span className={styles.label}>本月：</span>
+                        <span className={styles.value}>{resource.monthly_usage}G</span>
+                      </div>
+                      <div className={styles.infoItem}>
+                        <span className={styles.label}>今日：</span>
+                        <span className={styles.value}>{resource.daily_usage}G</span>
+                      </div>
+                      <div className={styles.infoItem}>
+                        <span className={styles.label}>上月：</span>
+                        <span className={styles.value}>{resource.last_month_usage}G</span>
+                      </div>
+                    </div>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+          </Card>
+        </Col>
       </Row>
 
-      <div className={styles.sectionTitle}>静态资源使用情况</div>
-      <Row gutter={[16, 16]}>
-        {dashboardData.static_resources.map((resource, index) => (
-          <Col span={8} key={`static-${index}`}>
-            <Card className={styles.resourceCard}>
-              <div className={styles.resourceTitle}>{resource.title}</div>
-              <div className={styles.resourceContent}>
-                <div className={styles.resourceInfo}>
-                  <div className={styles.infoItem}>
-                    <span className={styles.label}>总开通：</span>
-                    <span className={styles.value}>{formatNumber(resource.total)}条</span>
-                  </div>
-                  <div className={styles.infoItem}>
-                    <span className={styles.label}>本月可用：</span>
-                    <span className={styles.value}>{formatNumber(resource.today)}条</span>
-                  </div>
-                  <div className={styles.infoItem}>
-                    <span className={styles.label}>上月：</span>
-                    <span className={styles.value}>{formatNumber(resource.lastMonth)}条</span>
-                  </div>
-                  <div className={styles.infoItem}>
-                    <span className={styles.label}>剩余可用：</span>
-                    <span className={styles.value}>{formatNumber(resource.available)}条</span>
-                  </div>
-                  <div className={styles.infoItem}>
-                    <span className={styles.label}>已过期：</span>
-                    <span className={styles.value}>{formatNumber(resource.used)}条</span>
-                  </div>
-                </div>
-                <Progress 
-                  percent={resource.percentage} 
-                  status="active"
-                  format={(percent) => `${percent}%`}
-                />
-              </div>
-            </Card>
-          </Col>
-        ))}
+      <Row gutter={[16, 16]} style={{ marginTop: '16px' }}>
+        <Col span={24}>
+          <Card title="静态资源使用情况">
+            <Row gutter={[16, 16]}>
+              {dashboardData.static_resources?.map((resource: any, index: number) => (
+                <Col span={6} key={index}>
+                  <Card title={`静态资源${index + 1}`} size="small">
+                    <Progress percent={resource.usage_rate} />
+                    <div className={styles.resourceInfo}>
+                      <div className={styles.infoItem}>
+                        <span className={styles.label}>累计开通：</span>
+                        <span className={styles.value}>{resource.total_opened}条</span>
+                      </div>
+                      <div className={styles.infoItem}>
+                        <span className={styles.label}>上月开通：</span>
+                        <span className={styles.value}>{resource.last_month_opened}条</span>
+                      </div>
+                      <div className={styles.infoItem}>
+                        <span className={styles.label}>本月开通：</span>
+                        <span className={styles.value}>{resource.monthly_opened}条</span>
+                      </div>
+                      <div className={styles.infoItem}>
+                        <span className={styles.label}>剩余可用：</span>
+                        <span className={styles.value}>{resource.available}条</span>
+                      </div>
+                      <div className={styles.infoItem}>
+                        <span className={styles.label}>已过期：</span>
+                        <span className={styles.value}>{resource.expired}条</span>
+                      </div>
+                    </div>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+          </Card>
+        </Col>
       </Row>
     </div>
   );

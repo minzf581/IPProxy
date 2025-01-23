@@ -39,9 +39,11 @@ export async function createAgent(params: CreateAgentForm): Promise<AgentInfo> {
   const response = await api.post<ApiResponse<AgentInfo>>('/api/open/app/proxy/user/v2', {
     appUsername: params.username,
     password: params.password,
-    limitFlow: params.limitFlow,
+    balance: params.balance,
+    contact: params.contact,
     remark: params.remark,
-    status: params.status ? 1 : 2
+    status: params.status ? 1 : 2,
+    limitFlow: 1000
   });
   debugAgent.info('Create agent response:', response.data);
   return response.data.data;
@@ -87,4 +89,11 @@ export async function getAgentUsers(params: {
   });
   debugAgent.info('Agent users response:', response.data);
   return response.data.data;
+}
+
+export async function updateAgentStatus(agentId: number, status: string): Promise<ApiResponse<AgentInfo>> {
+  const { data } = await api.put<ApiResponse<AgentInfo>>(`/api/open/app/agent/${agentId}/status`, null, {
+    params: { status }
+  });
+  return data;
 }

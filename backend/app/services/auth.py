@@ -90,8 +90,8 @@ async def authenticate_user(username: str, password: str):
         user = User(
             id=TEST_USER["id"],
             username=TEST_USER["username"],
-            hashed_password=TEST_USER["hashed_password"],
-            email="admin@example.com",  # 添加默认邮箱
+            password=TEST_USER["hashed_password"],
+            email="admin@example.com",
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
@@ -134,8 +134,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         user = User(
             id=TEST_USER["id"],
             username=TEST_USER["username"],
-            hashed_password=TEST_USER["hashed_password"],
-            email="admin@example.com",  # 添加默认邮箱
+            password=TEST_USER["hashed_password"],
+            email="admin@example.com",
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )

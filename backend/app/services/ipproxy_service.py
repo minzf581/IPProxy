@@ -119,7 +119,8 @@ class IPProxyService:
         url = f"{self.base_url}{endpoint}"
         try:
             print(f"发送请求到: {url}")
-            print(f"请求数据: {json.dumps(request_data, indent=2)}")
+            print(f"请求参数: {json.dumps(params, indent=2)}")
+            print(f"加密后的请求数据: {json.dumps(request_data, indent=2)}")
             
             response = requests.post(url, json=request_data)
             
@@ -131,19 +132,23 @@ class IPProxyService:
                 
             # 解析响应
             result = response.json()
-            if result.get('code') != 200:
-                raise Exception(f"API返回错误: {result.get('msg')}")
+            print(f"解析后的响应: {json.dumps(result, indent=2)}")
+            
+            if result.get('code') != 0:
+                error_msg = result.get('msg') or result.get('message') or "未知错误"
+                raise Exception(f"API返回错误: {error_msg}")
                 
             # 解密响应数据
             if result.get('data'):
                 decrypted_data = self._decrypt_response(result.get('data'))
+                print(f"解密后的数据: {json.dumps(decrypted_data, indent=2) if decrypted_data else None}")
                 if decrypted_data:
                     return decrypted_data
             return result
         except Exception as e:
             print(f"请求失败: {str(e)}")
             print(f"请求URL: {url}")
-            print(f"请求数据: {json.dumps(request_data)}")
+            print(f"请求数据: {json.dumps(request_data, indent=2)}")
             raise e
 
     def create_proxy_user(self, params: dict) -> dict:
@@ -151,8 +156,26 @@ class IPProxyService:
         return self._make_request('/api/open/app/proxy/user/v2', params)
 
     def update_proxy_user(self, params: dict) -> dict:
-        """更新代理用户"""
-        return self._make_request('/api/open/app/proxy/user/update/v2', params)
+        """更新代理用户
+        Args:
+            params: {
+                appUsername: str,       # 子账号用户名
+                appMainUsername: str,   # 主账号用户名
+                mainUsername: str,      # 主账号平台账号
+                status: int,           # 状态：1=启用，2=禁用
+                limitFlow: int,        # 流量限制(GB)
+                remark: str,           # 备注
+                balance: float         # 余额
+            }
+        """
+        print(f"[IPProxyService] 更新代理用户，参数：{json.dumps(params, indent=2, ensure_ascii=False)}")
+        try:
+            response = self._make_request('/api/open/app/proxy/user/v2', params)
+            print(f"[IPProxyService] API响应：{json.dumps(response, indent=2, ensure_ascii=False)}")
+            return response
+        except Exception as e:
+            print(f"[IPProxyService] 更新代理用户失败：{str(e)}")
+            raise e
 
     def get_app_info(self) -> Dict[str, Any]:
         """获取应用信息（余额、总充值、总消费）"""

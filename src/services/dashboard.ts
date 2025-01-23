@@ -80,28 +80,30 @@ export interface BackendResponse {
 }
 
 export interface DashboardData {
-  balance: number;
-  total_recharge: number;
-  total_consumption: number;
-  month_recharge: number;
-  month_consumption: number;
-  last_month_consumption: number;
+  statistics: {
+    balance: number;
+    total_recharge: number;
+    total_consumption: number;
+    monthly_recharge: number;
+    monthly_consumption: number;
+    last_month_consumption: number;
+  };
   dynamic_resources: Array<{
-    title: string;
-    total: string;
-    used: string;
-    today: string;
-    lastMonth: string;
-    percentage: number;
+    name: string;
+    total_usage: number;
+    monthly_usage: number;
+    daily_usage: number;
+    last_month_usage: number;
+    usage_rate: number;
   }>;
   static_resources: Array<{
-    title: string;
-    total: string;
-    used: string;
-    today: string;
-    lastMonth: string;
-    available: string;
-    percentage: number;
+    name: string;
+    total_opened: number;
+    monthly_opened: number;
+    last_month_opened: number;
+    available: number;
+    expired: number;
+    usage_rate: number;
   }>;
 }
 
@@ -113,92 +115,94 @@ export interface ApiResponse<T> {
 
 // 预设的默认资源数据
 const defaultDashboardData: DashboardData = {
-  balance: 0,
-  total_recharge: 0,
-  total_consumption: 0,
-  month_recharge: 0,
-  month_consumption: 0,
-  last_month_consumption: 0,
+  statistics: {
+    balance: 0,
+    total_recharge: 0,
+    total_consumption: 0,
+    monthly_recharge: 0,
+    monthly_consumption: 0,
+    last_month_consumption: 0,
+  },
   dynamic_resources: [
     {
-      title: '动态资源1',
-      total: '1024',
-      used: '28',
-      today: '256',
-      lastMonth: '320',
-      percentage: 50
+      name: '动态资源1',
+      total_usage: 1024,
+      monthly_usage: 0,
+      daily_usage: 0,
+      last_month_usage: 0,
+      usage_rate: 50
     },
     {
-      title: '动态资源2',
-      total: '2048',
-      used: '64',
-      today: '512',
-      lastMonth: '486',
-      percentage: 75
+      name: '动态资源2',
+      total_usage: 2048,
+      monthly_usage: 0,
+      daily_usage: 0,
+      last_month_usage: 0,
+      usage_rate: 75
     },
     {
-      title: '动态资源3',
-      total: '4096',
-      used: '128',
-      today: '1024',
-      lastMonth: '896',
-      percentage: 25
+      name: '动态资源3',
+      total_usage: 4096,
+      monthly_usage: 0,
+      daily_usage: 0,
+      last_month_usage: 0,
+      usage_rate: 25
     }
   ],
   static_resources: [
     {
-      title: '静态资源1',
-      total: '1000',
-      used: '120',
-      today: '200',
-      lastMonth: '180',
-      available: '300',
-      percentage: 60
+      name: '静态资源1',
+      total_opened: 1000,
+      monthly_opened: 0,
+      last_month_opened: 0,
+      available: 300,
+      expired: 0,
+      usage_rate: 60
     },
     {
-      title: '静态资源2',
-      total: '2000',
-      used: '220',
-      today: '400',
-      lastMonth: '380',
-      available: '600',
-      percentage: 80
+      name: '静态资源2',
+      total_opened: 2000,
+      monthly_opened: 0,
+      last_month_opened: 0,
+      available: 600,
+      expired: 0,
+      usage_rate: 80
     },
     {
-      title: '静态资源3',
-      total: '3000',
-      used: '350',
-      today: '600',
-      lastMonth: '550',
-      available: '900',
-      percentage: 40
+      name: '静态资源3',
+      total_opened: 3000,
+      monthly_opened: 0,
+      last_month_opened: 0,
+      available: 900,
+      expired: 0,
+      usage_rate: 40
     },
     {
-      title: '静态资源4',
-      total: '1500',
-      used: '150',
-      today: '300',
-      lastMonth: '280',
-      available: '450',
-      percentage: 55
+      name: '静态资源4',
+      total_opened: 1500,
+      monthly_opened: 0,
+      last_month_opened: 0,
+      available: 450,
+      expired: 0,
+      usage_rate: 55
     },
     {
-      title: '静态资源5',
-      total: '2500',
-      used: '250',
-      today: '500',
-      lastMonth: '480',
-      available: '750',
-      percentage: 70
+      name: '静态资源5',
+      total_opened: 2500,
+      monthly_opened: 0,
+      last_month_opened: 0,
+      available: 750,
+      expired: 0,
+      usage_rate: 70
     },
     {
-      title: '静态资源7',
-      total: '3500',
-      used: '450',
-      today: '700',
-      lastMonth: '680',
-      available: '1050',
-      percentage: 45
+      name: '静态资源7',
+      total_opened: 3500,
+      monthly_opened: 0,
+      last_month_opened: 0,
+      available: 1050,
+      expired: 0,
+      usage_rate: 45
     }
   ]
 };
@@ -211,13 +215,14 @@ function transformBackendData(backendData: BackendResponse): DashboardData {
   }
 
   return {
-    balance: backendData.app_info.residential.balance + backendData.app_info.datacenter.balance,
-    total_recharge: 0,
-    total_consumption: 0,
-    month_recharge: 0,
-    month_consumption: backendData.statistics.monthlyUsage,
-    last_month_consumption: backendData.statistics.lastMonthUsage,
-    // 保持预设的资源数据
+    statistics: {
+      balance: backendData.app_info.residential.balance + backendData.app_info.datacenter.balance,
+      total_recharge: 0,
+      total_consumption: 0,
+      monthly_recharge: backendData.statistics.monthlyUsage,
+      monthly_consumption: backendData.statistics.dailyUsage,
+      last_month_consumption: backendData.statistics.lastMonthUsage,
+    },
     dynamic_resources: defaultDashboardData.dynamic_resources,
     static_resources: defaultDashboardData.static_resources
   };
@@ -251,13 +256,13 @@ function calculatePercentage(used: number, total: number): number {
   return (used / total) * 100;
 }
 
-export async function getDashboardData(): Promise<ApiResponse<DashboardData>> {
-  const response = await request<ApiResponse<BackendResponse>>('/api/open/app/dashboard/info/v2');
-  return {
-    code: response.code,
-    message: response.message,
-    data: transformBackendData(response.data)
-  };
+export async function getDashboardData(agentId?: string): Promise<DashboardData> {
+  const url = agentId ? `/api/open/app/dashboard/info/v2?agent_id=${agentId}` : '/api/open/app/dashboard/info/v2';
+  const { data } = await request<ApiResponse<DashboardData>>(url);
+  if (data.code === 0) {
+    return data.data;
+  }
+  throw new Error(data.message);
 }
 
 export async function getDashboardStatistics(): Promise<{

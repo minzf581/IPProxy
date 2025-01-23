@@ -3,16 +3,14 @@ import {
   Card,
   Form,
   Input,
-  Select,
   DatePicker,
   Button,
   Table,
-  Tag,
   Space,
   message,
   Modal
 } from 'antd';
-import { SearchOutlined, ReloadOutlined, EyeOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { SearchOutlined, ReloadOutlined, EyeOutlined } from '@ant-design/icons';
 import type { TableProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -25,9 +23,7 @@ interface OrderData {
   orderNo: string;
   agentId: string;
   amount: number;
-  status: 'pending' | 'paid';
   createTime: string;
-  payTime?: string;
 }
 
 const AgentOrders: React.FC = () => {
@@ -66,26 +62,9 @@ const AgentOrders: React.FC = () => {
       render: (amount: number) => `¥${amount.toFixed(2)}`,
     },
     {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 100,
-      render: (status: 'pending' | 'paid') => (
-        <Tag color={status === 'paid' ? 'success' : 'warning'}>
-          {status === 'paid' ? '已支付' : '待支付'}
-        </Tag>
-      ),
-    },
-    {
       title: '创建时间',
       dataIndex: 'createTime',
       key: 'createTime',
-      width: 180,
-    },
-    {
-      title: '支付时间',
-      dataIndex: 'payTime',
-      key: 'payTime',
       width: 180,
     },
     {
@@ -95,15 +74,6 @@ const AgentOrders: React.FC = () => {
       width: 160,
       render: (_: unknown, record: OrderData) => (
         <Space size="middle">
-          {record.status === 'pending' && (
-            <Button 
-              type="link" 
-              icon={<CheckCircleOutlined />}
-              onClick={() => handleConfirmPayment(record.orderNo)}
-            >
-              确认支付
-            </Button>
-          )}
           <Button 
             type="link" 
             icon={<EyeOutlined />}
@@ -149,9 +119,7 @@ const AgentOrders: React.FC = () => {
         orderNo: `DD${dayjs().format('YYYYMMDD')}${String(index + 1).padStart(6, '0')}`,
         agentId: `agent${index + 1}`,
         amount: Math.floor(Math.random() * 10000) / 100,
-        status: Math.random() > 0.5 ? 'paid' : 'pending',
         createTime: dayjs().subtract(index, 'hour').format('YYYY-MM-DD HH:mm:ss'),
-        payTime: Math.random() > 0.5 ? dayjs().subtract(index, 'hour').add(30, 'minute').format('YYYY-MM-DD HH:mm:ss') : undefined,
       }));
       
       setData(mockData);
@@ -185,20 +153,6 @@ const AgentOrders: React.FC = () => {
     });
   };
 
-  // 确认支付
-  const handleConfirmPayment = async (orderNo: string) => {
-    try {
-      // TODO: 替换为实际的API调用
-      await fetch(`/api/agent-orders/${orderNo}/confirm`, {
-        method: 'POST',
-      });
-      message.success('支付确认成功');
-      handleSearch();
-    } catch (error) {
-      message.error('操作失败');
-    }
-  };
-
   // 查看详情
   const handleViewDetails = (order: OrderData) => {
     setCurrentOrder(order);
@@ -222,29 +176,11 @@ const AgentOrders: React.FC = () => {
           className={styles.searchForm}
           onFinish={handleSearch}
         >
-          <Form.Item name="orderNo">
-            <Input
-              placeholder="请输入订单号"
-              allowClear
-              style={{ width: 200 }}
-            />
-          </Form.Item>
           <Form.Item name="agentId">
             <Input
               placeholder="请输入代理商账号"
               allowClear
               style={{ width: 200 }}
-            />
-          </Form.Item>
-          <Form.Item name="status">
-            <Select
-              placeholder="订单状态"
-              allowClear
-              style={{ width: 120 }}
-              options={[
-                { label: '待支付', value: 'pending' },
-                { label: '已支付', value: 'paid' },
-              ]}
             />
           </Form.Item>
           <Form.Item name="dateRange">
@@ -275,17 +211,11 @@ const AgentOrders: React.FC = () => {
         <Table
           columns={columns}
           dataSource={data}
-          rowKey="orderNo"
-          pagination={{
-            ...pagination,
-            showQuickJumper: true,
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条记录`,
-          }}
+          rowKey="id"
           loading={loading}
+          pagination={pagination}
           onChange={handleTableChange}
-          scroll={{ x: 1200 }}
-          className={styles.table}
+          scroll={{ x: 1000 }}
         />
       </Card>
 
@@ -294,22 +224,13 @@ const AgentOrders: React.FC = () => {
         open={detailVisible}
         onCancel={() => setDetailVisible(false)}
         footer={null}
-        width={600}
       >
         {currentOrder && (
-          <div className={styles.orderDetail}>
-            <p><strong>订单号：</strong>{currentOrder.orderNo}</p>
-            <p><strong>代理商：</strong>{currentOrder.agentId}</p>
-            <p><strong>金额：</strong>¥{currentOrder.amount.toFixed(2)}</p>
-            <p><strong>状态：</strong>
-              <Tag color={currentOrder.status === 'paid' ? 'success' : 'warning'}>
-                {currentOrder.status === 'paid' ? '已支付' : '待支付'}
-              </Tag>
-            </p>
-            <p><strong>创建时间：</strong>{currentOrder.createTime}</p>
-            {currentOrder.payTime && (
-              <p><strong>支付时间：</strong>{currentOrder.payTime}</p>
-            )}
+          <div>
+            <p>订单号：{currentOrder.orderNo}</p>
+            <p>代理商：{currentOrder.agentId}</p>
+            <p>金额：¥{currentOrder.amount.toFixed(2)}</p>
+            <p>创建时间：{currentOrder.createTime}</p>
           </div>
         )}
       </Modal>

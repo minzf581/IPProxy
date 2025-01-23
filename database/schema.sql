@@ -1,5 +1,15 @@
 -- IP Proxy System Database Schema
 
+-- Resource Types Table
+CREATE TABLE resource_types (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50) NOT NULL,
+    type ENUM('dynamic', 'static') NOT NULL,
+    price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
 -- User Table
 CREATE TABLE users (
     id INT PRIMARY KEY AUTO_INCREMENT,

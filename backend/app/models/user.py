@@ -1,25 +1,31 @@
-from sqlalchemy import Column, Integer, String, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, DateTime
+from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
+from app.models.base import Base, TimestampMixin
 
-Base = declarative_base()
-
-class User(Base):
-    __tablename__ = "users"
+class User(Base, TimestampMixin):
+    __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, index=True)
-    email = Column(String(100), unique=True, index=True)
-    hashed_password = Column(String(100))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    username = Column(String(50), unique=True, nullable=False)
+    password = Column(String(100), nullable=False)
+    email = Column(String(100))
+    agent_id = Column(Integer, ForeignKey('agents.id'))
+    status = Column(Enum('active', 'disabled', name='user_status'), default='active')
+    balance = Column(Float, default=0.00)
+
+    agent = relationship("Agent", back_populates="users")
+    resource_usage_history = relationship("ResourceUsageHistory", back_populates="user")
+    instances = relationship("Instance", back_populates="user")
 
     def to_dict(self):
-        """转换为字典格式"""
         return {
-            "id": self.id,
-            "username": self.username,
-            "email": self.email,
-            "createdAt": self.created_at.isoformat() if self.created_at else None,
-            "updatedAt": self.updated_at.isoformat() if self.updated_at else None
+            'id': self.id,
+            'username': self.username,
+            'email': self.email,
+            'agent_id': self.agent_id,
+            'status': self.status,
+            'balance': float(self.balance) if self.balance is not None else 0.00,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

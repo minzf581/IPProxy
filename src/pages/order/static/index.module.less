@@ -4,26 +4,76 @@
       border-radius: 8px;
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
     }
+
+    .ant-form {
+      background: #fafafa;
+      padding: 24px;
+      border-radius: 8px;
+      margin-bottom: 24px;
+
+      .ant-form-item {
+        margin-bottom: 0;
+      }
+
+      .ant-input,
+      .ant-select .ant-select-selector,
+      .ant-picker,
+      .ant-cascader-picker {
+        border-radius: 4px;
+      }
+    }
   }
 }
 
-.searchForm {
-  margin-bottom: 24px;
+.buttonGroup {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  height: 32px;
 
   :global {
-    .ant-form-item {
-      margin-bottom: 16px;
-    }
-
-    .ant-input-affix-wrapper,
-    .ant-input,
-    .ant-select .ant-select-selector,
-    .ant-picker {
-      border-radius: 4px;
-    }
-
     .ant-btn {
+      margin-left: 8px;
+      height: 32px;
+      padding: 4px 16px;
       border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+
+      .anticon {
+        font-size: 14px;
+      }
+
+      &:first-child {
+        margin-left: 0;
+      }
+    }
+  }
+}
+
+.statistics {
+  margin: 24px 0;
+  
+  :global {
+    .ant-statistic {
+      background: #fff;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+
+      .ant-statistic-title {
+        color: rgba(0, 0, 0, 0.45);
+        font-size: 14px;
+        margin-bottom: 8px;
+      }
+
+      .ant-statistic-content {
+        color: rgba(0, 0, 0, 0.85);
+        font-size: 24px;
+        font-weight: 500;
+      }
     }
   }
 }
@@ -32,38 +82,36 @@
   :global {
     .ant-table {
       border-radius: 8px;
+      overflow: hidden;
     }
 
     .ant-table-thead > tr > th {
       background: #fafafa;
+      font-weight: 500;
     }
 
     .ant-table-tbody > tr:hover > td {
       background: #f5f5f5;
     }
 
-    .ant-badge-status-dot {
-      width: 8px;
-      height: 8px;
-    }
-
-    .ant-btn-link {
-      padding: 0 8px;
+    .ant-table-row {
+      cursor: pointer;
     }
   }
 }
 
 .orderDetail {
-  padding: 16px 0;
+  padding: 16px;
 
   p {
     margin-bottom: 12px;
     line-height: 22px;
-
+    display: flex;
+    
     strong {
-      display: inline-block;
-      width: 80px;
-      color: #666;
+      width: 100px;
+      color: rgba(0, 0, 0, 0.45);
+      flex-shrink: 0;
     }
   }
 } 

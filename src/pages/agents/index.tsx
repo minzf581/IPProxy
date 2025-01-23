@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Input, Select, Form, message, Card, Divider } from 'antd';
 import type { TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
 import type { ColumnType } from 'antd/es/table';
-import { getAgentList, updateAgent } from '@/services/agentService';
+import { getAgentList, updateAgent, updateAgentStatus } from '@/services/agentService';
 import { debug } from '@/utils/debug';
 import UpdatePasswordModal from '@/components/Agent/UpdatePasswordModal';
 import UpdateBalanceModal from '@/components/Agent/UpdateBalanceModal';
@@ -15,6 +15,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import UpdateRemarkModal from '@/components/Agent/UpdateRemarkModal';
 import UpdateQuotaModal from '@/components/Agent/UpdateQuotaModal';
 import PriceConfigModal from '@/components/Agent/PriceConfigModal';
+import { useNavigate } from 'react-router-dom';
 
 const { Option } = Select;
 const { Search } = Input;
@@ -43,6 +44,7 @@ const AgentListPage: React.FC = () => {
   const [remarkModalVisible, setRemarkModalVisible] = React.useState(false);
   const [quotaModalVisible, setQuotaModalVisible] = React.useState(false);
   const [priceConfigModalVisible, setPriceConfigModalVisible] = React.useState(false);
+  const navigate = useNavigate();
 
   React.useEffect(() => {
     loadAgents();
@@ -79,12 +81,13 @@ const AgentListPage: React.FC = () => {
     try {
       debugAgent.info('Updating agent status', agent);
       const newStatus = agent.status === 'active' ? 'disabled' : 'active';
-      await updateAgent(Number(agent.id), { 
-        status: newStatus,
-        app_username: agent.app_username
-      });
-      message.success('状态更新成功');
-      loadAgents();
+      const response = await updateAgentStatus(Number(agent.id), newStatus);
+      if (response.code === 0) {
+        message.success('状态更新成功');
+        loadAgents();
+      } else {
+        message.error(response.msg || '更新代理商状态失败');
+      }
     } catch (error) {
       debugAgent.error('Failed to update agent status:', error);
       message.error('更新代理商状态失败');
@@ -108,6 +111,10 @@ const AgentListPage: React.FC = () => {
     form.resetFields();
     setPagination(prev => ({ ...prev, current: 1 }));
     loadAgents();
+  };
+
+  const handleViewDashboard = (agent: AgentInfo) => {
+    navigate(`/dashboard?agentId=${agent.id}`);
   };
 
   const columns: ColumnType<AgentInfo>[] = [
@@ -216,10 +223,7 @@ const AgentListPage: React.FC = () => {
               <Button 
                 type="link"
                 size="small"
-                onClick={() => {
-                  setSelectedAgent(record);
-                  setBalanceModalVisible(true);
-                }}
+                onClick={() => handleViewDashboard(record)}
               >
                 查看仪表盘
               </Button>

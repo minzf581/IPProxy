@@ -7,19 +7,14 @@ import {
   DatePicker,
   Button,
   Table,
-  Tag,
   Space,
   message,
   Modal,
-  Tooltip,
-  Badge
 } from 'antd';
 import {
   SearchOutlined,
   ReloadOutlined,
   EyeOutlined,
-  ClockCircleOutlined,
-  CopyOutlined
 } from '@ant-design/icons';
 import type { TableProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -33,22 +28,10 @@ interface DynamicOrderData {
   orderNo: string;
   userId: string;
   agentId: string;
-  amount: number;
-  status: 'active' | 'expired' | 'pending';
-  type: string;
-  traffic: {
-    total: number;
-    used: number;
-    unit: string;
-  };
-  expireTime: string;
+  resourceType: '动态资源1' | '动态资源2' | '动态资源3';
+  flowLimit: number; // GB
+  deductAmount: number; // 扣费额度
   createTime: string;
-  proxyInfo?: {
-    host: string;
-    port: number;
-    username: string;
-    password: string;
-  };
 }
 
 const DynamicOrderPage: React.FC = () => {
@@ -60,6 +43,8 @@ const DynamicOrderPage: React.FC = () => {
     pageSize: 10,
     total: 0
   });
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [currentOrder, setCurrentOrder] = useState<DynamicOrderData | null>(null);
 
   // 表格列配置
   const columns: ColumnsType<DynamicOrderData> = [
@@ -77,80 +62,30 @@ const DynamicOrderPage: React.FC = () => {
       width: 120,
     },
     {
-      title: '代理商',
+      title: '代理商账号',
       dataIndex: 'agentId',
       key: 'agentId',
       width: 120,
     },
     {
-      title: '金额',
-      dataIndex: 'amount',
-      key: 'amount',
+      title: '资源来源',
+      dataIndex: 'resourceType',
+      key: 'resourceType',
       width: 120,
-      align: 'right',
+    },
+    {
+      title: '流量限制',
+      dataIndex: 'flowLimit',
+      key: 'flowLimit',
+      width: 120,
+      render: (flowLimit: number) => `${flowLimit}GB`,
+    },
+    {
+      title: '扣费额度',
+      dataIndex: 'deductAmount',
+      key: 'deductAmount',
+      width: 120,
       render: (amount: number) => `¥${amount.toFixed(2)}`,
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 100,
-      render: (status: string) => {
-        const statusMap = {
-          active: { color: 'success', text: '使用中' },
-          expired: { color: 'error', text: '已过期' },
-          pending: { color: 'warning', text: '待支付' },
-        };
-        const { color, text } = statusMap[status as keyof typeof statusMap];
-        return <Badge status={color as any} text={text} />;
-      },
-    },
-    {
-      title: '类型',
-      dataIndex: 'type',
-      key: 'type',
-      width: 120,
-    },
-    {
-      title: '流量使用',
-      key: 'traffic',
-      width: 180,
-      render: (_, record) => (
-        <div>
-          <div>{record.traffic.used}/{record.traffic.total} {record.traffic.unit}</div>
-          <div style={{ 
-            width: '100%', 
-            height: 4, 
-            background: '#f0f0f0', 
-            borderRadius: 2,
-            marginTop: 4
-          }}>
-            <div style={{
-              width: `${(record.traffic.used / record.traffic.total) * 100}%`,
-              height: '100%',
-              background: '#1890ff',
-              borderRadius: 2,
-            }} />
-          </div>
-        </div>
-      ),
-    },
-    {
-      title: '到期时间',
-      dataIndex: 'expireTime',
-      key: 'expireTime',
-      width: 180,
-      render: (time: string) => {
-        const isNearExpire = dayjs(time).diff(dayjs(), 'day') <= 7;
-        return (
-          <Tooltip title={isNearExpire ? '即将到期' : ''}>
-            <span style={{ color: isNearExpire ? '#faad14' : 'inherit' }}>
-              {isNearExpire && <ClockCircleOutlined style={{ marginRight: 4 }} />}
-              {time}
-            </span>
-          </Tooltip>
-        );
-      },
     },
     {
       title: '创建时间',
@@ -162,26 +97,15 @@ const DynamicOrderPage: React.FC = () => {
       title: '操作',
       key: 'action',
       fixed: 'right',
-      width: 150,
+      width: 100,
       render: (_, record: DynamicOrderData) => (
-        <Space size="middle">
-          {record.status === 'active' && record.proxyInfo && (
-            <Button 
-              type="link" 
-              icon={<CopyOutlined />}
-              onClick={() => handleCopyProxy(record)}
-            >
-              复制代理
-            </Button>
-          )}
-          <Button 
-            type="link" 
-            icon={<EyeOutlined />}
-            onClick={() => handleViewDetails(record)}
-          >
-            详情
-          </Button>
-        </Space>
+        <Button 
+          type="link" 
+          icon={<EyeOutlined />}
+          onClick={() => handleViewDetails(record)}
+        >
+          详情
+        </Button>
       ),
     },
   ];
@@ -219,22 +143,10 @@ const DynamicOrderPage: React.FC = () => {
         orderNo: `DD${dayjs().format('YYYYMMDD')}${String(index + 1).padStart(6, '0')}`,
         userId: `user${index + 1}`,
         agentId: `agent${Math.floor(index / 3) + 1}`,
-        amount: Math.floor(Math.random() * 10000) / 100,
-        status: ['active', 'expired', 'pending'][Math.floor(Math.random() * 3)] as any,
-        type: ['HTTP', 'HTTPS', 'SOCKS5'][Math.floor(Math.random() * 3)],
-        traffic: {
-          total: 100,
-          used: Math.floor(Math.random() * 100),
-          unit: 'GB'
-        },
-        expireTime: dayjs().add(Math.floor(Math.random() * 30), 'day').format('YYYY-MM-DD HH:mm:ss'),
+        resourceType: ['动态资源1', '动态资源2', '动态资源3'][Math.floor(Math.random() * 3)] as any,
+        flowLimit: [1, 10, 100, 1000][Math.floor(Math.random() * 4)],
+        deductAmount: Math.floor(Math.random() * 10000) / 100,
         createTime: dayjs().subtract(index, 'day').format('YYYY-MM-DD HH:mm:ss'),
-        proxyInfo: Math.random() > 0.3 ? {
-          host: `proxy${index + 1}.example.com`,
-          port: Math.floor(Math.random() * 60000) + 1024,
-          username: `user${index + 1}`,
-          password: `pass${index + 1}`,
-        } : undefined,
       }));
       
       setData(mockData);
@@ -268,73 +180,10 @@ const DynamicOrderPage: React.FC = () => {
     });
   };
 
-  // 复制代理信息
-  const handleCopyProxy = (record: DynamicOrderData) => {
-    if (record.proxyInfo) {
-      const { host, port, username, password } = record.proxyInfo;
-      const proxyString = `${username}:${password}@${host}:${port}`;
-      navigator.clipboard.writeText(proxyString).then(() => {
-        message.success('代理信息已复制到剪贴板');
-      }).catch(() => {
-        message.error('复制失败，请手动复制');
-        Modal.info({
-          title: '代理信息',
-          content: (
-            <div>
-              <p>请手动复制以下内容：</p>
-              <pre style={{ 
-                background: '#f5f5f5', 
-                padding: '8px', 
-                borderRadius: '4px',
-                marginTop: '8px'
-              }}>
-                {proxyString}
-              </pre>
-            </div>
-          ),
-        });
-      });
-    }
-  };
-
   // 查看详情
-  const handleViewDetails = (record: DynamicOrderData) => {
-    Modal.info({
-      title: '订单详情',
-      width: 600,
-      content: (
-        <div className={styles.orderDetail}>
-          <p><strong>订单号：</strong>{record.orderNo}</p>
-          <p><strong>用户账号：</strong>{record.userId}</p>
-          <p><strong>代理商：</strong>{record.agentId}</p>
-          <p><strong>金额：</strong>¥{record.amount.toFixed(2)}</p>
-          <p><strong>状态：</strong>
-            <Badge 
-              status={
-                record.status === 'active' ? 'success' :
-                record.status === 'expired' ? 'error' : 'warning'
-              } 
-              text={
-                record.status === 'active' ? '使用中' :
-                record.status === 'expired' ? '已过期' : '待支付'
-              }
-            />
-          </p>
-          <p><strong>类型：</strong>{record.type}</p>
-          <p><strong>流量使用：</strong>{record.traffic.used}/{record.traffic.total} {record.traffic.unit}</p>
-          <p><strong>到期时间：</strong>{record.expireTime}</p>
-          <p><strong>创建时间：</strong>{record.createTime}</p>
-          {record.proxyInfo && (
-            <>
-              <p><strong>代理地址：</strong>{record.proxyInfo.host}</p>
-              <p><strong>端口：</strong>{record.proxyInfo.port}</p>
-              <p><strong>用户名：</strong>{record.proxyInfo.username}</p>
-              <p><strong>密码：</strong>{record.proxyInfo.password}</p>
-            </>
-          )}
-        </div>
-      ),
-    });
+  const handleViewDetails = (order: DynamicOrderData) => {
+    setCurrentOrder(order);
+    setDetailVisible(true);
   };
 
   // 初始化加载数据
@@ -346,7 +195,7 @@ const DynamicOrderPage: React.FC = () => {
   }, []);
 
   return (
-    <div className={styles.dynamicOrder}>
+    <div className={styles.dynamicOrders}>
       <Card bordered={false}>
         <Form
           form={form}
@@ -375,34 +224,22 @@ const DynamicOrderPage: React.FC = () => {
               style={{ width: 200 }}
             />
           </Form.Item>
-          <Form.Item name="status">
-            <Select
-              placeholder="订单状态"
-              allowClear
-              style={{ width: 120 }}
-              options={[
-                { label: '使用中', value: 'active' },
-                { label: '已过期', value: 'expired' },
-                { label: '待支付', value: 'pending' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item name="type">
-            <Select
-              placeholder="代理类型"
-              allowClear
-              style={{ width: 120 }}
-              options={[
-                { label: 'HTTP', value: 'HTTP' },
-                { label: 'HTTPS', value: 'HTTPS' },
-                { label: 'SOCKS5', value: 'SOCKS5' },
-              ]}
-            />
-          </Form.Item>
           <Form.Item name="dateRange">
             <RangePicker
               style={{ width: 260 }}
               placeholder={['开始日期', '结束日期']}
+            />
+          </Form.Item>
+          <Form.Item name="resourceType">
+            <Select
+              placeholder="请选择资源来源"
+              allowClear
+              style={{ width: 200 }}
+              options={[
+                { value: '动态资源1', label: '动态资源1' },
+                { value: '动态资源2', label: '动态资源2' },
+                { value: '动态资源3', label: '动态资源3' },
+              ]}
             />
           </Form.Item>
           <Form.Item>
@@ -428,18 +265,31 @@ const DynamicOrderPage: React.FC = () => {
           columns={columns}
           dataSource={data}
           rowKey="id"
-          pagination={{
-            ...pagination,
-            showQuickJumper: true,
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条记录`,
-          }}
           loading={loading}
+          pagination={pagination}
           onChange={handleTableChange}
-          scroll={{ x: 1800 }}
-          className={styles.table}
+          scroll={{ x: 1200 }}
         />
       </Card>
+
+      <Modal
+        title="订单详情"
+        open={detailVisible}
+        onCancel={() => setDetailVisible(false)}
+        footer={null}
+      >
+        {currentOrder && (
+          <div>
+            <p>订单号：{currentOrder.orderNo}</p>
+            <p>用户账号：{currentOrder.userId}</p>
+            <p>代理商账号：{currentOrder.agentId}</p>
+            <p>资源来源：{currentOrder.resourceType}</p>
+            <p>流量限制：{currentOrder.flowLimit}GB</p>
+            <p>扣费额度：¥{currentOrder.deductAmount.toFixed(2)}</p>
+            <p>创建时间：{currentOrder.createTime}</p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

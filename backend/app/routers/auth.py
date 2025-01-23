@@ -9,11 +9,11 @@ from app.services.auth import (
     get_password_hash
 )
 
-router = APIRouter(prefix="/api", tags=["auth"])
+router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
-@router.post("/auth/login")
+@router.post("/login")
 async def login(user_data: UserLogin):
     try:
         user = await authenticate_user(user_data.username, user_data.password)
@@ -39,7 +39,7 @@ async def login(user_data: UserLogin):
             detail=str(e)
         )
 
-@router.get("/auth/current-user")
+@router.get("/current-user")
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     return {
         "code": 0,
@@ -47,7 +47,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         "data": UserResponse.from_orm(current_user)
     }
 
-@router.post("/auth/password")
+@router.post("/password")
 async def update_password(
     old_password: str,
     new_password: str,

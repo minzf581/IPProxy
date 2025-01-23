@@ -1,67 +1,75 @@
-import React, { useState } from 'react';
-import {
-  Card,
-  Form,
-  Input,
-  Select,
-  DatePicker,
-  Button,
-  Table,
-  Tag,
-  Space,
-  message,
-  Modal,
-  Tooltip,
-  Badge
-} from 'antd';
-import {
-  SearchOutlined,
-  ReloadOutlined,
-  EyeOutlined,
-  ClockCircleOutlined,
-  CopyOutlined
-} from '@ant-design/icons';
-import type { TableProps } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Card, Table, Button, Space, Modal, message, Form, Input, Select, DatePicker, Cascader, Checkbox, Dropdown, Menu, Row, Col, Statistic } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { MenuProps } from 'antd';
+import { SearchOutlined, EyeOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { exportToExcel, exportToTxt } from '@/utils/export';
 import styles from './index.module.less';
 
-const { RangePicker } = DatePicker;
-
 interface StaticOrderData {
-  id: string;
+  id: number;
   orderNo: string;
-  userId: string;
-  agentId: string;
+  userId: number;
+  agentAccount: string;
   amount: number;
-  status: 'active' | 'expired' | 'pending';
-  type: string;
-  bandwidth: {
-    total: number;
-    used: number;
-    unit: string;
-  };
+  status: number;
+  resourceType: string;
+  traffic: number;
   expireTime: string;
   createTime: string;
+  continent: string;
+  country: string;
+  province: string;
+  city: string;
   proxyInfo?: {
-    host: string;
+    ip: string;
     port: number;
     username: string;
     password: string;
   };
 }
 
-const StaticOrderPage: React.FC = () => {
-  const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<StaticOrderData[]>([]);
-  const [pagination, setPagination] = useState({
-    current: 1,
-    pageSize: 10,
-    total: 0
-  });
+interface SearchParams {
+  orderNo?: string;
+  userId?: number;
+  agentAccount?: string;
+  status?: number;
+  resourceType?: string;
+  location?: string[];
+  startTime?: string;
+  endTime?: string;
+}
 
-  // 表格列配置
+interface Statistics {
+  total: number;
+  active: number;
+  expired: number;
+}
+
+const StaticOrderPage: React.FC = () => {
+  const [data, setData] = useState<StaticOrderData[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [searchForm] = Form.useForm();
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [currentOrder, setCurrentOrder] = useState<StaticOrderData | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [statistics, setStatistics] = useState<Statistics>({ total: 0, active: 0, expired: 0 });
+  const [locationOptions, setLocationOptions] = useState([]);
+
+  // 资源类型选项
+  const resourceTypeOptions = [
+    { label: '静态资源1', value: 'static1' },
+    { label: '静态资源2', value: 'static2' },
+    { label: '静态资源3', value: 'static3' },
+    { label: '静态资源4', value: 'static4' },
+    { label: '静态资源5', value: 'static5' },
+    { label: '静态资源7', value: 'static7' },
+  ];
+
   const columns: ColumnsType<StaticOrderData> = [
     {
       title: '订单号',
@@ -77,17 +85,32 @@ const StaticOrderPage: React.FC = () => {
       width: 120,
     },
     {
-      title: '代理商',
-      dataIndex: 'agentId',
-      key: 'agentId',
+      title: '代理商账号',
+      dataIndex: 'agentAccount',
+      key: 'agentAccount',
+      width: 120,
+    },
+    {
+      title: '位置信息',
+      key: 'location',
+      width: 200,
+      render: (_, record) => (
+        <>
+          {record.continent} / {record.country} / {record.province} / {record.city}
+        </>
+      ),
+    },
+    {
+      title: '资源类型',
+      dataIndex: 'resourceType',
+      key: 'resourceType',
       width: 120,
     },
     {
       title: '金额',
       dataIndex: 'amount',
       key: 'amount',
-      width: 120,
-      align: 'right',
+      width: 100,
       render: (amount: number) => `¥${amount.toFixed(2)}`,
     },
     {
@@ -95,353 +118,295 @@ const StaticOrderPage: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (status: string) => {
-        const statusMap = {
-          active: { color: 'success', text: '使用中' },
-          expired: { color: 'error', text: '已过期' },
-          pending: { color: 'warning', text: '待支付' },
+      render: (status: number) => {
+        const statusMap: Record<number, { text: string; color: string }> = {
+          1: { text: '使用中', color: 'green' },
+          2: { text: '已过期', color: 'red' },
         };
-        const { color, text } = statusMap[status as keyof typeof statusMap];
-        return <Badge status={color as any} text={text} />;
+        return <span style={{ color: statusMap[status]?.color }}>{statusMap[status]?.text}</span>;
       },
     },
     {
-      title: '类型',
-      dataIndex: 'type',
-      key: 'type',
-      width: 120,
-    },
-    {
-      title: '带宽使用',
-      key: 'bandwidth',
-      width: 180,
-      render: (_, record) => (
-        <div>
-          <div>{record.bandwidth.used}/{record.bandwidth.total} {record.bandwidth.unit}</div>
-          <div style={{ 
-            width: '100%', 
-            height: 4, 
-            background: '#f0f0f0', 
-            borderRadius: 2,
-            marginTop: 4
-          }}>
-            <div style={{
-              width: `${(record.bandwidth.used / record.bandwidth.total) * 100}%`,
-              height: '100%',
-              background: '#1890ff',
-              borderRadius: 2,
-            }} />
-          </div>
-        </div>
-      ),
-    },
-    {
-      title: '到期时间',
+      title: '过期时间',
       dataIndex: 'expireTime',
       key: 'expireTime',
       width: 180,
-      render: (time: string) => {
-        const isNearExpire = dayjs(time).diff(dayjs(), 'day') <= 7;
-        return (
-          <Tooltip title={isNearExpire ? '即将到期' : ''}>
-            <span style={{ color: isNearExpire ? '#faad14' : 'inherit' }}>
-              {isNearExpire && <ClockCircleOutlined style={{ marginRight: 4 }} />}
-              {time}
-            </span>
-          </Tooltip>
-        );
-      },
+      render: (time: string) => dayjs(time).format('YYYY-MM-DD HH:mm:ss'),
     },
     {
       title: '创建时间',
       dataIndex: 'createTime',
       key: 'createTime',
       width: 180,
+      render: (time: string) => dayjs(time).format('YYYY-MM-DD HH:mm:ss'),
     },
     {
       title: '操作',
       key: 'action',
       fixed: 'right',
-      width: 150,
-      render: (_, record: StaticOrderData) => (
-        <Space size="middle">
-          {record.status === 'active' && record.proxyInfo && (
-            <Button 
-              type="link" 
-              icon={<CopyOutlined />}
-              onClick={() => handleCopyProxy(record)}
-            >
-              复制代理
-            </Button>
-          )}
-          <Button 
-            type="link" 
-            icon={<EyeOutlined />}
-            onClick={() => handleViewDetails(record)}
-          >
-            详情
-          </Button>
-        </Space>
+      width: 100,
+      render: (_, record) => (
+        <Button
+          type="link"
+          icon={<EyeOutlined />}
+          onClick={() => showDetail(record)}
+        >
+          详情
+        </Button>
       ),
     },
   ];
 
-  // 处理表格变化
-  const handleTableChange: TableProps<StaticOrderData>['onChange'] = (
-    pagination,
-    filters,
-    sorter
-  ) => {
-    fetchData({
-      pageSize: pagination.pageSize,
-      current: pagination.current,
-      ...form.getFieldsValue(),
-    });
-  };
-
-  // 获取数据
-  const fetchData = async (params: any) => {
+  const fetchData = async (page = currentPage, size = pageSize, search = {}) => {
     setLoading(true);
     try {
-      // TODO: 替换为实际的API调用
-      const response = await fetch('/api/static-orders', {
+      const response = await fetch(`/api/open/app/order/v2?page=${page}&size=${size}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(params),
+        body: JSON.stringify(search),
       });
       const result = await response.json();
-      
-      // 模拟数据
-      const mockData: StaticOrderData[] = Array(10).fill(null).map((_, index) => ({
-        id: `${index + 1}`,
-        orderNo: `SD${dayjs().format('YYYYMMDD')}${String(index + 1).padStart(6, '0')}`,
-        userId: `user${index + 1}`,
-        agentId: `agent${Math.floor(index / 3) + 1}`,
-        amount: Math.floor(Math.random() * 10000) / 100,
-        status: ['active', 'expired', 'pending'][Math.floor(Math.random() * 3)] as any,
-        type: ['HTTP', 'HTTPS', 'SOCKS5'][Math.floor(Math.random() * 3)],
-        bandwidth: {
-          total: 100,
-          used: Math.floor(Math.random() * 100),
-          unit: 'Mbps'
-        },
-        expireTime: dayjs().add(Math.floor(Math.random() * 30), 'day').format('YYYY-MM-DD HH:mm:ss'),
-        createTime: dayjs().subtract(index, 'day').format('YYYY-MM-DD HH:mm:ss'),
-        proxyInfo: Math.random() > 0.3 ? {
-          host: `proxy${index + 1}.example.com`,
-          port: Math.floor(Math.random() * 60000) + 1024,
-          username: `user${index + 1}`,
-          password: `pass${index + 1}`,
-        } : undefined,
-      }));
-      
-      setData(mockData);
-      setPagination({
-        ...pagination,
-        total: 100,
-      });
+      if (result.code === 0) {
+        setData(result.data.list);
+        setTotal(result.data.total);
+      } else {
+        message.error(result.msg || '获取订单列表失败');
+      }
     } catch (error) {
-      message.error('获取数据失败');
+      message.error('获取订单列表失败');
     }
     setLoading(false);
   };
 
-  // 处理搜索
-  const handleSearch = () => {
-    setPagination({ ...pagination, current: 1 });
-    fetchData({
-      ...form.getFieldsValue(),
-      current: 1,
-      pageSize: pagination.pageSize,
-    });
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const handleSearch = async (values: SearchParams) => {
+    const params = {
+      ...values,
+      startTime: values.startTime ? dayjs(values.startTime).format('YYYY-MM-DD HH:mm:ss') : undefined,
+      endTime: values.endTime ? dayjs(values.endTime).format('YYYY-MM-DD HH:mm:ss') : undefined,
+    };
+    await fetchData(1, pageSize, params);
   };
 
-  // 处理重置
-  const handleReset = () => {
-    form.resetFields();
-    setPagination({ ...pagination, current: 1 });
-    fetchData({
-      current: 1,
-      pageSize: pagination.pageSize,
-    });
+  const handleTableChange = (pagination: any) => {
+    setCurrentPage(pagination.current);
+    setPageSize(pagination.pageSize);
+    const values = searchForm.getFieldsValue();
+    fetchData(pagination.current, pagination.pageSize, values);
   };
 
-  // 复制代理信息
-  const handleCopyProxy = (record: StaticOrderData) => {
-    if (record.proxyInfo) {
-      const { host, port, username, password } = record.proxyInfo;
-      const proxyString = `${username}:${password}@${host}:${port}`;
-      navigator.clipboard.writeText(proxyString).then(() => {
-        message.success('代理信息已复制到剪贴板');
-      }).catch(() => {
-        message.error('复制失败，请手动复制');
-        Modal.info({
-          title: '代理信息',
-          content: (
-            <div>
-              <p>请手动复制以下内容：</p>
-              <pre style={{ 
-                background: '#f5f5f5', 
-                padding: '8px', 
-                borderRadius: '4px',
-                marginTop: '8px'
-              }}>
-                {proxyString}
-              </pre>
-            </div>
-          ),
-        });
-      });
+  const showDetail = (order: StaticOrderData) => {
+    setCurrentOrder(order);
+    setDetailVisible(true);
+  };
+
+  const handleExport = (type: 'excel' | 'txt') => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('请选择要导出的订单');
+      return;
+    }
+
+    const selectedOrders = data.filter(item => selectedRowKeys.includes(item.id));
+    
+    if (type === 'excel') {
+      exportToExcel(selectedOrders, '静态订单');
+    } else {
+      const ipList = selectedOrders.map(order => order.proxyInfo?.ip).filter(Boolean);
+      exportToTxt(ipList.join('\n'), '静态IP列表');
     }
   };
 
-  // 查看详情
-  const handleViewDetails = (record: StaticOrderData) => {
-    Modal.info({
-      title: '订单详情',
-      width: 600,
-      content: (
-        <div className={styles.orderDetail}>
-          <p><strong>订单号：</strong>{record.orderNo}</p>
-          <p><strong>用户账号：</strong>{record.userId}</p>
-          <p><strong>代理商：</strong>{record.agentId}</p>
-          <p><strong>金额：</strong>¥{record.amount.toFixed(2)}</p>
-          <p><strong>状态：</strong>
-            <Badge 
-              status={
-                record.status === 'active' ? 'success' :
-                record.status === 'expired' ? 'error' : 'warning'
-              } 
-              text={
-                record.status === 'active' ? '使用中' :
-                record.status === 'expired' ? '已过期' : '待支付'
-              }
-            />
-          </p>
-          <p><strong>类型：</strong>{record.type}</p>
-          <p><strong>带宽使用：</strong>{record.bandwidth.used}/{record.bandwidth.total} {record.bandwidth.unit}</p>
-          <p><strong>到期时间：</strong>{record.expireTime}</p>
-          <p><strong>创建时间：</strong>{record.createTime}</p>
-          {record.proxyInfo && (
-            <>
-              <p><strong>代理地址：</strong>{record.proxyInfo.host}</p>
-              <p><strong>端口：</strong>{record.proxyInfo.port}</p>
-              <p><strong>用户名：</strong>{record.proxyInfo.username}</p>
-              <p><strong>密码：</strong>{record.proxyInfo.password}</p>
-            </>
-          )}
-        </div>
-      ),
-    });
+  const exportMenu: MenuProps = {
+    items: [
+      {
+        key: 'excel',
+        label: '导出Excel',
+        onClick: () => handleExport('excel')
+      },
+      {
+        key: 'txt',
+        label: '导出IP列表(TXT)',
+        onClick: () => handleExport('txt')
+      }
+    ]
   };
 
-  // 初始化加载数据
-  React.useEffect(() => {
-    fetchData({
-      current: pagination.current,
-      pageSize: pagination.pageSize,
-    });
+  // 加载地理位置选项
+  useEffect(() => {
+    fetch('/api/open/app/location/options/v2')
+      .then(res => res.json())
+      .then(data => {
+        if (data.code === 0) {
+          setLocationOptions(data.data);
+        }
+      });
+  }, []);
+
+  // 加载统计信息
+  useEffect(() => {
+    fetch('/api/open/app/order/statistics/v2')
+      .then(res => res.json())
+      .then(data => {
+        if (data.code === 0) {
+          setStatistics(data.data);
+        }
+      });
   }, []);
 
   return (
     <div className={styles.staticOrder}>
-      <Card bordered={false}>
+      <Card>
         <Form
-          form={form}
-          layout="inline"
-          className={styles.searchForm}
+          form={searchForm}
           onFinish={handleSearch}
         >
-          <Form.Item name="orderNo">
-            <Input
-              placeholder="请输入订单号"
-              allowClear
-              style={{ width: 200 }}
-            />
-          </Form.Item>
-          <Form.Item name="userId">
-            <Input
-              placeholder="请输入用户账号"
-              allowClear
-              style={{ width: 200 }}
-            />
-          </Form.Item>
-          <Form.Item name="agentId">
-            <Input
-              placeholder="请输入代理商账号"
-              allowClear
-              style={{ width: 200 }}
-            />
-          </Form.Item>
-          <Form.Item name="status">
-            <Select
-              placeholder="订单状态"
-              allowClear
-              style={{ width: 120 }}
-              options={[
-                { label: '使用中', value: 'active' },
-                { label: '已过期', value: 'expired' },
-                { label: '待支付', value: 'pending' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item name="type">
-            <Select
-              placeholder="代理类型"
-              allowClear
-              style={{ width: 120 }}
-              options={[
-                { label: 'HTTP', value: 'HTTP' },
-                { label: 'HTTPS', value: 'HTTPS' },
-                { label: 'SOCKS5', value: 'SOCKS5' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item name="dateRange">
-            <RangePicker
-              style={{ width: 260 }}
-              placeholder={['开始日期', '结束日期']}
-            />
-          </Form.Item>
-          <Form.Item>
-            <Space>
-              <Button
-                type="primary"
-                icon={<SearchOutlined />}
-                onClick={handleSearch}
-              >
-                查询
+          <Row gutter={[16, 16]}>
+            <Col span={6}>
+              <Form.Item name="orderNo" style={{ marginBottom: 0 }}>
+                <Input placeholder="订单号" allowClear />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="userId" style={{ marginBottom: 0 }}>
+                <Input placeholder="用户账号" allowClear />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="agentAccount" style={{ marginBottom: 0 }}>
+                <Input placeholder="代理商账号" allowClear />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="location" style={{ marginBottom: 0 }}>
+                <Cascader
+                  options={locationOptions}
+                  placeholder="选择位置"
+                  changeOnSelect
+                  style={{ width: '100%' }}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+            <Col span={6}>
+              <Form.Item name="resourceType" style={{ marginBottom: 0 }}>
+                <Select
+                  placeholder="资源类型"
+                  allowClear
+                  style={{ width: '100%' }}
+                  options={resourceTypeOptions}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="status" style={{ marginBottom: 0 }}>
+                <Select
+                  placeholder="状态"
+                  allowClear
+                  style={{ width: '100%' }}
+                >
+                  <Select.Option value={1}>使用中</Select.Option>
+                  <Select.Option value={2}>已过期</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="dateRange" style={{ marginBottom: 0 }}>
+                <DatePicker.RangePicker 
+                  style={{ width: '100%' }}
+                  showTime
+                  placeholder={['开始时间', '结束时间']}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={4} className={styles.buttonGroup}>
+              <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
+                搜索
               </Button>
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={handleReset}
-              >
+              <Button icon={<ReloadOutlined />} onClick={() => searchForm.resetFields()}>
                 重置
               </Button>
-            </Space>
-          </Form.Item>
+              <Dropdown menu={exportMenu}>
+                <Button icon={<DownloadOutlined />}>导出</Button>
+              </Dropdown>
+            </Col>
+          </Row>
         </Form>
 
-        <Table
-          columns={columns}
-          dataSource={data}
-          rowKey="id"
-          pagination={{
-            ...pagination,
-            showQuickJumper: true,
-            showSizeChanger: true,
-            showTotal: (total) => `共 ${total} 条记录`,
-          }}
-          loading={loading}
-          onChange={handleTableChange}
-          scroll={{ x: 1800 }}
-          className={styles.table}
-        />
+        <div className={styles.statistics}>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Statistic title="累积开通数量" value={statistics.total} />
+            </Col>
+            <Col span={8}>
+              <Statistic title="可用IP数量" value={statistics.active} />
+            </Col>
+            <Col span={8}>
+              <Statistic title="已过期IP数量" value={statistics.expired} />
+            </Col>
+          </Row>
+        </div>
+
+        <div className={styles.table}>
+          <Table
+            columns={columns}
+            dataSource={data}
+            rowKey="id"
+            loading={loading}
+            scroll={{ x: 1500 }}
+            pagination={{
+              current: currentPage,
+              pageSize: pageSize,
+              total: total,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total) => `共 ${total} 条记录`,
+            }}
+            onChange={handleTableChange}
+            rowSelection={{
+              selectedRowKeys,
+              onChange: setSelectedRowKeys,
+            }}
+          />
+        </div>
+
+        <Modal
+          title="订单详情"
+          open={detailVisible}
+          onCancel={() => setDetailVisible(false)}
+          footer={null}
+          width={600}
+        >
+          {currentOrder && (
+            <div className={styles.orderDetail}>
+              <p><strong>订单号：</strong>{currentOrder.orderNo}</p>
+              <p><strong>用户账号：</strong>{currentOrder.userId}</p>
+              <p><strong>代理商账号：</strong>{currentOrder.agentAccount}</p>
+              <p><strong>位置信息：</strong>{currentOrder.continent} / {currentOrder.country} / {currentOrder.province} / {currentOrder.city}</p>
+              <p><strong>资源类型：</strong>{currentOrder.resourceType}</p>
+              <p><strong>金额：</strong>¥{currentOrder.amount.toFixed(2)}</p>
+              <p><strong>状态：</strong>{currentOrder.status === 1 ? '使用中' : '已过期'}</p>
+              <p><strong>过期时间：</strong>{dayjs(currentOrder.expireTime).format('YYYY-MM-DD HH:mm:ss')}</p>
+              <p><strong>创建时间：</strong>{dayjs(currentOrder.createTime).format('YYYY-MM-DD HH:mm:ss')}</p>
+              {currentOrder.proxyInfo && (
+                <>
+                  <p><strong>IP：</strong>{currentOrder.proxyInfo.ip}</p>
+                  <p><strong>端口：</strong>{currentOrder.proxyInfo.port}</p>
+                  <p><strong>用户名：</strong>{currentOrder.proxyInfo.username}</p>
+                  <p><strong>密码：</strong>{currentOrder.proxyInfo.password}</p>
+                </>
+              )}
+            </div>
+          )}
+        </Modal>
       </Card>
     </div>
   );
 };
 
-export default StaticOrderPage;
+export default StaticOrderPage; 

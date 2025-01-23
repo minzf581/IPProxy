@@ -1,46 +1,55 @@
-import type { UserInfo, UserStatistics } from '@/types/user';
-import * as dbService from '@/database/userService';
+import { request } from '@/utils/request';
+import type { ApiResponse } from '@/types/api';
 
-export async function getUserList(params: { page: number; pageSize: number; status?: string }) {
-  return dbService.getUserList(params);
-}
-
-export async function getUserById(userId: number): Promise<UserInfo> {
-  const user = await dbService.getUserById(userId);
-  if (!user) {
-    throw new Error('User not found');
-  }
-  return user;
-}
-
-export async function createUser(params: {
+export interface User {
+  id: string;
   username: string;
-  password: string;
   email: string;
-}): Promise<UserInfo> {
-  return dbService.createUser(params);
+  status: string;
+  agentAccount: string;
+  balance: number;
+  createdAt: string;
+  remark: string;
 }
 
-export async function updateUser(userId: number, params: Partial<UserInfo>): Promise<void> {
-  return dbService.updateUser(userId, params);
+export interface UserListParams {
+  page?: number;
+  pageSize?: number;
+  username?: string;
+  agentAccount?: string;
+  status?: string;
 }
 
-export async function getUserStatistics(userId: number): Promise<UserStatistics> {
-  return dbService.getUserStatistics(userId);
+export interface UserListResponse {
+  list: User[];
+  total: number;
 }
 
-export async function getBalanceHistory(params: {
-  userId: number;
-  page: number;
-  pageSize: number;
-}) {
-  return dbService.getBalanceHistory(params);
-}
+// 获取用户列表
+export const getUserList = async (params: UserListParams): Promise<ApiResponse<UserListResponse>> => {
+  return request('/api/open/app/user/list', {
+    method: 'GET',
+    params: {
+      page: params.page || 1,
+      pageSize: params.pageSize || 10,
+      username: params.username,
+      agentAccount: params.agentAccount
+    }
+  });
+};
 
-export async function getLoginHistory(params: {
-  userId: number;
-  page: number;
-  pageSize: number;
-}) {
-  return dbService.getLoginHistory(params);
-}
+// 更新用户状态
+export const updateUserStatus = async (userId: string, status: string): Promise<ApiResponse<User>> => {
+  return request(`/api/open/app/user/${userId}/status`, {
+    method: 'PUT',
+    data: { status }
+  });
+};
+
+// 更新用户密码
+export const updateUserPassword = async (userId: string, password: string): Promise<ApiResponse<User>> => {
+  return request(`/api/open/app/user/${userId}/password`, {
+    method: 'PUT',
+    data: { password }
+  });
+};

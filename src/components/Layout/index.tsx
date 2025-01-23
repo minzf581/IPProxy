@@ -45,7 +45,7 @@ const menuConfig: MenuItem[] = [
         label: '代理商管理',
       },
       {
-        key: 'account/user',
+        key: 'account/users',
         label: '用户管理',
       },
     ],
@@ -70,12 +70,7 @@ const menuConfig: MenuItem[] = [
     ],
   },
   {
-    key: 'static-ip',
-    icon: <CloudServerOutlined />,
-    label: '静态IP管理',
-  },
-  {
-    key: 'system',
+    key: 'settings',
     icon: <SettingOutlined />,
     label: '系统设置',
   },
