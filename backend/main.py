@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base, init_test_data
-from app.routers import dashboard, auth
+from app.routers import dashboard, auth, proxy, agent, user
 
 # 创建数据库表
 Base.metadata.create_all(bind=engine)
@@ -24,3 +24,6 @@ app.add_middleware(
 # 注册路由
 app.include_router(auth.router, prefix="/api")  # 添加/api前缀
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(proxy.router)  # proxy路由已经包含了完整的路径
+app.include_router(agent.router)  # agent路由已经包含了完整的路径
+app.include_router(user.router)   # user路由已经包含了完整的路径

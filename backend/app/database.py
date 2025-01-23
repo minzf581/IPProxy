@@ -3,7 +3,9 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from app.config import settings
 
-engine = create_engine(settings.DATABASE_URL)
+SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
+
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
@@ -18,9 +20,22 @@ def get_db():
 def init_test_data():
     """初始化测试数据"""
     from .models.dashboard import ProxyInfo, ResourceUsage
+    from .models.main_user import MainUser
     
     db = SessionLocal()
     try:
+        # 检查并创建主用户
+        if db.query(MainUser).filter(MainUser.app_username == "admin").first() is None:
+            main_user = MainUser(
+                username="admin",
+                app_username="admin",
+                email="admin@example.com",
+                status="active"
+            )
+            db.add(main_user)
+            db.commit()
+            print("创建主用户成功")
+
         # 检查是否已有数据
         if db.query(ProxyInfo).first() is None:
             # 创建代理信息
@@ -83,8 +98,10 @@ def init_test_data():
             db.add_all(static_resources)
             
             db.commit()
+            print("创建初始数据成功")
     except Exception as e:
         db.rollback()
+        print(f"初始化数据失败: {str(e)}")
         raise e
     finally:
         db.close()

@@ -9,7 +9,7 @@ from app.services.auth import (
     get_password_hash
 )
 
-router = APIRouter(tags=["auth"])
+router = APIRouter(prefix="/api", tags=["auth"])
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 

@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.transaction import ProxyInfo, FlowUsage
+from app.models.dashboard import ProxyInfo
+from app.models.transaction import FlowUsage
 from typing import Dict, Any
 
 router = APIRouter()
@@ -15,7 +16,10 @@ async def get_proxy_info(db: Session = Depends(get_db)) -> Dict[str, Any]:
         proxy_info = ProxyInfo(
             balance=1000.0,
             total_recharge=5000.0,
-            total_consumption=4000.0
+            total_consumption=4000.0,
+            month_recharge=500.0,
+            month_consumption=300.0,
+            last_month_consumption=800.0
         )
         db.add(proxy_info)
         db.commit()
@@ -27,7 +31,10 @@ async def get_proxy_info(db: Session = Depends(get_db)) -> Dict[str, Any]:
         "data": {
             "balance": proxy_info.balance,
             "totalRecharge": proxy_info.total_recharge,
-            "totalConsumption": proxy_info.total_consumption
+            "totalConsumption": proxy_info.total_consumption,
+            "monthRecharge": proxy_info.month_recharge,
+            "monthConsumption": proxy_info.month_consumption,
+            "lastMonthConsumption": proxy_info.last_month_consumption
         }
     }
 
