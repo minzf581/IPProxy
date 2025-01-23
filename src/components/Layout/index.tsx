@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Layout, Menu, Button, Dropdown, Avatar } from 'antd';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
   TeamOutlined,
@@ -10,12 +11,15 @@ import {
   UserOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  BellOutlined
+  BellOutlined,
+  CloudServerOutlined
 } from '@ant-design/icons';
 import { useAuth } from '@/contexts/AuthContext';
 import styles from './index.module.less';
 
 const { Header, Sider, Content } = Layout;
+
+type MenuItem = Required<MenuProps>['items'][number];
 
 // Debug 函数
 const debug = {
@@ -25,9 +29,9 @@ const debug = {
 };
 
 // 菜单配置
-const menuConfig = [
+const menuConfig: MenuItem[] = [
   {
-    key: '/',
+    key: 'dashboard',
     icon: <DashboardOutlined />,
     label: '仪表盘',
   },
@@ -43,8 +47,8 @@ const menuConfig = [
       {
         key: 'account/user',
         label: '用户管理',
-      }
-    ]
+      },
+    ],
   },
   {
     key: 'order',
@@ -62,30 +66,20 @@ const menuConfig = [
       {
         key: 'order/static',
         label: '用户静态订单',
-      }
-    ]
+      },
+    ],
   },
   {
-    key: 'ip',
-    icon: <GlobalOutlined />,
-    label: 'IP资源',
-    children: [
-      {
-        key: 'ip/dynamic',
-        label: '动态IP',
-      },
-      {
-        key: 'ip/static',
-        label: '静态IP',
-      }
-    ]
+    key: 'static-ip',
+    icon: <CloudServerOutlined />,
+    label: '静态IP管理',
   },
   {
     key: 'system',
     icon: <SettingOutlined />,
     label: '系统设置',
-  }
-];
+  },
+] as MenuItem[];
 
 const AppLayout: React.FC = () => {
   const navigate = useNavigate();
@@ -131,14 +125,10 @@ const AppLayout: React.FC = () => {
     setOpenKeys(keys);
   };
 
-  const userMenuItems = [
+  const userMenuItems: MenuProps['items'] = [
     {
-      key: 'profile',
-      label: '个人信息',
-    },
-    {
-      key: 'settings',
-      label: '账户设置',
+      key: 'settings/change-password',
+      label: '修改密码',
     },
     {
       type: 'divider',

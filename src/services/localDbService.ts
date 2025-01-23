@@ -83,7 +83,7 @@ const debug = {
 
 export const login = async (username: string, password: string): Promise<LoginResponse> => {
   debug.log('Login request:', { username });
-  const response = await request.post<ApiResponse<LoginResponse>>('/auth/login', { username, password });
+  const response = await request.post<ApiResponse<LoginResponse>>('/api/auth/login', { username, password });
   debug.log('Login response:', { code: response.data.code, msg: response.data.msg });
   
   if (response.data.code !== 200) {
@@ -95,7 +95,7 @@ export const login = async (username: string, password: string): Promise<LoginRe
 
 export const getCurrentUser = async (): Promise<User> => {
   debug.log('Getting current user');
-  const response = await request.get<ApiResponse<User>>('/auth/current-user');
+  const response = await request.get<ApiResponse<User>>('/api/auth/current-user');
   debug.log('Current user response:', { code: response.data.code, msg: response.data.msg });
   
   if (response.data.code !== 200) {

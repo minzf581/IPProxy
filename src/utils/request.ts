@@ -20,7 +20,7 @@ export const api = request;
 
 // Mock 数据
 const mockData: Record<string, any> = {
-  '/auth/login': {
+  '/api/auth/login': {
     code: 0,
     message: 'success',
     data: {
@@ -34,7 +34,7 @@ const mockData: Record<string, any> = {
       }
     }
   },
-  '/auth/current-user': {
+  '/api/auth/current-user': {
     code: 0,
     message: 'success',
     data: {
@@ -43,6 +43,31 @@ const mockData: Record<string, any> = {
       role: UserRole.ADMIN,
       status: 'active',
       createdAt: '2024-01-01T00:00:00Z'
+    }
+  },
+  '/api/agent/list': {
+    code: 0,
+    message: 'success',
+    data: {
+      list: [
+        {
+          id: 1,
+          account: 'agent1',
+          parentAgent: 'admin',
+          balance: 10000,
+          status: 'active',
+          createdAt: '2024-01-01T00:00:00Z'
+        },
+        {
+          id: 2,
+          account: 'agent2',
+          parentAgent: 'admin',
+          balance: 20000,
+          status: 'active',
+          createdAt: '2024-01-02T00:00:00Z'
+        }
+      ],
+      total: 2
     }
   },
   '/statistics': {

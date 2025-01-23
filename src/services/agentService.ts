@@ -1,5 +1,8 @@
-import type { AgentInfo, AgentStatistics } from '@/types/agent';
-import { request } from '@/utils/request';
+import type { AgentInfo, AgentStatistics, CreateAgentForm, UpdateAgentForm } from '@/types/agent';
+import { api } from '@/utils/request';
+import { debug } from '@/utils/debug';
+
+const { dashboard: debugAgent } = debug;
 
 interface ApiResponse<T> {
   code: number;
@@ -8,18 +11,16 @@ interface ApiResponse<T> {
 }
 
 export async function getAgentList(params: { page: number; pageSize: number; status?: string }) {
-  const response = await request.get<ApiResponse<{ list: AgentInfo[]; total: number }>>('/agent/list', { params });
-  if (response.data.code !== 200) {
-    throw new Error(response.data.msg);
-  }
+  debugAgent.info('Getting agent list with params:', params);
+  const response = await api.get<ApiResponse<{ list: AgentInfo[]; total: number }>>('/api/open/app/agent/list', { params });
+  debugAgent.info('Agent list response:', response.data);
   return response.data.data;
 }
 
 export async function getAgentById(agentId: number): Promise<AgentInfo> {
-  const response = await request.get<ApiResponse<AgentInfo>>(`/agent/${agentId}`);
-  if (response.data.code !== 200) {
-    throw new Error(response.data.msg);
-  }
+  debugAgent.info('Getting agent by id:', agentId);
+  const response = await api.get<ApiResponse<AgentInfo>>(`/api/open/app/agent/${agentId}`);
+  debugAgent.info('Agent details response:', response.data);
   if (!response.data.data) {
     throw new Error('Agent not found');
   }
@@ -27,30 +28,29 @@ export async function getAgentById(agentId: number): Promise<AgentInfo> {
 }
 
 export async function getAgentStatistics(agentId: number): Promise<AgentStatistics> {
-  const response = await request.get<ApiResponse<AgentStatistics>>(`/agent/${agentId}/statistics`);
-  if (response.data.code !== 200) {
-    throw new Error(response.data.msg);
-  }
+  debugAgent.info('Getting agent statistics for id:', agentId);
+  const response = await api.get<ApiResponse<AgentStatistics>>(`/api/open/app/agent/${agentId}/statistics`);
+  debugAgent.info('Agent statistics response:', response.data);
   return response.data.data;
 }
 
-export async function createAgent(params: {
-  name: string;
-  email: string;
-  password: string;
-}): Promise<AgentInfo> {
-  const response = await request.post<ApiResponse<AgentInfo>>('/agent', params);
-  if (response.data.code !== 200) {
-    throw new Error(response.data.msg);
-  }
+export async function createAgent(params: CreateAgentForm): Promise<AgentInfo> {
+  debugAgent.info('Creating new agent:', params);
+  const response = await api.post<ApiResponse<AgentInfo>>('/api/open/app/proxy/user/v2', {
+    appUsername: params.username,
+    password: params.password,
+    limitFlow: params.limitFlow,
+    remark: params.remark,
+    status: params.status ? 1 : 2
+  });
+  debugAgent.info('Create agent response:', response.data);
   return response.data.data;
 }
 
-export async function updateAgent(agentId: number, params: Partial<AgentInfo>): Promise<void> {
-  const response = await request.put<ApiResponse<void>>(`/agent/${agentId}`, params);
-  if (response.data.code !== 200) {
-    throw new Error(response.data.msg);
-  }
+export async function updateAgent(agentId: number, params: UpdateAgentForm): Promise<void> {
+  debugAgent.info('Updating agent:', { agentId, params });
+  const response = await api.put<ApiResponse<void>>(`/api/open/app/agent/${agentId}`, params);
+  debugAgent.info('Update agent response:', response.data);
 }
 
 export async function getAgentOrders(params: {
@@ -59,16 +59,15 @@ export async function getAgentOrders(params: {
   pageSize: number;
   status?: string;
 }) {
-  const response = await request.get<ApiResponse<{ list: any[]; total: number }>>(`/agent/${params.agentId}/orders`, {
+  debugAgent.info('Getting agent orders:', params);
+  const response = await api.get<ApiResponse<{ list: any[]; total: number }>>(`/api/open/app/agent/${params.agentId}/orders`, {
     params: {
       page: params.page,
       pageSize: params.pageSize,
       status: params.status,
     },
   });
-  if (response.data.code !== 200) {
-    throw new Error(response.data.msg);
-  }
+  debugAgent.info('Agent orders response:', response.data);
   return response.data.data;
 }
 
@@ -78,15 +77,14 @@ export async function getAgentUsers(params: {
   pageSize: number;
   status?: string;
 }) {
-  const response = await request.get<ApiResponse<{ list: any[]; total: number }>>(`/agent/${params.agentId}/users`, {
+  debugAgent.info('Getting agent users:', params);
+  const response = await api.get<ApiResponse<{ list: any[]; total: number }>>(`/api/open/app/agent/${params.agentId}/users`, {
     params: {
       page: params.page,
       pageSize: params.pageSize,
       status: params.status,
     },
   });
-  if (response.data.code !== 200) {
-    throw new Error(response.data.msg);
-  }
+  debugAgent.info('Agent users response:', response.data);
   return response.data.data;
 }

@@ -3,13 +3,12 @@ import { RouteObject, createBrowserRouter } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import Login from '@/pages/login';
 import Dashboard from '@/pages/dashboard';
-import DynamicIP from '@/pages/IP/Dynamic';
 import StaticIP from '@/pages/IP/Static';
 import DynamicOrders from '@/pages/Order/dynamic';
 import StaticOrders from '@/pages/Order/static';
 import AgentOrders from '@/pages/Order/agent-orders';
 import AgentManagement from '@/pages/agents';
-import UserManagement from '@/pages/users';
+import UserManagement from '@/pages/agents/users';
 import Settings from '@/pages/Settings';
 import ChangePassword from '@/pages/Settings/ChangePassword';
 import AuthGuard, { PublicRoute } from '@/components/AuthGuard';
@@ -35,17 +34,8 @@ const routes: RouteObject[] = [
         element: <Dashboard />,
       },
       {
-        path: 'ip',
-        children: [
-          {
-            path: 'dynamic',
-            element: <DynamicIP />,
-          },
-          {
-            path: 'static',
-            element: <StaticIP />,
-          },
-        ],
+        path: 'static-ip',
+        element: <StaticIP />,
       },
       {
         path: 'order',

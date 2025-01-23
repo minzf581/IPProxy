@@ -3,7 +3,7 @@
 ## 基础说明
 
 ### 接口规范
-- 基础路径: `/api/v1`
+- 基础路径: `/api/open/app`
 - 请求方式: REST
 - 数据格式: JSON
 - 认证方式: Bearer Token
@@ -47,7 +47,7 @@ POST /auth/login
 
 ### 1. 创建代理商
 ```
-POST /agents
+POST /agent/create
 ```
 请求参数:
 ```json
@@ -61,7 +61,7 @@ POST /agents
 
 ### 2. 代理商充值
 ```
-POST /agents/{id}/recharge
+POST /agent/{id}/recharge
 ```
 请求参数:
 ```json
@@ -73,7 +73,7 @@ POST /agents/{id}/recharge
 
 ### 3. 获取代理商列表
 ```
-GET /agents
+GET /agent/list
 ```
 查询参数:
 - page: 页码

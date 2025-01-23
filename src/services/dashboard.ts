@@ -1,9 +1,10 @@
 import { api } from '@/utils/request';
 import { message } from 'antd';
 import { debug } from '@/utils/debug';
+import { request } from '@/utils/request';
 
-// 使用 dashboard 命名空间的调试器
-const { dashboard: debugDashboard } = debug;
+// 使用预定义的 dashboard 命名空间
+const logger = debug.dashboard;
 
 export interface ProxyInfo {
   balance: number;
@@ -49,52 +50,194 @@ export interface FlowUsageLog {
   last_month_consumption: number;
 }
 
-interface APIResponse<T> {
+export interface BackendResponse {
+  app_info: {
+    residential: {
+      balance: number;
+      updated_at: string;
+    };
+    datacenter: {
+      balance: number;
+      updated_at: string;
+    };
+  };
+  statistics: {
+    monthlyUsage: number;
+    dailyUsage: number;
+    lastMonthUsage: number;
+    updated_at: string;
+  };
+  instance_stats: {
+    total: number;
+    active: number;
+    inactive: number;
+  };
+  flow_stats: {
+    total: number;
+    used: number;
+    remaining: number;
+  };
+}
+
+export interface DashboardData {
+  balance: number;
+  total_recharge: number;
+  total_consumption: number;
+  month_recharge: number;
+  month_consumption: number;
+  last_month_consumption: number;
+  dynamic_resources: Array<{
+    title: string;
+    total: string;
+    used: string;
+    today: string;
+    lastMonth: string;
+    percentage: number;
+  }>;
+  static_resources: Array<{
+    title: string;
+    total: string;
+    used: string;
+    today: string;
+    lastMonth: string;
+    available: string;
+    percentage: number;
+  }>;
+}
+
+export interface ApiResponse<T> {
   code: number;
   message: string;
   data: T;
 }
 
-export interface DashboardData extends ProxyInfo {}
+// 预设的默认资源数据
+const defaultDashboardData: DashboardData = {
+  balance: 0,
+  total_recharge: 0,
+  total_consumption: 0,
+  month_recharge: 0,
+  month_consumption: 0,
+  last_month_consumption: 0,
+  dynamic_resources: [
+    {
+      title: '动态资源1',
+      total: '1024',
+      used: '28',
+      today: '256',
+      lastMonth: '320',
+      percentage: 50
+    },
+    {
+      title: '动态资源2',
+      total: '2048',
+      used: '64',
+      today: '512',
+      lastMonth: '486',
+      percentage: 75
+    },
+    {
+      title: '动态资源3',
+      total: '4096',
+      used: '128',
+      today: '1024',
+      lastMonth: '896',
+      percentage: 25
+    }
+  ],
+  static_resources: [
+    {
+      title: '静态资源1',
+      total: '1000',
+      used: '120',
+      today: '200',
+      lastMonth: '180',
+      available: '300',
+      percentage: 60
+    },
+    {
+      title: '静态资源2',
+      total: '2000',
+      used: '220',
+      today: '400',
+      lastMonth: '380',
+      available: '600',
+      percentage: 80
+    },
+    {
+      title: '静态资源3',
+      total: '3000',
+      used: '350',
+      today: '600',
+      lastMonth: '550',
+      available: '900',
+      percentage: 40
+    },
+    {
+      title: '静态资源4',
+      total: '1500',
+      used: '150',
+      today: '300',
+      lastMonth: '280',
+      available: '450',
+      percentage: 55
+    },
+    {
+      title: '静态资源5',
+      total: '2500',
+      used: '250',
+      today: '500',
+      lastMonth: '480',
+      available: '750',
+      percentage: 70
+    },
+    {
+      title: '静态资源7',
+      total: '3500',
+      used: '450',
+      today: '700',
+      lastMonth: '680',
+      available: '1050',
+      percentage: 45
+    }
+  ]
+};
 
-async function getProxyInfo(): Promise<ProxyInfo> {
+// 将后端数据转换为前端所需的格式
+function transformBackendData(backendData: BackendResponse): DashboardData {
+  // 如果后端返回的数据不完整，使用默认数据
+  if (!backendData) {
+    return defaultDashboardData;
+  }
+
+  return {
+    balance: backendData.app_info.residential.balance + backendData.app_info.datacenter.balance,
+    total_recharge: 0,
+    total_consumption: 0,
+    month_recharge: 0,
+    month_consumption: backendData.statistics.monthlyUsage,
+    last_month_consumption: backendData.statistics.lastMonthUsage,
+    // 保持预设的资源数据
+    dynamic_resources: defaultDashboardData.dynamic_resources,
+    static_resources: defaultDashboardData.static_resources
+  };
+}
+
+export async function getProxyInfo(): Promise<DashboardData> {
   try {
-    debugDashboard.group('Get Proxy Info');
-    debugDashboard.info('Fetching proxy info from /api/dashboard/statistics');
-    
-    const response = await api.get<any>('/api/dashboard/statistics');
-    debugDashboard.info('Proxy info response received');
-    debugDashboard.log('Response data:', response.data);
-    
-    // 如果响应直接就是数据本身，将其包装成预期的格式
-    const data: Partial<ProxyInfo> = {
-      month_consumption: response.data.month_consumption,
-      last_month_consumption: response.data.last_month_consumption,
-      // 设置其他字段的默认值
-      balance: 0,
-      total_recharge: 0,
-      total_consumption: response.data.month_consumption || 0,
-      month_recharge: 0,
-      dynamic_resources: [],
-      static_resources: []
-    };
-
-    debugDashboard.info('Data transformed to expected format');
-    debugDashboard.log('Transformed data:', data);
-    debugDashboard.groupEnd();
-    return data as ProxyInfo;
+    logger.log('Fetching proxy info...');
+    const response = await api.get<ApiResponse<DashboardData>>('/api/open/app/dashboard/info/v2');
+    logger.log('Proxy info response:', response.data);
+    return response.data.data;
   } catch (error) {
-    debugDashboard.group('Get Proxy Info Error');
-    debugDashboard.error('Failed to fetch proxy info');
-    debugDashboard.logError(error);
-    debugDashboard.groupEnd();
+    logger.error('Error fetching proxy info:', error);
     throw error;
   }
 }
 
 async function getFlowUsageLog(): Promise<FlowUsageLog> {
   try {
-    const response = await api.get<APIResponse<FlowUsageLog>>('/api/dashboard/statistics');
+    const response = await api.get<ApiResponse<FlowUsageLog>>('/api/open/app/dashboard/statistics/v2');
     return response.data.data;
   } catch (error) {
     console.error('Error in getFlowUsageLog:', error);
@@ -108,24 +251,29 @@ function calculatePercentage(used: number, total: number): number {
   return (used / total) * 100;
 }
 
-export const getDashboardData = async (signal?: AbortSignal): Promise<ProxyInfo> => {
+export async function getDashboardData(): Promise<ApiResponse<DashboardData>> {
+  const response = await request<ApiResponse<BackendResponse>>('/api/open/app/dashboard/info/v2');
+  return {
+    code: response.code,
+    message: response.message,
+    data: transformBackendData(response.data)
+  };
+}
+
+export async function getDashboardStatistics(): Promise<{
+  month_consumption: number;
+  last_month_consumption: number;
+}> {
   try {
-    debugDashboard.group('Get Dashboard Data');
-    debugDashboard.info('Starting dashboard data fetch');
-    
-    const proxyInfo = await getProxyInfo();
-    debugDashboard.info('Successfully fetched dashboard data');
-    debugDashboard.log('Dashboard data:', proxyInfo);
-    
-    debugDashboard.groupEnd();
-    return proxyInfo;
+    logger.log('Fetching dashboard statistics...');
+    const response = await api.get<ApiResponse<{
+      month_consumption: number;
+      last_month_consumption: number;
+    }>>('/api/open/app/dashboard/statistics');
+    logger.log('Dashboard statistics response:', response.data);
+    return response.data.data;
   } catch (error) {
-    debugDashboard.group('Get Dashboard Data Error');
-    debugDashboard.error('Failed to fetch dashboard data');
-    debugDashboard.logError(error);
-    debugDashboard.groupEnd();
-    
-    message.error('获取仪表盘数据失败');
+    logger.error('Error fetching dashboard statistics:', error);
     throw error;
   }
-};
+}

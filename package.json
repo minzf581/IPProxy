@@ -60,7 +60,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.17",
     "gh-pages": "^6.3.0",
-    "less": "^4.2.1",
+    "less": "^4.2.2",
     "postcss": "^8.4.33",
     "ts-node": "^10.9.2",
     "vite": "^5.4.13"

@@ -1,66 +1,76 @@
 import React from 'react';
 import { Modal, Form, Input, message } from 'antd';
-import { agentService } from '@/services/agentService';
-import type { AgentInfo } from '@/types/agent';
+import { updateAgent } from '@/services/agentService';
 
 interface Props {
   visible: boolean;
-  onCancel: () => void;
-  agent: AgentInfo | null;
-  onSuccess?: () => void;
+  agent: {
+    id: number;
+    remark?: string;
+  };
+  onClose: () => void;
 }
 
-const UpdateRemarkModal: React.FC<Props> = ({
-  visible,
-  onCancel,
-  agent,
-  onSuccess
-}) => {
+const UpdateRemarkModal: React.FC<Props> = ({ visible, agent, onClose }) => {
   const [form] = Form.useForm();
+  const [loading, setLoading] = React.useState(false);
 
-  const handleSubmit = async () => {
+  React.useEffect(() => {
+    if (visible && agent) {
+      form.setFieldsValue({
+        remark: agent.remark
+      });
+    }
+  }, [visible, agent]);
+
+  const handleOk = async () => {
     try {
       const values = await form.validateFields();
+      setLoading(true);
       
-      if (!agent) {
-        message.error('代理商信息不存在');
-        return;
-      }
-
-      await agentService.updateAgent(agent.id, {
+      await updateAgent(agent.id, {
         remark: values.remark
       });
-
+      
       message.success('备注更新成功');
       form.resetFields();
-      onSuccess?.();
-      onCancel();
+      onClose();
     } catch (error) {
       console.error('更新备注失败:', error);
       message.error('更新备注失败');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleCancel = () => {
+    form.resetFields();
+    onClose();
   };
 
   return (
     <Modal
-      title="更新备注"
+      title="修改备注"
       open={visible}
-      onCancel={onCancel}
-      onOk={handleSubmit}
+      onOk={handleOk}
+      onCancel={handleCancel}
+      confirmLoading={loading}
     >
       <Form
         form={form}
         layout="vertical"
-        initialValues={{
-          remark: agent?.remark || ''
-        }}
       >
         <Form.Item
-          name="remark"
           label="备注"
+          name="remark"
           rules={[{ required: true, message: '请输入备注' }]}
         >
-          <Input.TextArea rows={4} />
+          <Input.TextArea
+            rows={4}
+            placeholder="请输入备注"
+            maxLength={200}
+            showCount
+          />
         </Form.Item>
       </Form>
     </Modal>

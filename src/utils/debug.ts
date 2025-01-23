@@ -32,9 +32,7 @@ export class Debug {
   }
 
   log(...args: any[]): void {
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(this.getPrefix('DEBUG'), ...this.formatArgs(args));
-    }
+    this.info(...args);
   }
 
   info(...args: any[]): void {
