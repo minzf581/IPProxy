@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, Modal, message, Form, Input, Select, DatePicker, Cascader, Checkbox, Dropdown, Menu, Row, Col, Statistic } from 'antd';
+import { Card, Table, Button, Space, Modal, message, Form, Input, Select, DatePicker, Cascader, Checkbox, Dropdown, Menu, Row, Col } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { MenuProps } from 'antd';
 import { SearchOutlined, EyeOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -41,12 +41,6 @@ interface SearchParams {
   endTime?: string;
 }
 
-interface Statistics {
-  total: number;
-  active: number;
-  expired: number;
-}
-
 const StaticOrderPage: React.FC = () => {
   const [data, setData] = useState<StaticOrderData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -57,7 +51,6 @@ const StaticOrderPage: React.FC = () => {
   const [detailVisible, setDetailVisible] = useState(false);
   const [currentOrder, setCurrentOrder] = useState<StaticOrderData | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [statistics, setStatistics] = useState<Statistics>({ total: 0, active: 0, expired: 0 });
   const [locationOptions, setLocationOptions] = useState([]);
 
   // 资源类型选项
@@ -247,22 +240,12 @@ const StaticOrderPage: React.FC = () => {
       });
   }, []);
 
-  // 加载统计信息
-  useEffect(() => {
-    fetch('/api/open/app/order/statistics/v2')
-      .then(res => res.json())
-      .then(data => {
-        if (data.code === 0) {
-          setStatistics(data.data);
-        }
-      });
-  }, []);
-
   return (
-    <div className={styles.staticOrder}>
-      <Card>
+    <div className={styles.container}>
+      <Card bordered={false}>
         <Form
           form={searchForm}
+          layout="vertical"
           onFinish={handleSearch}
         >
           <Row gutter={[16, 16]}>
@@ -331,56 +314,44 @@ const StaticOrderPage: React.FC = () => {
               <Button icon={<ReloadOutlined />} onClick={() => searchForm.resetFields()}>
                 重置
               </Button>
-              <Dropdown menu={exportMenu}>
-                <Button icon={<DownloadOutlined />}>导出</Button>
-              </Dropdown>
             </Col>
           </Row>
         </Form>
 
-        <div className={styles.statistics}>
-          <Row gutter={16}>
-            <Col span={8}>
-              <Statistic title="累积开通数量" value={statistics.total} />
-            </Col>
-            <Col span={8}>
-              <Statistic title="可用IP数量" value={statistics.active} />
-            </Col>
-            <Col span={8}>
-              <Statistic title="已过期IP数量" value={statistics.expired} />
-            </Col>
-          </Row>
+        <div className={styles.tableToolbar}>
+          <Space>
+            <Dropdown menu={exportMenu}>
+              <Button icon={<DownloadOutlined />}>导出</Button>
+            </Dropdown>
+          </Space>
         </div>
 
-        <div className={styles.table}>
-          <Table
-            columns={columns}
-            dataSource={data}
-            rowKey="id"
-            loading={loading}
-            scroll={{ x: 1500 }}
-            pagination={{
-              current: currentPage,
-              pageSize: pageSize,
-              total: total,
-              showSizeChanger: true,
-              showQuickJumper: true,
-              showTotal: (total) => `共 ${total} 条记录`,
-            }}
-            onChange={handleTableChange}
-            rowSelection={{
-              selectedRowKeys,
-              onChange: setSelectedRowKeys,
-            }}
-          />
-        </div>
+        <Table
+          columns={columns}
+          dataSource={data}
+          loading={loading}
+          rowKey="id"
+          scroll={{ x: 1500 }}
+          pagination={{
+            current: currentPage,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            showQuickJumper: true,
+          }}
+          onChange={handleTableChange}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys),
+          }}
+        />
 
         <Modal
           title="订单详情"
-          open={detailVisible}
+          visible={detailVisible}
           onCancel={() => setDetailVisible(false)}
           footer={null}
-          width={600}
+          width={800}
         >
           {currentOrder && (
             <div className={styles.orderDetail}>

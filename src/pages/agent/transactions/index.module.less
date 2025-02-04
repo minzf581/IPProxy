@@ -1,0 +1,64 @@
+.container {
+  padding: 24px;
+  background-color: #fff;
+
+  :global {
+    .ant-card {
+      box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+      border-radius: 2px;
+
+      .ant-card-body {
+        padding: 24px;
+      }
+    }
+
+    .ant-table-wrapper {
+      .ant-table-pagination {
+        margin: 16px 0;
+      }
+    }
+  }
+}
+
+.searchBar {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+
+  :global {
+    .ant-btn {
+      margin-left: 8px;
+    }
+
+    .ant-input {
+      width: 200px;
+    }
+
+    .ant-picker {
+      width: 260px;
+    }
+  }
+}
+
+.tableHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+
+  .title {
+    font-size: 16px;
+    font-weight: 500;
+    color: rgba(0, 0, 0, 0.85);
+  }
+}
+
+.amount {
+  &.positive {
+    color: #52c41a;
+  }
+
+  &.negative {
+    color: #f5222d;
+  }
+} 

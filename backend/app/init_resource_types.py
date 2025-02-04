@@ -11,19 +11,19 @@ def init_resource_types():
 
         # 动态资源类型
         dynamic_resources = [
-            {"name": "动态资源1", "type": "dynamic", "price": 100.0},
-            {"name": "动态资源2", "type": "dynamic", "price": 200.0},
-            {"name": "动态资源3", "type": "dynamic", "price": 300.0},
+            {"name": "动态ip池1", "type": "dynamic", "price": 100.0},
+            {"name": "动态ip池2", "type": "dynamic", "price": 200.0},
+            {"name": "动态ip池3", "type": "dynamic", "price": 300.0},
         ]
 
         # 静态资源类型
         static_resources = [
-            {"name": "静态资源1", "type": "static", "price": 500.0},
-            {"name": "静态资源2", "type": "static", "price": 600.0},
-            {"name": "静态资源3", "type": "static", "price": 700.0},
-            {"name": "静态资源4", "type": "static", "price": 800.0},
-            {"name": "静态资源5", "type": "static", "price": 900.0},
-            {"name": "静态资源7", "type": "static", "price": 1000.0},
+            {"name": "纯净静态1", "type": "static", "price": 500.0},
+            {"name": "纯净静态2", "type": "static", "price": 600.0},
+            {"name": "纯净静态3", "type": "static", "price": 700.0},
+            {"name": "纯净静态4", "type": "static", "price": 800.0},
+            {"name": "纯净静态5", "type": "static", "price": 900.0},
+            {"name": "纯净静态7", "type": "static", "price": 1000.0},
         ]
 
         # 创建所有资源类型

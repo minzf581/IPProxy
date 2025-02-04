@@ -1,30 +1,33 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.routers import settings, user, auth, agent, dashboard, instance
+import uvicorn
+import logging
 
-from app.database import engine, Base, init_test_data
-from app.routers import dashboard, auth, proxy, agent, user, settings
-
-# 创建数据库表
-Base.metadata.create_all(bind=engine)
-
-# 初始化测试数据
-init_test_data()
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 app = FastAPI()
 
-# 配置CORS
+# 配置 CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # 只允许前端开发服务器
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # 注册路由
-app.include_router(auth.router, prefix="/api")  # 添加/api前缀
+app.include_router(auth.router, prefix="/api")
+app.include_router(user.router, prefix="/api")
+app.include_router(agent.router, prefix="/api")
+app.include_router(settings.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
-app.include_router(proxy.router)  # proxy路由已经包含了完整的路径
-app.include_router(agent.router)  # agent路由已经包含了完整的路径
-app.include_router(user.router)   # user路由已经包含了完整的路径
-app.include_router(settings.router)  # settings路由已经包含了完整的路径
+app.include_router(instance.router, prefix="/api")
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=3000, reload=True)

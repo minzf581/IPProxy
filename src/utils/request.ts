@@ -1,296 +1,273 @@
-import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { message } from 'antd';
-import { UserRole } from '@/types/user';
-import { debug } from '@/utils/debug';
-
-const { request: debugRequest } = debug;
+import type { ApiResponse } from '@/types/api';
+import { API_BASE_URL, API_CONFIG } from '@/config/api';
 
 // 创建axios实例
-const request: AxiosInstance = axios.create({
-  baseURL: 'http://localhost:8000',
-  timeout: 10000,
-  headers: {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json;charset=UTF-8'
-  }
+const instance: AxiosInstance = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: API_CONFIG.TIMEOUT,
+  headers: API_CONFIG.HEADERS,
 });
 
-// 导出 api 作为 request 的别名
-export const api = request;
-
-// Mock 数据
-const mockData: Record<string, any> = {
-  '/api/auth/login': {
-    code: 0,
-    message: 'success',
-    data: {
-      token: 'admin_token',
-      user: {
-        id: '1',
-        username: 'ipadmin',
-        role: UserRole.ADMIN,
-        status: 'active',
-        createdAt: '2024-01-01T00:00:00Z'
-      }
-    }
-  },
-  '/api/auth/current-user': {
-    code: 0,
-    message: 'success',
-    data: {
-      id: '1',
-      username: 'ipadmin',
-      role: UserRole.ADMIN,
-      status: 'active',
-      createdAt: '2024-01-01T00:00:00Z'
-    }
-  },
-  '/api/agent/list': {
-    code: 0,
-    message: 'success',
-    data: {
-      list: [
-        {
-          id: 1,
-          account: 'agent1',
-          parentAgent: 'admin',
-          balance: 10000,
-          status: 'active',
-          createdAt: '2024-01-01T00:00:00Z'
-        },
-        {
-          id: 2,
-          account: 'agent2',
-          parentAgent: 'admin',
-          balance: 20000,
-          status: 'active',
-          createdAt: '2024-01-02T00:00:00Z'
-        }
-      ],
-      total: 2
-    }
-  },
-  '/statistics': {
-    code: 200,
-    msg: 'success',
-    data: {
-      // 财务数据
-      totalRecharge: 168880,
-      totalConsumption: 17780,
-      balance: 151100,
-      monthlyRecharge: 28660,
-      monthlyConsumption: 8520,
-      lastMonthConsumption: 9260,
-      
-      // 动态资源数据
-      dynamic1: {
-        total: 1024,
-        monthly: 256,
-        daily: 28,
-        lastMonth: 320,
-        percent: 50
-      },
-      dynamic2: {
-        total: 2048,
-        monthly: 512,
-        daily: 64,
-        lastMonth: 486,
-        percent: 75
-      },
-      dynamic3: {
-        total: 4096,
-        monthly: 1024,
-        daily: 128,
-        lastMonth: 896,
-        percent: 25
-      },
-      
-      // 静态资源数据
-      static1: {
-        total: 1000,
-        monthlyAvailable: 200,
-        remainingAvailable: 300,
-        lastMonth: 180,
-        used: 120,
-        percent: 60
-      },
-      static2: {
-        total: 2000,
-        monthlyAvailable: 400,
-        remainingAvailable: 600,
-        lastMonth: 380,
-        used: 220,
-        percent: 80
-      },
-      static3: {
-        total: 3000,
-        monthlyAvailable: 600,
-        remainingAvailable: 900,
-        lastMonth: 550,
-        used: 350,
-        percent: 40
-      }
-    }
-  }
-};
-
-interface MockResponse {
-  isAxiosMockResponse: boolean;
-  response: {
-    data: any;
-    status: number;
-    statusText: string;
-    headers: Record<string, string>;
-    config: any;
-  };
-}
-
-interface APIResponse {
-  code: number;
-  message: string;
-  data: any;
-}
-
-// 检查是否有对应的 mock 数据
-const hasMockData = (url: string): boolean => {
-  return import.meta.env.VITE_API_MOCK && !!mockData[url];
-};
-
-// 获取 mock 数据
-const getMockData = (url: string): any => {
-  return mockData[url];
-};
-
 // 请求拦截器
-request.interceptors.request.use(
-  async (config) => {
-    debugRequest.group('Request Interceptor');
-    debugRequest.info('Starting request interceptor');
-    debugRequest.request(config);
-
+instance.interceptors.request.use(
+  (config) => {
     const token = localStorage.getItem('token');
-    const hasToken = !!token;
-
-    if (hasToken) {
+    console.log('[Request Debug] 开始请求:', {
+      url: config.url,
+      method: config.method,
+      hasToken: !!token,
+      headers: config.headers,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      debugRequest.info('Added token to request headers');
-    } else {
-      debugRequest.warn('No token found in localStorage');
+      console.log('[Request Debug] 添加认证头:', {
+        tokenLength: token.length,
+        timestamp: new Date().toISOString()
+      });
     }
-
-    // 检查是否需要返回 mock 数据
-    if (config.url && hasMockData(config.url)) {
-      debugRequest.info('Using mock data for:', config.url);
-      debugRequest.groupEnd();
-      return Promise.reject({
-        isAxiosMockResponse: true,
-        response: {
-          data: getMockData(config.url),
-          status: 200,
-          statusText: 'OK',
-          headers: {},
-          config: config,
-        }
-      } as MockResponse);
-    }
-
-    debugRequest.info('Request will be sent to server');
-    debugRequest.groupEnd();
     return config;
   },
   (error) => {
-    debugRequest.group('Request Interceptor Error');
-    debugRequest.error('Error in request interceptor');
-    debugRequest.logError(error);
-    debugRequest.groupEnd();
+    console.error('[Request Debug] 请求拦截器错误:', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
     return Promise.reject(error);
   }
 );
 
 // 响应拦截器
-request.interceptors.response.use(
-  (response: AxiosResponse) => {
-    debugRequest.group('Response Interceptor');
-    debugRequest.info('Starting response interceptor');
-    debugRequest.response(response);
+instance.interceptors.response.use(
+  (response: AxiosResponse<any>) => {
+    console.log('[Response Debug] 原始响应:', {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+      hasData: !!response.data,
+      dataType: typeof response.data,
+      timestamp: new Date().toISOString()
+    });
 
-    const { data } = response;
-
-    // 如果是 mock 数据，直接返回
-    if (import.meta.env.VITE_API_MOCK) {
-      debugRequest.info('Using mock data');
-      debugRequest.groupEnd();
+    if (response.data) {
+      console.log('[Response Debug] 响应数据结构:', {
+        isObject: typeof response.data === 'object',
+        hasCode: 'code' in response.data,
+        hasMsg: 'msg' in response.data,
+        hasMessage: 'message' in response.data,
+        hasData: 'data' in response.data,
+        fields: Object.keys(response.data),
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // 如果响应数据不符合预期格式，包装成标准格式
+    if (!response.data || typeof response.data !== 'object') {
+      console.log('[Response Debug] 响应格式不标准，进行转换:', {
+        originalData: response.data,
+        timestamp: new Date().toISOString()
+      });
+      response.data = {
+        code: 0,
+        msg: 'success',
+        data: response.data
+      };
       return response;
     }
-
-    // 检查响应状态
-    if (data.code && data.code !== 0 && data.code !== 200) {
-      debugRequest.error('API error response:', data);
-      message.error(data.message || '请求失败');
-      debugRequest.groupEnd();
-      return Promise.reject(new Error(data.message || '请求失败'));
+    
+    // 如果响应中使用 message 而不是 msg，进行转换
+    if (response.data.hasOwnProperty('message') && !response.data.hasOwnProperty('msg')) {
+      console.log('[Response Debug] 转换 message 到 msg:', {
+        originalMessage: response.data.message,
+        timestamp: new Date().toISOString()
+      });
+      const { message, ...rest } = response.data;
+      response.data = {
+        ...rest,
+        msg: message
+      };
+      return response;
     }
-
-    debugRequest.info('Response processed successfully');
-    debugRequest.groupEnd();
+    
+    // 确保响应包含所有必要的字段
+    const result = { ...response.data };
+    
+    if (!result.hasOwnProperty('code')) {
+      console.log('[Response Debug] 添加默认 code:', {
+        timestamp: new Date().toISOString()
+      });
+      result.code = 0;
+    }
+    
+    if (!result.hasOwnProperty('msg')) {
+      console.log('[Response Debug] 添加默认 msg:', {
+        timestamp: new Date().toISOString()
+      });
+      result.msg = 'success';
+    }
+    
+    console.log('[Response Debug] 最终响应数据:', {
+      code: result.code,
+      msg: result.msg,
+      hasData: !!result.data,
+      timestamp: new Date().toISOString()
+    });
+    
+    response.data = {
+      code: result.code,
+      msg: result.msg,
+      data: result.data
+    };
+    
     return response;
   },
-  (error: AxiosError | MockResponse) => {
-    debugRequest.group('Response Error Handler');
+  (error) => {
+    console.error('[Response Debug] 响应错误:', {
+      errorType: error.constructor.name,
+      message: error.message,
+      hasResponse: !!error.response,
+      responseStatus: error.response?.status,
+      responseStatusText: error.response?.statusText,
+      responseData: error.response?.data,
+      config: {
+        url: error.config?.url,
+        method: error.config?.method,
+        headers: error.config?.headers
+      },
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
 
-    // 检查是否是 mock 响应
-    if ('isAxiosMockResponse' in error && error.isAxiosMockResponse) {
-      debugRequest.info('Processing mock response');
-      debugRequest.log('Mock response data:', error.response.data);
-      debugRequest.groupEnd();
-      return error.response;
+    // 处理401错误（未授权/token过期）
+    if (error.response?.status === 401) {
+      console.log('[Response Debug] 处理401错误:', {
+        pathname: window.location.pathname,
+        timestamp: new Date().toISOString()
+      });
+      localStorage.removeItem('token');
+      message.error('登录已过期，请重新登录');
+      
+      // 如果不是登录页面，则重定向到登录页
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    } else if (error.response?.data?.message) {
+      message.error(error.response.data.message);
+    } else if (error.response?.data?.msg) {
+      message.error(error.response.data.msg);
+    } else {
+      message.error('请求失败，请稍后重试');
     }
 
-    if (axios.isAxiosError(error)) {
-      debugRequest.error('Axios error occurred');
-      debugRequest.logError(error);
-
-      if (!error.response) {
-        debugRequest.error('Network error - no response received');
-        message.error('网络错误，请检查网络连接');
-        debugRequest.groupEnd();
-        return Promise.reject(error);
-      }
-
-      const { response } = error;
-      const data = response.data as APIResponse;
-
-      // 处理不同的错误状态码
-      switch (response.status) {
-        case 401:
-          debugRequest.warn('401 Unauthorized - redirecting to login');
-          message.error('未登录或登录已过期');
-          localStorage.removeItem('token');
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login';
-          }
-          break;
-        case 403:
-          debugRequest.warn('403 Forbidden - access denied');
-          message.error('没有权限访问该资源');
-          break;
-        case 404:
-          debugRequest.warn('404 Not Found - resource does not exist');
-          message.error('请求的资源不存在');
-          break;
-        case 500:
-          debugRequest.error('500 Server Error');
-          message.error('服务器错误，请稍后重试');
-          break;
-        default:
-          debugRequest.error(`Unexpected error status: ${response.status}`);
-          message.error(data?.message || '未知错误，请稍后重试');
-      }
-    }
-
-    debugRequest.groupEnd();
     return Promise.reject(error);
   }
 );
 
-export { request };
+// 封装请求方法
+const request = {
+  get: async <T = any>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> => {
+    console.log('[Request Debug] GET 请求:', { 
+      url, 
+      config,
+      timestamp: new Date().toISOString()
+    });
+    const response = await instance.get(url, config);
+    console.log('[Request Debug] GET 响应:', {
+      status: response.status,
+      statusText: response.statusText,
+      data: response.data,
+      timestamp: new Date().toISOString()
+    });
+    return response.data;
+  },
+  
+  post: async <T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> => {
+    console.log('[Request Debug] POST 请求:', { 
+      url, 
+      data,
+      config,
+      timestamp: new Date().toISOString()
+    });
+    const response = await instance.post(url, data, config);
+    console.log('[Request Debug] POST 响应:', {
+      status: response.status,
+      statusText: response.statusText,
+      data: {
+        code: response.data.code,
+        msg: response.data.msg,
+        hasData: !!response.data.data,
+        dataFields: response.data.data ? Object.keys(response.data.data) : []
+      },
+      timestamp: new Date().toISOString()
+    });
+    return response.data;
+  },
+  
+  put: async <T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> => {
+    console.log('[Request Debug] PUT 请求:', { 
+      url, 
+      data,
+      config,
+      timestamp: new Date().toISOString()
+    });
+    const response = await instance.put(url, data, config);
+    console.log('[Request Debug] PUT 响应:', {
+      status: response.status,
+      statusText: response.statusText,
+      data: {
+        code: response.data.code,
+        msg: response.data.msg,
+        hasData: !!response.data.data
+      },
+      timestamp: new Date().toISOString()
+    });
+    return response.data;
+  },
+  
+  delete: async <T = any>(url: string, config?: AxiosRequestConfig): Promise<ApiResponse<T>> => {
+    console.log('[Request Debug] DELETE 请求:', { 
+      url, 
+      config,
+      timestamp: new Date().toISOString()
+    });
+    const response = await instance.delete(url, config);
+    console.log('[Request Debug] DELETE 响应:', {
+      status: response.status,
+      statusText: response.statusText,
+      data: {
+        code: response.data.code,
+        msg: response.data.msg,
+        hasData: !!response.data.data
+      },
+      timestamp: new Date().toISOString()
+    });
+    return response.data;
+  },
+  
+  patch: async <T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<ApiResponse<T>> => {
+    console.log('[Request Debug] PATCH 请求:', { 
+      url, 
+      data,
+      config,
+      timestamp: new Date().toISOString()
+    });
+    const response = await instance.patch(url, data, config);
+    console.log('[Request Debug] PATCH 响应:', {
+      status: response.status,
+      statusText: response.statusText,
+      data: {
+        code: response.data.code,
+        msg: response.data.msg,
+        hasData: !!response.data.data
+      },
+      timestamp: new Date().toISOString()
+    });
+    return response.data;
+  }
+};
+
+export const api = request; 

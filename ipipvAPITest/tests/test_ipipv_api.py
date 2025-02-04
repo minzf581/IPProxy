@@ -210,5 +210,62 @@ def test_get_app_info(client):
     assert data.get('code') == 200
     assert 'data' in data
 
+def test_get_assign_ip_info(client):
+    """测试获取IP信息"""
+    # 准备参数
+    params = {
+        'ip': '1.1.1.1',  # 测试IP
+        'proxyType': 104  # 动态国外
+    }
+    
+    # 获取完整请求参数
+    request_params = prepare_request_params(params)
+    
+    # 发送请求
+    response = client.post('/api/open/app/assign/ip/info/v2', json=request_params)
+    
+    # 打印请求和响应信息
+    print("\n=== Request Info ===")
+    print(f"URL: {API_CONFIG['base_url']}/api/open/app/assign/ip/info/v2")
+    print("Parameters:", json.dumps(request_params, indent=2))
+    print("\n=== Response Info ===")
+    print(f"Status: {response.status_code}")
+    print(f"Content: {response.text}")
+    
+    # 验证响应
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get('code') == 200
+    assert 'data' in data
+
+def test_get_ip_ranges(client):
+    """测试获取IP段列表"""
+    # 准备参数
+    params = {
+        'proxyType': [103],  # 静态国外家庭
+        'countryCode': 'JP',  # 日本
+        'cityCode': 'OSA'     # 大阪
+    }
+    
+    # 获取完整请求参数
+    request_params = prepare_request_params(params)
+    
+    # 发送请求
+    response = client.post('/api/open/app/product/query/v2', json=request_params)
+    
+    # 打印请求和响应信息
+    print("\n=== Request Info ===")
+    print(f"URL: {API_CONFIG['base_url']}/api/open/app/product/query/v2")
+    print("Parameters:", json.dumps(request_params, indent=2))
+    print("\n=== Response Info ===")
+    print(f"Status: {response.status_code}")
+    print(f"Content: {response.text}")
+    
+    # 验证响应
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get('code') == 200
+    assert 'data' in data
+
 if __name__ == '__main__':
     pytest.main(['-v', 'test_ipipv_api.py']) 

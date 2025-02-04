@@ -1,3 +1,8 @@
+import { api } from '@/utils/request';
+import type { ApiResponse } from '@/types/api';
+import type { DashboardData as DashboardDataType, AgentListResponse } from '@/types/dashboard';
+import type { AxiosError } from 'axios';
+
 // 统计数据接口
 export interface Statistics {
   totalRecharge: number;    // 累计充值
@@ -39,15 +44,47 @@ export interface DashboardData {
 }
 
 // 获取仪表盘数据
-export async function getDashboardData(): Promise<DashboardData> {
+export async function getDashboardData(agentId?: string | number): Promise<DashboardDataType> {
   try {
-    const response = await fetch('/api/dashboard');
-    if (!response.ok) {
-      throw new Error('获取仪表盘数据失败');
+    console.log('[Dashboard Service] Getting dashboard data for agent:', agentId);
+    console.log('[Dashboard Service] Agent ID type:', typeof agentId);
+    
+    const url = '/api/open/app/dashboard/info/v2';
+    const params = agentId ? { agent_id: agentId } : undefined;
+      
+    console.log('[Dashboard Service] Request URL:', url);
+    console.log('[Dashboard Service] Request params:', params);
+    
+    const response = await api.get<ApiResponse<DashboardDataType>>(url, { params });
+    console.log('[Dashboard Service] Dashboard data full response:', response);
+    
+    if (response.data.code !== 0) {
+      throw new Error(response.data.msg || '获取仪表盘数据失败');
     }
-    return await response.json();
+    
+    return response.data.data;
   } catch (error) {
-    console.error('获取仪表盘数据错误:', error);
+    const axiosError = error as AxiosError;
+    console.error('[Dashboard Service] Error getting dashboard data:', axiosError);
+    console.error('[Dashboard Service] Error details:', {
+      message: axiosError.message,
+      status: axiosError.response?.status,
+      statusText: axiosError.response?.statusText,
+      responseData: axiosError.response?.data
+    });
+    throw error;
+  }
+}
+
+// 获取代理列表
+export async function getAgentList(params: { page: number; pageSize: number }): Promise<AgentListResponse> {
+  try {
+    console.log('[Dashboard Service] Getting agent list with params:', params);
+    const response = await api.get<ApiResponse<AgentListResponse>>('/api/open/app/agent/list', { params });
+    console.log('[Dashboard Service] Agent list response:', response);
+    return response.data.data;
+  } catch (error) {
+    console.error('[Dashboard Service] Error getting agent list:', error);
     throw error;
   }
 }
@@ -59,7 +96,7 @@ export function formatNumber(num: number): string {
 
 // 格式化流量大小
 export function formatTraffic(gb: number): string {
-  return `${gb}G`;
+  return `${gb}Gb`;
 }
 
 // 格式化数量

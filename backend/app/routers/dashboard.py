@@ -21,7 +21,7 @@ from app.models.transaction import Transaction
 from app.models.resource_type import ResourceType
 from app.models.resource_usage import ResourceUsageStatistics, ResourceUsageHistory
 
-router = APIRouter(prefix="/api")
+router = APIRouter()
 logger = logging.getLogger(__name__)
 
 def fetch_from_ipipv_api(endpoint: str) -> Dict[str, Any]:
@@ -171,7 +171,7 @@ def sync_resource_usage(db: Session, main_user: MainUser):
         # 同步失败不抛出异常，继续使用数据库中的数据
 
 @router.get("/open/app/dashboard/info/v2")
-async def get_dashboard_data(
+async def get_dashboard_info(
     agent_id: Optional[int] = Query(None, description="代理商ID，不传则返回当前用户的仪表盘数据"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -359,7 +359,7 @@ def get_static_resources_usage(db: Session, user_id: int) -> list:
         }
     ]
 
-@router.get("/api/dashboard/resource-statistics")
+@router.get("/resource-statistics")
 async def get_resource_statistics(db: Session = Depends(get_db)):
     try:
         # 获取当前月份的开始时间

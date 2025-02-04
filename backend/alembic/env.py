@@ -5,12 +5,17 @@ from sqlalchemy import pool
 
 from alembic import context
 
-# 导入所有模型
 from app.models.base import Base
 from app.models.user import User
-from app.models.agent import Agent
+from app.models.resource_usage import ResourceUsageHistory, ResourceUsageStatistics
+from app.models.static_order import StaticOrder
+from app.models.dynamic_order import DynamicOrder
 from app.models.transaction import Transaction
-from app.models.main_user import MainUser
+from app.models.instance import Instance
+from app.models.dashboard import ProxyInfo
+from app.models.resource_type import ResourceType
+from app.models.agent_price import AgentPrice
+from app.models.agent_statistics import AgentStatistics
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

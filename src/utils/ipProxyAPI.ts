@@ -1,5 +1,6 @@
 import { encrypt, decrypt } from './crypto';
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
+import type { Area, Country, City, IpRange } from '@/types/api';
 
 export interface APIResponse<T> {
   reqId: string;
@@ -112,18 +113,121 @@ export interface ProductInfo {
   status: string;
 }
 
+export interface AreaResponse {
+  code: string;    // 地域代码
+  name?: string;   // 地域名称
+  cname: string;   // 地域中文名
+  children?: AreaResponse[]; // 下级地域
+}
+
+export const API_ROUTES = {
+  AREA: {
+    LIST: '/api/open/app/area/v2',
+    CITIES: '/api/open/app/city/list/v2',
+    IP_RANGES: '/api/open/app/area/ip-ranges/v2'
+  },
+  PROXY: {
+    INFO: '/api/open/app/proxy/info/v2',
+    BALANCE: '/api/open/app/proxy/balance/v2',
+    DRAW: '/api/open/app/proxy/draw/api/v2'
+  }
+};
+
 export class IPProxyAPI {
   private baseURL: string;
   private appKey: string;
   private appId: string;
-  private token: string | null = null;
+  private token: string | null;
+  private axiosInstance: AxiosInstance;
 
   constructor() {
-    // Check if we're running on GitHub Pages
-    const isGitHubPages = window.location.hostname === 'minzf581.github.io';
-    this.baseURL = isGitHubPages ? 'https://sandbox.ipipv.com' : 'http://localhost:8000';
+    // 在开发环境中使用代理
+    this.baseURL = '';
     this.appKey = 'bf3ffghlt0hpc4omnvc2583jt0fag6a4';
     this.appId = 'AK20241120145620';
+    this.token = null;
+
+    // 打印所有API路由
+    console.log('\n=== Frontend API Routes ===');
+    Object.entries(API_ROUTES).forEach(([module, routes]) => {
+      console.log(`\n[${module}]`);
+      Object.entries(routes).forEach(([name, path]) => {
+        console.log(`${name.padEnd(15)} ${path}`);
+      });
+    });
+    console.log('\n=== End Frontend Routes ===\n');
+
+    // 创建axios实例
+    this.axiosInstance = axios.create({
+      baseURL: '',  // 使用空的 baseURL
+      timeout: 30000,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    });
+
+    // 添加请求拦截器
+    this.axiosInstance.interceptors.request.use(
+      (config) => {
+        // 确保URL正确
+        if (config.url && !config.url.startsWith('/')) {
+          config.url = `/${config.url}`;
+        }
+
+        // 调试日志
+        console.log('[API Request]', {
+          method: config.method,
+          url: config.url,
+          baseURL: config.baseURL,
+          headers: config.headers,
+          data: config.data
+        });
+        return config;
+      },
+      (error) => {
+        console.error('[API Request Error]', error);
+        return Promise.reject(error);
+      }
+    );
+
+    // 添加响应拦截器
+    this.axiosInstance.interceptors.response.use(
+      (response) => {
+        console.log('[API Response]', {
+          status: response.status,
+          statusText: response.statusText,
+          data: response.data
+        });
+        return response;
+      },
+      (error) => {
+        // 增强错误处理
+        const errorInfo = {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          url: error.config?.url,
+          method: error.config?.method,
+          message: error.message,
+          data: error.response?.data
+        };
+        console.error('[API Response Error]', errorInfo);
+
+        // 如果是证书错误，添加更多信息
+        if (error.code === 'ERR_CERT_DATE_INVALID') {
+          console.warn('证书验证失败，请检查服务器证书是否有效。');
+        }
+
+        return Promise.reject(error);
+      }
+    );
+  }
+
+  initToken() {
+    const token = localStorage.getItem('token');
+    if (token) {
+      this.token = token;
+    }
   }
 
   setToken(token: string) {
@@ -134,70 +238,71 @@ export class IPProxyAPI {
     this.token = null;
   }
 
+  // 构建完整的 URL
+  private buildUrl(endpoint: string): string {
+    // 确保endpoint以/开头
+    const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    
+    console.log('[buildUrl] URL construction:', {
+      original: endpoint,
+      normalized: normalizedEndpoint,
+      complete: normalizedEndpoint
+    });
+    
+    return normalizedEndpoint;
+  }
+
   private async request<T>(endpoint: string, params: Record<string, any>): Promise<T> {
     try {
-      // 1. 记录原始参数
-      console.log('\n=== Request Params ===');
-      console.log('Original params:', params);
-      
+      // 1. 添加必要的参数
+      const fullParams = {
+        ...params,
+        appUsername: 'test_user',
+      };
+
       // 2. 转换为 JSON 字符串
-      const paramsStr = JSON.stringify(params);
-      console.log('Params string:', paramsStr);
+      const paramsStr = JSON.stringify(fullParams);
       
       // 3. 加密参数
       const encryptedParams = encrypt(paramsStr, this.appKey);
-      console.log('Encrypted params:', encryptedParams);
       
-      // 4. 构建请求体
-      const requestBody = {
+      // 4. 构建请求数据
+      const requestData = {
         version: 'v2',
         encrypt: 'AES',
         appKey: this.appId,
         reqId: `reqId_${Date.now()}`,
         params: encryptedParams
       };
-      
-      console.log('Request body:', requestBody);
-      console.log('=== End Request Params ===\n');
 
-      // 5. 发送请求
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
+      // 5. 构建请求路径
+      const apiPath = endpoint.startsWith('/api/') ? endpoint : `/api/open/app/${endpoint}`;
+      console.log('[request] Using API path:', apiPath);
 
-      // 添加认证头
-      if (this.token) {
-        headers['Authorization'] = `Bearer ${this.token}`;
+      // 6. 发送请求
+      const response = await this.axiosInstance.post(apiPath, requestData);
+
+      // 7. 检查响应
+      if (!response.data) {
+        throw new Error('No response data received');
       }
 
-      const response = await axios.post<APIResponse<T>>(
-        `${this.baseURL}${endpoint}`,
-        requestBody,
-        { headers }
-      );
-
-      // 6. 检查响应
       if (response.data.code !== 200) {
-        throw new Error(`API Error (${response.data.code}): ${response.data.msg}`);
+        throw new Error(`API Error (${response.data.code}): ${response.data.msg || response.data.message}`);
       }
 
-      // 7. 解密响应
-      if (!response.data.data) {
-        console.log('[API Response] No data to decrypt');
-        return null as T;
+      // 8. 解密响应数据
+      if (response.data.data && typeof response.data.data === 'string') {
+        try {
+          const decryptedData = decrypt(response.data.data, this.appKey);
+          return JSON.parse(decryptedData);
+        } catch (decryptError) {
+          console.error('[Decrypt Error]:', decryptError);
+          throw new Error('Failed to decrypt response data');
+        }
       }
 
-      // 8. 清理和验证响应数据
-      const cleanData = (response.data.data as string).replace(/[\s"']+/g, '');
-      if (!/^[A-Za-z0-9+/=]+$/.test(cleanData)) {
-        throw new Error('Invalid response data format: not a valid Base64 string');
-      }
-
-      // 9. 解密和解析
-      const decrypted = decrypt(cleanData, this.appKey);
-      console.log('[API Response] Decrypted:', decrypted);
-
-      return JSON.parse(decrypted) as T;
+      return response.data.data;
     } catch (error) {
       console.error('[API Error]:', error);
       throw error;
@@ -207,7 +312,7 @@ export class IPProxyAPI {
   // 获取实例信息
   async getInstanceInfo(instances: string[]): Promise<any> {
     try {
-      const response = await this.request<any>('/api/open/app/instance/v2', {
+      const response = await this.request<any>('open/app/instance/v2', {
         instances
       });
       return response;
@@ -220,7 +325,7 @@ export class IPProxyAPI {
   // 获取订单信息
   async getOrderInfo(orderNo: string = '', page: number = 1, pageSize: number = 10): Promise<any> {
     try {
-      const response = await this.request<any>('/api/open/app/order/v2', {
+      const response = await this.request<any>('open/app/order/v2', {
         orderNo,
         page,
         pageSize
@@ -235,7 +340,7 @@ export class IPProxyAPI {
   // 获取代理余额信息
   async getProxyBalance(proxyType: number, productNo: string, username?: string, appUsername?: string): Promise<ProxyBalanceInfo> {
     try {
-      const response = await this.request<ProxyBalanceInfo>('/api/open/app/proxy/info/v2', {
+      const response = await this.request<ProxyBalanceInfo>('open/app/proxy/info/v2', {
         proxyType,
         productNo,
         ...(username && { username }),
@@ -259,7 +364,7 @@ export class IPProxyAPI {
   }): Promise<FlowUsageResponse> {
     try {
       const { startTime, endTime, page = 1, pageSize = 10, username, appUsername } = params;
-      const response = await this.request<FlowUsageResponse>('/api/open/app/flow/usage/v2', {
+      const response = await this.request<FlowUsageResponse>('open/app/flow/usage/v2', {
         startTime,
         endTime,
         page,
@@ -288,32 +393,43 @@ export class IPProxyAPI {
     console.log('Request params:', JSON.stringify(params, null, 2));
     console.log('=== End getProxyInfo Request ===\n');
     
-    return this.request('/api/open/app/proxy/info/v2', params);
+    return this.request('open/app/proxy/info/v2', params);
   }
 
   // 原有的方法保持不变
   async getAppInfo() {
-    return this.request('/api/open/app/info/v2', { type: 'info' });
+    return this.request('open/app/info/v2', { type: 'info' });
   }
 
   async getProductStock(proxyType: number[]) {
-    return this.request('/api/open/app/product/query/v2', {
+    return this.request('open/app/product/query/v2', {
       proxyType
     });
   }
 
-  async getAreaList() {
-    return this.request('/api/open/app/area/v2', {});
+  // 获取区域列表
+  async getAreaList(codes?: string[]): Promise<AreaResponse[]> {
+    console.log('[getAreaList] Starting request with codes:', codes);
+    try {
+      const params: Record<string, any> = {};
+      if (codes && codes.length > 0) {
+        params.codes = codes;
+      }
+      return this.request<AreaResponse[]>(API_ROUTES.AREA.LIST, params);
+    } catch (error) {
+      console.error('[getAreaList] Error:', error);
+      throw error;
+    }
   }
 
   async getInstanceList() {
-    return this.request('/api/open/app/instance/v2', {});
+    return this.request('open/app/instance/v2', {});
   }
 
   // 创建用户
   async createUser(params: { appUsername: string; password: string; authName: string; no: string }) {
     try {
-      const response = await this.request('/api/open/app/user/create/v2', params);
+      const response = await this.request('open/app/user/create/v2', params);
       return response;
     } catch (error) {
       console.error('Failed to create user:', error);
@@ -343,7 +459,7 @@ export class IPProxyAPI {
         password: string;
         status: number;
         authStatus: number;
-      }>('/api/open/app/user/v2', {
+      }>('open/app/user/v2', {
         ...params,
         authType: 2,  // 个人实名
         status: 1     // 正常状态
@@ -358,7 +474,7 @@ export class IPProxyAPI {
   // 创建主账号的产品
   async createMainUserProduct(username: string, appUsername: string): Promise<void> {
     try {
-      await this.request('/api/open/app/product/create/v2', {
+      await this.request('open/app/product/create/v2', {
         proxyType: 104,
         productNo: 'PROXY_DYNAMIC',
         username,
@@ -383,7 +499,7 @@ export class IPProxyAPI {
     list: UserInfo[];
     total: number;
   }> {
-    return this.request('/api/open/app/user/list/v2', params);
+    return this.request('open/app/user/list/v2', params);
   }
 
   // 获取代理商列表
@@ -396,42 +512,42 @@ export class IPProxyAPI {
     list: AgentInfo[];
     total: number;
   }> {
-    return this.request('/api/open/app/agent/list/v2', params);
+    return this.request('open/app/agent/list/v2', params);
   }
 
   // 获取用户详细信息
   async getUserInfo(userId: string): Promise<UserInfo> {
-    return this.request('/api/open/app/user/info/v2', { userId });
+    return this.request('open/app/user/info/v2', { userId });
   }
 
   // 获取代理商详细信息
   async getAgentInfo(agentId: string): Promise<AgentInfo> {
-    return this.request('/api/open/app/agent/info/v2', { agentId });
+    return this.request('open/app/agent/info/v2', { agentId });
   }
 
   // 修改用户状态
   async updateUserStatus(userId: string, status: string): Promise<void> {
-    return this.request('/api/open/app/user/status/v2', { userId, status });
+    return this.request('open/app/user/status/v2', { userId, status });
   }
 
   // 修改代理商状态
   async updateAgentStatus(agentId: string, status: string): Promise<void> {
-    return this.request('/api/open/app/agent/status/v2', { agentId, status });
+    return this.request('open/app/agent/status/v2', { agentId, status });
   }
 
   // 修改用户密码
   async updateUserPassword(userId: string, newPassword: string): Promise<void> {
-    return this.request('/api/open/app/user/password/v2', { userId, newPassword });
+    return this.request('open/app/user/password/v2', { userId, newPassword });
   }
 
   // 修改代理商密码
   async updateAgentPassword(agentId: string, newPassword: string): Promise<void> {
-    return this.request('/api/open/app/agent/password/v2', { agentId, newPassword });
+    return this.request('open/app/agent/password/v2', { agentId, newPassword });
   }
 
   // 获取产品列表
   async getProductList(): Promise<ProductInfo[]> {
-    return this.request('/api/open/app/product/list/v2', {});
+    return this.request('open/app/product/list/v2', {});
   }
 
   // 获取用户统计信息
@@ -443,7 +559,7 @@ export class IPProxyAPI {
     monthlyConsumption: number;
     lastMonthConsumption: number;
   }> {
-    return this.request('/api/open/app/user/statistics/v2', { userId });
+    return this.request('open/app/user/statistics/v2', { userId });
   }
 
   // 获取代理商统计信息
@@ -455,13 +571,13 @@ export class IPProxyAPI {
     monthlyConsumption: number;
     lastMonthConsumption: number;
   }> {
-    return this.request('/api/open/app/agent/statistics/v2', { agentId });
+    return this.request('open/app/agent/statistics/v2', { agentId });
   }
 
   // 登录
   async login(username: string, password: string): Promise<{ access_token: string }> {
     try {
-      const response = await axios.post(`${this.baseURL}/api/auth/login`, {
+      const response = await axios.post('auth/login', {
         username,
         password
       });
@@ -502,7 +618,7 @@ export class IPProxyAPI {
   // 更新管理员密码
   async updateAdminPassword(oldPassword: string, newPassword: string): Promise<void> {
     try {
-      await this.request('/api/admin/password/v2', {
+      await this.request('admin/password/v2', {
         oldPassword,
         newPassword
       });
@@ -518,7 +634,7 @@ export class IPProxyAPI {
     proxy: Record<string, any>;
   }> {
     try {
-      return await this.request('/api/admin/settings/v2', {});
+      return await this.request('admin/settings/v2', {});
     } catch (error) {
       console.error('Failed to get system settings:', error);
       throw error;
@@ -528,7 +644,7 @@ export class IPProxyAPI {
   // 更新系统设置
   async updateSystemSettings(settings: Record<string, any>): Promise<void> {
     try {
-      await this.request('/api/admin/settings/system/v2', settings);
+      await this.request('admin/settings/system/v2', settings);
     } catch (error) {
       console.error('Failed to update system settings:', error);
       throw error;
@@ -538,7 +654,7 @@ export class IPProxyAPI {
   // 更新代理设置
   async updateProxySettings(settings: Record<string, any>): Promise<void> {
     try {
-      await this.request('/api/admin/settings/proxy/v2', settings);
+      await this.request('admin/settings/proxy/v2', settings);
     } catch (error) {
       console.error('Failed to update proxy settings:', error);
       throw error;
@@ -548,7 +664,7 @@ export class IPProxyAPI {
   // 重置系统设置
   async resetSystemSettings(): Promise<void> {
     try {
-      await this.request('/api/admin/settings/reset/v2', {});
+      await this.request('admin/settings/reset/v2', {});
     } catch (error) {
       console.error('Failed to reset system settings:', error);
       throw error;
@@ -557,7 +673,7 @@ export class IPProxyAPI {
 
   async getDynamicProxies(params: any) {
     try {
-      const response = await this.request<any>('/api/proxies/dynamic', { params });
+      const response = await this.request<any>('proxies/dynamic', { params });
       return response.data;
     } catch (error) {
       console.error('Failed to get dynamic proxies:', error);
@@ -567,11 +683,52 @@ export class IPProxyAPI {
 
   async getStaticOrders(params: any) {
     try {
-      const response = await this.request<any>('/api/orders/static', { params });
+      const response = await this.request<any>('orders/static', { params });
       return response.data;
     } catch (error) {
       console.error('Failed to get static orders:', error);
       return { data: [], total: 0 };
+    }
+  }
+
+  // 根据区域获取国家列表
+  async getCountriesByRegion(regionCode: string): Promise<AreaResponse[]> {
+    try {
+      const params = {
+        codes: regionCode
+      };
+      return this.request<AreaResponse[]>(API_ROUTES.AREA.LIST, params);
+    } catch (error) {
+      console.error('[getCountriesByRegion] Error:', error);
+      throw error;
+    }
+  }
+
+  // 根据国家获取城市列表
+  async getCitiesByCountry(countryCode: string): Promise<City[]> {
+    try {
+      const params = {
+        countryCode
+      };
+      return this.request<City[]>(API_ROUTES.AREA.CITIES, params);
+    } catch (error) {
+      console.error('[getCitiesByCountry] Error:', error);
+      throw error;
+    }
+  }
+
+  // 获取IP段列表
+  async getIpRanges(params: {
+    regionCode: string;
+    countryCode: string;
+    cityCode: string;
+    staticType: string;
+  }): Promise<IpRange[]> {
+    try {
+      return this.request<IpRange[]>(API_ROUTES.AREA.IP_RANGES, params);
+    } catch (error) {
+      console.error('[getIpRanges] Error:', error);
+      throw error;
     }
   }
 }

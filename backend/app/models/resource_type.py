@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Enum, DECIMAL, DateTime
+from sqlalchemy import Column, Integer, String, Enum, DECIMAL, DateTime, Float, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
@@ -10,6 +10,8 @@ class ResourceType(Base, TimestampMixin):
     name = Column(String(50), unique=True, nullable=False)
     type = Column(String(20), nullable=False)  # dynamic or static
     price = Column(DECIMAL(10, 2), nullable=False)
+    description = Column(String(255))
+    status = Column(String(20), default='active')
 
     usage_statistics = relationship("ResourceUsageStatistics", back_populates="resource_type")
     usage_history = relationship("ResourceUsageHistory", back_populates="resource_type")
@@ -20,6 +22,8 @@ class ResourceType(Base, TimestampMixin):
             'name': self.name,
             'type': self.type,
             'price': float(self.price),
+            'description': self.description,
+            'status': self.status,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         } 

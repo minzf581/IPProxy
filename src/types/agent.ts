@@ -93,3 +93,13 @@ export interface AgentUser {
   totalOrders: number;
   totalSpent: number;
 }
+
+export interface Agent {
+  id: number;
+  username: string;
+  email: string;
+  balance: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}

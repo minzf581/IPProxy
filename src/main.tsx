@@ -6,16 +6,26 @@ import zhCN from 'antd/locale/zh_CN';
 import router from './router/router';
 import { AuthProvider } from './contexts/AuthContext';
 
-// Create a wrapper component to prevent double rendering
-const App = () => {
-  console.log('App: rendering');
+// 配置 React Router 的 future flags
+import { UNSAFE_DataRouterContext, UNSAFE_DataRouterStateContext } from 'react-router-dom';
+
+function App() {
   return (
     <ConfigProvider locale={zhCN}>
       <AuthProvider>
-        <RouterProvider router={router} />
+        <RouterProvider 
+          router={router} 
+          fallbackElement={<div>Loading...</div>}
+        />
       </AuthProvider>
     </ConfigProvider>
   );
-};
+}
 
-ReactDOM.createRoot(document.getElementById('root')!).render(<App />); 
+// 使用严格模式包装应用
+const root = ReactDOM.createRoot(document.getElementById('root')!);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+); 

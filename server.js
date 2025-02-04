@@ -6,13 +6,12 @@ import mysql from 'mysql2/promise';
 import bodyParser from 'body-parser';
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = 8000;
 const PROXY_BASE_URL = 'https://sandbox.ipipv.com';
 
 // 启用 CORS
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3001'],
-  credentials: true
+  origin: 'http://localhost:3000'
 }));
 
 // 启用 JSON 解析

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Button, message } from 'antd';
+import { Form, Input, Button, message, Spin } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import styles from './login.module.less';
+import { UserOutlined, LockOutlined } from '@ant-design/icons';
 
 // Debug 函数
 const debug = {
@@ -57,35 +58,47 @@ const LoginPage: React.FC = () => {
     <div className={styles.loginContainer}>
       <div className={styles.loginForm}>
         <h1>登录</h1>
-        <Form
-          form={form}
-          name="login"
-          initialValues={{ username: 'admin', password: 'admin123' }}
-          onFinish={onFinish}
-        >
-          <Form.Item
-            name="username"
-            rules={[{ required: true, message: '请输入用户名' }]}
+        <Spin spinning={loading}>
+          <Form
+            form={form}
+            name="login"
+            onFinish={onFinish}
+            size="large"
           >
-            <Input placeholder="用户名" />
-          </Form.Item>
-          <Form.Item
-            name="password"
-            rules={[{ required: true, message: '请输入密码' }]}
-          >
-            <Input.Password placeholder="密码" />
-          </Form.Item>
-          <Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={loading}
-              block
+            <Form.Item
+              name="username"
+              rules={[{ required: true, message: '请输入用户名' }]}
             >
-              登录
-            </Button>
-          </Form.Item>
-        </Form>
+              <Input 
+                prefix={<UserOutlined />}
+                placeholder="用户名"
+                autoComplete="username"
+                disabled={loading}
+              />
+            </Form.Item>
+            <Form.Item
+              name="password"
+              rules={[{ required: true, message: '请输入密码' }]}
+            >
+              <Input.Password 
+                prefix={<LockOutlined />}
+                placeholder="密码"
+                autoComplete="current-password"
+                disabled={loading}
+              />
+            </Form.Item>
+            <Form.Item>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={loading}
+                block
+              >
+                登录
+              </Button>
+            </Form.Item>
+          </Form>
+        </Spin>
       </div>
     </div>
   );

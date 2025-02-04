@@ -3,7 +3,7 @@
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background-color: #f0f2f5;
+  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
 }
 
 .loginForm {
@@ -12,18 +12,31 @@
   padding: 40px;
   background: white;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 
   h1 {
     text-align: center;
-    margin-bottom: 24px;
+    margin-bottom: 32px;
     color: rgba(0, 0, 0, 0.85);
     font-weight: 600;
+    font-size: 28px;
   }
 
   :global {
     .ant-form-item {
       margin-bottom: 24px;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+
+    .ant-input-affix-wrapper {
+      padding: 8px 11px;
+      
+      .anticon {
+        color: rgba(0, 0, 0, 0.45);
+      }
     }
 
     .ant-input {
@@ -36,6 +49,20 @@
 
     .ant-btn {
       height: 40px;
+      font-size: 16px;
+      
+      &:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+      }
+      
+      &:active {
+        transform: translateY(0);
+      }
+    }
+
+    .ant-spin-nested-loading {
+      width: 100%;
     }
   }
 }

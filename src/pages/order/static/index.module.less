@@ -1,3 +1,26 @@
+.container {
+  padding: 24px;
+  background-color: #f0f2f5;
+  min-height: 100vh;
+
+  :global {
+    .ant-card {
+      border-radius: 8px;
+    }
+  }
+}
+
+.tableToolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 16px 0;
+}
+
+.searchForm {
+  margin-bottom: 16px;
+}
+
 .staticOrder {
   :global {
     .ant-card {
@@ -48,31 +71,6 @@
 
       &:first-child {
         margin-left: 0;
-      }
-    }
-  }
-}
-
-.statistics {
-  margin: 24px 0;
-  
-  :global {
-    .ant-statistic {
-      background: #fff;
-      padding: 16px;
-      border-radius: 8px;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-
-      .ant-statistic-title {
-        color: rgba(0, 0, 0, 0.45);
-        font-size: 14px;
-        margin-bottom: 8px;
-      }
-
-      .ant-statistic-content {
-        color: rgba(0, 0, 0, 0.85);
-        font-size: 24px;
-        font-weight: 500;
       }
     }
   }

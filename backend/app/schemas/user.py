@@ -19,6 +19,8 @@ class UserLogin(BaseModel):
 class UserResponse(UserBase):
     """返回给前端的用户信息"""
     id: int
+    agent_id: Optional[int] = None  # 添加agent_id字段，None表示是管理员
+    is_agent: bool = False  # 添加is_agent字段
     created_at: datetime
     updated_at: datetime
 

@@ -9,20 +9,37 @@ import {
   message,
   Modal,
   Select,
+  DatePicker,
+  Typography,
+  Tooltip,
+  Tag,
+  InputNumber,
+  Radio,
 } from 'antd';
 import type { TableProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { getUserList, updateUserStatus, updateUserPassword } from '@/services/userService';
-import type { User, UserListParams } from '@/services/userService';
-import './index.less';
+import { getUserList, updateUserStatus, updateUserPassword, createUser } from '@/services/userService';
+import type { User, UserListParams, UserListResponse } from '@/types/user';
+import type { CreateUserParams } from '@/services/userService';
+import type { ApiResponse } from '@/types/api';
+import styles from './index.module.less';
+import { SearchOutlined, EditOutlined, LockOutlined, AppstoreAddOutlined, ReloadOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { useRequest } from '@/hooks/useRequest';
+import BusinessActivationModal from './components/BusinessActivationModal';
+import ChangePasswordModal from '@/components/ChangePasswordModal';
+import type { RangePickerProps } from 'antd/es/date-picker';
 
 const { Option } = Select;
+const { RangePicker } = DatePicker;
+const { TextArea } = Input;
+const { Title } = Typography;
 
 const UserManagementPage: React.FC = () => {
   const navigate = useNavigate();
-  const [form] = Form.useForm();
+  const [searchForm] = Form.useForm();
+  const [createForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<User[]>([]);
   const [pagination, setPagination] = useState({
@@ -30,91 +47,176 @@ const UserManagementPage: React.FC = () => {
     pageSize: 10,
     total: 0
   });
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [businessModalVisible, setBusinessModalVisible] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [passwordModal, setPasswordModal] = useState<{visible: boolean; userId: string}>({
     visible: false,
     userId: ''
   });
 
-  // 添加 useEffect 钩子
-  useEffect(() => {
-    fetchData({
-      page: pagination.current,
-      pageSize: pagination.pageSize,
-    });
-  }, []);
-
-  // 获取数据
-  const fetchData = async (params: UserListParams) => {
-    setLoading(true);
+  // 加载用户列表
+  const loadUsers = async (params: UserListParams = {}) => {
     try {
+      console.log('[User List Debug] Loading users with params:', params);
+      setLoading(true);
       const response = await getUserList({
-        page: params.page || 1,
-        pageSize: params.pageSize || 10,
+        page: params.page || pagination.current,
+        pageSize: params.pageSize || pagination.pageSize,
         username: params.username,
-        agentAccount: params.agentAccount,
-        status: params.status
+        status: params.status,
+        dateRange: params.dateRange
       });
       
-      if (response.code === 0) {
+      console.log('[User List Debug] API response:', response);
+      
+      if (response.code === 0 && response.data?.list) {
+        console.log('[User List Debug] Setting data with length:', response.data.list.length);
         setData(response.data.list);
-        setPagination({
-          ...pagination,
-          total: response.data.total,
+        setPagination(prev => ({
+          ...prev,
+          current: params.page || prev.current,
+          total: response.data.total
+        }));
+        console.log('[User List Debug] Updated pagination:', {
+          current: params.page || pagination.current,
+          total: response.data.total
         });
       } else {
-        message.error(response.msg || '获取数据失败');
+        console.error('[User List Debug] Invalid response structure:', response);
+        message.error(response.msg || '获取用户列表失败');
       }
-    } catch (error) {
-      message.error('获取数据失败');
+    } catch (error: any) {
+      console.error('[User List Debug] Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      message.error(error.message || '获取用户列表失败');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  // 处理表格变化
-  const handleTableChange: TableProps<User>['onChange'] = (
-    pagination,
-    filters,
-    sorter
-  ) => {
-    fetchData({
-      page: pagination.current,
-      pageSize: pagination.pageSize,
-      ...form.getFieldsValue(),
-    });
-  };
+  // 初始化加载
+  useEffect(() => {
+    console.log('[User List Debug] Component mounted');
+    loadUsers();
+  }, []);
+
+  // 组件卸载时的清理
+  useEffect(() => {
+    return () => {
+      console.log('[User List Debug] Component unmounted');
+    };
+  }, []);
+
+  useEffect(() => {
+    console.log('[User List Debug] Data updated:', data);
+  }, [data]);
+
+  useEffect(() => {
+    console.log('[User List Debug] Pagination updated:', pagination);
+  }, [pagination]);
+
+  // 表格列配置
+  const columns: ColumnsType<User> = [
+    {
+      title: 'ID',
+      dataIndex: 'id',
+      key: 'id',
+      width: 80,
+    },
+    {
+      title: '用户名',
+      dataIndex: 'username',
+      key: 'username',
+      width: 120,
+    },
+    {
+      title: '邮箱',
+      dataIndex: 'email',
+      key: 'email',
+      width: 180,
+      render: (text: string) => text || '-'
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 100,
+      render: (status: string) => (
+        <Tag color={status === 'active' ? 'success' : 'error'}>
+          {status === 'active' ? '正常' : '禁用'}
+        </Tag>
+      ),
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 180,
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 200,
+      render: (_: any, record: User) => (
+        <Space size="middle">
+          <Button
+            type="link"
+            size="small"
+            onClick={() => {
+              setSelectedUser(record);
+              setPasswordModal({ visible: true, userId: String(record.id) });
+            }}
+          >
+            修改密码
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            onClick={() => {
+              setSelectedUser(record);
+              setBusinessModalVisible(true);
+            }}
+          >
+            业务开通
+          </Button>
+        </Space>
+      ),
+    },
+  ];
 
   // 处理搜索
-  const handleSearch = () => {
-    setPagination({ ...pagination, current: 1 });
-    fetchData({
-      ...form.getFieldsValue(),
+  const handleSearch = async (values: any) => {
+    const { username, status, dateRange } = values;
+    const params: UserListParams = {
       page: 1,
-      pageSize: pagination.pageSize,
-    });
+      username,
+      status,
+      dateRange
+    };
+    await loadUsers(params);
   };
 
   // 处理重置
   const handleReset = () => {
-    form.resetFields();
-    setPagination({ ...pagination, current: 1 });
-    fetchData({
-      page: 1,
-      pageSize: pagination.pageSize,
-    });
+    searchForm.resetFields();
+    loadUsers({ page: 1 });
   };
 
-  // 修改密码
-  const handleUpdatePassword = async (values: { password: string }) => {
+  // 处理更新密码
+  const handleUpdatePassword = async (userId: number, password: string) => {
     try {
-      const response = await updateUserPassword(passwordModal.userId, values.password);
+      const response = await updateUserPassword(String(userId), password);
       if (response.code === 0) {
         message.success('密码修改成功');
         setPasswordModal({ visible: false, userId: '' });
       } else {
         message.error(response.msg || '密码修改失败');
       }
-    } catch (error) {
-      message.error('密码修改失败');
+    } catch (error: any) {
+      message.error(error.message || '密码修改失败');
     }
   };
 
@@ -124,188 +226,222 @@ const UserManagementPage: React.FC = () => {
   };
 
   // 更新状态
-  const handleUpdateStatus = async (userId: string, newStatus: string) => {
+  const handleUpdateStatus = async (userId: number, newStatus: string) => {
     try {
-      const response = await updateUserStatus(userId, newStatus);
+      const response = await updateUserStatus(String(userId), newStatus);
       if (response.code === 0) {
         message.success('状态更新成功');
-        fetchData({
+        loadUsers({
           page: pagination.current,
           pageSize: pagination.pageSize,
-          ...form.getFieldsValue(),
+          ...searchForm.getFieldsValue(),
         });
       } else {
         message.error(response.msg || '状态更新失败');
       }
-    } catch (error) {
-      message.error('状态更新失败');
+    } catch (error: any) {
+      message.error(error.message || '状态更新失败');
     }
   };
 
-  // 表格列配置
-  const columns: ColumnsType<User> = [
-    {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
-      width: 80,
-      align: 'center',
-    },
-    {
-      title: '账号',
-      dataIndex: 'username',
-      key: 'username',
-      width: 120,
-      align: 'center',
-    },
-    {
-      title: '所属代理商',
-      dataIndex: 'agentAccount',
-      key: 'agentAccount',
-      width: 120,
-      align: 'center',
-    },
-    {
-      title: '备注',
-      dataIndex: 'remark',
-      key: 'remark',
-      width: 120,
-      align: 'center',
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 80,
-      align: 'center',
-      render: (status: string) => (
-        <span style={{ color: status === 'enabled' ? '#52c41a' : '#ff4d4f' }}>
-          {status === 'enabled' ? '正常' : '禁用'}
-        </span>
-      ),
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      width: 160,
-      align: 'center',
-      render: (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm:ss'),
-    },
-    {
-      title: '操作',
-      key: 'action',
-      fixed: 'right',
-      width: 280,
-      align: 'center',
-      render: (_, record) => (
-        <Space size="middle" className="actionButtons">
-          <Button 
-            type="link" 
-            size="small"
-            className="actionButton"
-            onClick={() => setPasswordModal({ visible: true, userId: record.id })}
-          >
-            修改密码
-          </Button>
-          <Button 
-            type="link"
-            size="small"
-            className="actionButton"
-            onClick={() => handleViewDashboard(record.id)}
-          >
-            查看仪表盘
-          </Button>
-          <Button 
-            type="link"
-            size="small"
-            className={`actionButton ${record.status === 'enabled' ? 'dangerButton' : 'enableButton'}`}
-            onClick={() => handleUpdateStatus(record.id, record.status === 'enabled' ? 'disabled' : 'enabled')}
-          >
-            {record.status === 'enabled' ? '停用' : '启用'}
-          </Button>
-        </Space>
-      ),
-    },
-  ];
+  const handlePasswordChange = async (values: any) => {
+    try {
+      const response = await fetch(`/api/users/${selectedUser?.id}/change-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(values),
+        credentials: 'include',
+      });
+
+      const result = await response.json();
+      if (result.code === 0) {
+        message.success('密码修改成功');
+        setPasswordModal({ visible: false, userId: '' });
+      } else {
+        message.error(result.message || '密码修改失败');
+      }
+    } catch (error) {
+      message.error('密码修改失败');
+    }
+  };
+
+  // 处理创建用户
+  const handleCreateUser = async (values: CreateUserParams) => {
+    try {
+      console.log('[Create User Debug] Creating user with values:', values);
+      const response = await createUser(values);
+      console.log('[Create User Debug] API response:', response);
+      
+      if (response.code === 0) {
+        message.success('创建用户成功');
+        setCreateModalVisible(false);
+        createForm.resetFields();
+        console.log('[Create User Debug] Reloading user list...');
+        // 重新加载用户列表，确保显示最新数据
+        await loadUsers({
+          page: 1,
+          pageSize: pagination.pageSize,
+          ...searchForm.getFieldsValue()
+        });
+      } else {
+        console.error('[Create User Debug] API error:', response.msg);
+        message.error(response.msg || '创建用户失败');
+      }
+    } catch (error: any) {
+      console.error('[Create User Debug] Error:', error);
+      message.error(error.message || '创建用户失败');
+    }
+  };
 
   return (
-    <Card title="用户管理">
-      <Form
-        form={form}
-        layout="inline"
-        onFinish={handleSearch}
-        style={{ marginBottom: 24 }}
-      >
-        <Form.Item name="username" label="用户账号">
-          <Input placeholder="请输入用户账号" allowClear />
-        </Form.Item>
-        <Form.Item name="agentAccount" label="所属代理商">
-          <Input placeholder="请输入代理商账号" allowClear />
-        </Form.Item>
-        <Form.Item name="status" label="状态">
-          <Select placeholder="全部" allowClear style={{ width: 120 }}>
-            <Option value="enabled">正常</Option>
-            <Option value="disabled">禁用</Option>
-          </Select>
-        </Form.Item>
-        <Form.Item>
-          <Space>
-            <Button type="primary" htmlType="submit">
-              查询
-            </Button>
-            <Button onClick={handleReset}>
-              重置
-            </Button>
-          </Space>
-        </Form.Item>
-      </Form>
-
-      <Table
-        columns={columns}
-        dataSource={data}
-        loading={loading}
-        rowKey="id"
-        pagination={{
-          ...pagination,
-          showSizeChanger: true,
-          showQuickJumper: true,
-          showTotal: (total) => `共 ${total} 条记录`,
-        }}
-        onChange={handleTableChange}
-        scroll={{ x: 1200 }}
-      />
-
-      <Modal
-        title="修改密码"
-        open={passwordModal.visible}
-        onCancel={() => setPasswordModal({ visible: false, userId: '' })}
-        footer={null}
-      >
-        <Form onFinish={handleUpdatePassword}>
-          <Form.Item
-            name="password"
-            label="新密码"
-            rules={[
-              { required: true, message: '请输入新密码' },
-              { min: 6, message: '密码长度不能小于6位' },
-            ]}
-          >
-            <Input.Password placeholder="请输入新密码" />
+    <div className={styles.userManagement}>
+      <Card title="用户管理">
+        <Form
+          form={searchForm}
+          layout="inline"
+          onFinish={handleSearch}
+          style={{ marginBottom: 24 }}
+        >
+          <Form.Item name="username" label="用户账号">
+            <Input placeholder="请输入用户账号" allowClear />
+          </Form.Item>
+          <Form.Item name="status" label="状态">
+            <Select placeholder="请选择状态" allowClear style={{ width: 120 }}>
+              <Option value="active">正常</Option>
+              <Option value="disabled">禁用</Option>
+            </Select>
+          </Form.Item>
+          <Form.Item name="dateRange" label="创建时间">
+            <RangePicker showTime />
           </Form.Item>
           <Form.Item>
             <Space>
-              <Button type="primary" htmlType="submit">
-                确定
+              <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
+                查询
               </Button>
-              <Button onClick={() => setPasswordModal({ visible: false, userId: '' })}>
-                取消
+              <Button onClick={handleReset} icon={<ReloadOutlined />}>
+                重置
+              </Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalVisible(true)}>
+                创建用户
               </Button>
             </Space>
           </Form.Item>
         </Form>
+
+        <Table
+          columns={columns}
+          dataSource={data}
+          loading={loading}
+          rowKey="id"
+          pagination={{
+            ...pagination,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total) => `共 ${total} 条记录`,
+          }}
+          onChange={(pagination, filters, sorter) => {
+            loadUsers({
+              page: pagination.current,
+              pageSize: pagination.pageSize,
+              ...searchForm.getFieldsValue()
+            });
+          }}
+        />
+      </Card>
+
+      <Modal
+        title="创建用户"
+        open={createModalVisible}
+        onCancel={() => {
+          setCreateModalVisible(false);
+          createForm.resetFields();
+        }}
+        footer={[
+          <Button key="cancel" onClick={() => {
+            setCreateModalVisible(false);
+            createForm.resetFields();
+          }}>
+            取消
+          </Button>,
+          <Button key="submit" type="primary" onClick={() => createForm.submit()}>
+            确定
+          </Button>
+        ]}
+      >
+        <Form
+          form={createForm}
+          layout="vertical"
+          onFinish={handleCreateUser}
+          preserve={false}
+        >
+          <Form.Item
+            name="username"
+            label="用户名"
+            rules={[
+              { required: true, message: '请输入用户名' },
+              { pattern: /^[a-zA-Z0-9]+$/, message: '用户名只能包含大小写字母和数字' }
+            ]}
+          >
+            <Input placeholder="请输入用户名" autoComplete="username" />
+          </Form.Item>
+          <Form.Item
+            name="password"
+            label="密码"
+            rules={[
+              { required: true, message: '请输入密码' },
+              { min: 6, message: '密码长度不能小于6位' }
+            ]}
+          >
+            <Input.Password placeholder="请输入密码" autoComplete="new-password" />
+          </Form.Item>
+          <Form.Item
+            name="email"
+            label="邮箱"
+            rules={[{ type: 'email', message: '请输入有效的邮箱地址' }]}
+          >
+            <Input placeholder="请输入邮箱" autoComplete="email" />
+          </Form.Item>
+          <Form.Item name="remark" label="备注">
+            <TextArea rows={4} placeholder="请输入备注信息" />
+          </Form.Item>
+        </Form>
       </Modal>
-    </Card>
+
+      {businessModalVisible && selectedUser && (
+        <BusinessActivationModal
+          visible={businessModalVisible}
+          user={selectedUser}
+          onCancel={() => {
+            setBusinessModalVisible(false);
+            setSelectedUser(null);
+          }}
+          onSuccess={() => {
+            setBusinessModalVisible(false);
+            setSelectedUser(null);
+            loadUsers();
+          }}
+        />
+      )}
+
+      {passwordModal.visible && selectedUser && (
+        <ChangePasswordModal
+          visible={passwordModal.visible}
+          userId={passwordModal.userId}
+          onCancel={() => {
+            setPasswordModal({ visible: false, userId: '' });
+            setSelectedUser(null);
+          }}
+          onSuccess={() => {
+            setPasswordModal({ visible: false, userId: '' });
+            setSelectedUser(null);
+            message.success('密码修改成功');
+          }}
+        />
+      )}
+    </div>
   );
 };
 

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Layout, Menu, Button, Dropdown, Avatar } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Layout, Menu, Button, Dropdown, Avatar, theme } from 'antd';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import type { MenuProps } from 'antd';
 import {
@@ -12,9 +12,11 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   BellOutlined,
-  CloudServerOutlined
+  CloudServerOutlined,
+  LogoutOutlined,
 } from '@ant-design/icons';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/hooks/useAuth';
+import { adminMenuConfig, agentMenuConfig } from '@/config/menu';
 import styles from './index.module.less';
 
 const { Header, Sider, Content } = Layout;
@@ -28,102 +30,54 @@ const debug = {
   }
 };
 
-// 菜单配置
-const menuConfig: MenuItem[] = [
-  {
-    key: 'dashboard',
-    icon: <DashboardOutlined />,
-    label: '仪表盘',
-  },
-  {
-    key: 'account',
-    icon: <TeamOutlined />,
-    label: '账户管理',
-    children: [
-      {
-        key: 'account/agent',
-        label: '代理商管理',
-      },
-      {
-        key: 'account/users',
-        label: '用户管理',
-      },
-    ],
-  },
-  {
-    key: 'order',
-    icon: <OrderedListOutlined />,
-    label: '订单管理',
-    children: [
-      {
-        key: 'order/agent',
-        label: '代理商订单',
-      },
-      {
-        key: 'order/dynamic',
-        label: '用户动态订单',
-      },
-      {
-        key: 'order/static',
-        label: '用户静态订单',
-      },
-    ],
-  },
-  {
-    key: 'settings',
-    icon: <SettingOutlined />,
-    label: '系统设置',
-  },
-] as MenuItem[];
-
-const AppLayout: React.FC = () => {
+const LayoutComponent: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [openKeys, setOpenKeys] = useState<string[]>([]);
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
 
-  // 获取当前路径对应的菜单项 key
-  const getSelectedKey = () => {
-    const path = location.pathname === '/' ? '/' : location.pathname.substring(1);
-    return path;
-  };
+  const {
+    token: { colorBgContainer },
+  } = theme.useToken();
 
-  // 获取当前路径的父级菜单 key
-  const getParentKey = (path: string) => {
-    const parts = path.split('/');
-    return parts[0];
-  };
+  useEffect(() => {
+    debug.log('User info:', user);
+    debug.log('Is agent:', user?.is_agent);
+  }, [user]);
 
-  // 初始化展开的菜单
-  React.useEffect(() => {
-    const currentPath = location.pathname.substring(1);
-    if (currentPath) {
-      const parentKey = getParentKey(currentPath);
-      setOpenKeys(prev => {
-        if (!prev.includes(parentKey)) {
-          return [...prev, parentKey];
-        }
-        return prev;
-      });
+  useEffect(() => {
+    const path = location.pathname.split('/').filter(Boolean);
+    debug.log('Current path:', path);
+    if (path.length > 0) {
+      setSelectedKeys([path.join('/')]);
+      setOpenKeys([path[0]]);
+      debug.log('Setting selected keys:', [path.join('/')]);
+      debug.log('Setting open keys:', [path[0]]);
+    } else {
+      setSelectedKeys(['dashboard']);
+      debug.log('Setting default selected key: dashboard');
     }
-    debug.log('Open keys:', openKeys);
   }, [location.pathname]);
 
   // 处理菜单点击
   const handleMenuClick = ({ key }: { key: string }) => {
-    navigate(key);
+    debug.log('Menu item clicked:', key);
+    navigate(`/${key}`);
   };
 
   // 处理子菜单展开/收起
   const handleOpenChange = (keys: string[]) => {
+    debug.log('Menu open keys changed:', keys);
     setOpenKeys(keys);
   };
 
   const userMenuItems: MenuProps['items'] = [
     {
-      key: 'settings/change-password',
-      label: '修改密码',
+      key: 'settings',
+      label: '系统设置',
+      onClick: () => navigate('/settings'),
     },
     {
       type: 'divider',
@@ -135,9 +89,18 @@ const AppLayout: React.FC = () => {
     },
   ];
 
-  const selectedKeys = [getSelectedKey()];
   debug.log('Selected keys:', selectedKeys);
   debug.log('Open keys:', openKeys);
+
+  // 获取菜单配置
+  const getMenuConfig = () => {
+    const isAgent = user?.is_agent ?? false;
+    debug.log('Getting menu config for role:', isAgent ? 'agent' : 'admin');
+    return isAgent ? agentMenuConfig : adminMenuConfig;
+  };
+
+  const menuItems = getMenuConfig();
+  debug.log('Menu items:', menuItems);
 
   return (
     <Layout className={styles.layout}>
@@ -149,7 +112,7 @@ const AppLayout: React.FC = () => {
         width={220}
       >
         <div className={styles.logo}>
-          {!collapsed && 'IP管理后台'}
+          {!collapsed && (user?.agent_id === null ? 'IP管理后台' : 'IP代理商后台')}
         </div>
         <Menu
           theme="dark"
@@ -157,7 +120,7 @@ const AppLayout: React.FC = () => {
           selectedKeys={selectedKeys}
           openKeys={openKeys}
           onOpenChange={handleOpenChange}
-          items={menuConfig}
+          items={menuItems}
           onClick={handleMenuClick}
           className={styles.menu}
         />
@@ -192,4 +155,4 @@ const AppLayout: React.FC = () => {
   );
 };
 
-export default AppLayout;
+export default LayoutComponent;
