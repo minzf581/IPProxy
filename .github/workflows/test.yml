@@ -1,0 +1,61 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      # 如果需要其他服务（如Redis），可以在这里添加
+      
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-asyncio pytest-html psutil
+      
+      - name: Run tests
+        run: |
+          # 运行单元测试
+          pytest tests/unit/ --cov=app --cov-report=xml
+          
+          # 运行集成测试
+          pytest tests/integration/ --html=integration-report.html
+          
+          # 运行性能测试
+          pytest tests/performance/ --html=performance-report.html
+      
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v2
+        with:
+          name: coverage-report
+          path: coverage.xml
+      
+      - name: Upload test reports
+        uses: actions/upload-artifact@v2
+        with:
+          name: test-reports
+          path: |
+            integration-report.html
+            performance-report.html
+      
+      - name: Check coverage threshold
+        run: |
+          coverage_percentage=$(python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); print(float(root.attrib['line-rate']) * 100)")
+          if (( $(echo "$coverage_percentage < 80" | bc -l) )); then
+            echo "Code coverage is below 80%"
+            exit 1
+          fi 

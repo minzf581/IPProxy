@@ -3,15 +3,24 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from app.models.base import Base
 from app.database import engine, init_db, init_test_data, get_db
-from app.routers import user, agent, dashboard, settings, auth, transaction, order
+from app.routers import user, agent, dashboard, settings, auth, transaction, order, proxy, instance
 from sqlalchemy.orm import Session
 import uvicorn
 import logging
 
-# 设置日志记录器
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="IPProxy API")
+app = FastAPI(
+    title="IP代理管理系统",
+    description="IP代理管理系统API文档",
+    version="1.0.0"
+)
 
 # 配置 CORS
 app.add_middleware(
@@ -22,15 +31,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 注册路由 - 使用全局前缀
-prefix = "/api"  # 恢复/api前缀
-app.include_router(auth.router, prefix=prefix, tags=["auth"])
-app.include_router(user.router, prefix=prefix, tags=["user"])
-app.include_router(agent.router, prefix=prefix, tags=["agent"])
-app.include_router(dashboard.router, prefix=prefix, tags=["dashboard"])
-app.include_router(settings.router, prefix=prefix, tags=["settings"])
-app.include_router(transaction.router, prefix=prefix, tags=["transaction"])
-app.include_router(order.router, prefix=prefix, tags=["order"])
+# 设置路由前缀
+prefix = "/api"
+
+# 注册路由
+app.include_router(auth.router, prefix=prefix, tags=["认证"])
+app.include_router(user.router, prefix=prefix, tags=["用户"])
+app.include_router(agent.router, prefix=prefix, tags=["代理商"])
+app.include_router(proxy.router, prefix=prefix, tags=["代理"])
+app.include_router(order.router, prefix=prefix, tags=["订单"])
+app.include_router(instance.router, prefix=prefix, tags=["实例"])
+app.include_router(dashboard.router, prefix=prefix, tags=["仪表盘"])
+app.include_router(settings.router, prefix=prefix, tags=["设置"])
 
 # 打印所有注册的路由
 @app.on_event("startup")
@@ -69,12 +81,24 @@ async def general_exception_handler(request: Request, exc: Exception):
 # 初始化数据库
 @app.on_event("startup")
 async def startup_event():
-    await init_db()
-    await init_test_data()
+    """应用启动时的初始化操作"""
+    try:
+        # 初始化数据库
+        init_db()
+        logger.info("数据库初始化完成")
+    except Exception as e:
+        logger.error(f"启动失败: {str(e)}")
+        raise
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭时的清理操作"""
+    logger.info("应用正在关闭...")
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to IPProxy API"}
+    """健康检查接口"""
+    return {"message": "IP代理管理系统API服务正常运行"}
 
 # 添加全局依赖
 @app.middleware("http")

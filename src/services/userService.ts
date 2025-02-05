@@ -10,31 +10,49 @@ export async function getUserList(params: UserListParams): Promise<ApiResponse<U
   const requestParams = {
     page: params.page,
     pageSize: params.pageSize,
-    username: params.username,
-    status: params.status,
-    startTime: params.dateRange?.[0]?.format('YYYY-MM-DD HH:mm:ss'),
-    endTime: params.dateRange?.[1]?.format('YYYY-MM-DD HH:mm:ss')
+    ...(params.username && { username: params.username }),
+    ...(params.status && { status: params.status }),
+    ...(params.dateRange?.[0] && { startTime: params.dateRange[0].format('YYYY-MM-DD HH:mm:ss') }),
+    ...(params.dateRange?.[1] && { endTime: params.dateRange[1].format('YYYY-MM-DD HH:mm:ss') })
   };
   
   try {
-    const response = await api.get<UserListResponse>('/open/app/user/list', { params: requestParams });
-    console.log('[User Service Debug] Raw API response:', response);
-    return response;
+    console.log('[User Service Debug] Sending request with params:', requestParams);
+    const response = await api.get<UserListResponse>('/open/app/user/list', {
+      params: requestParams
+    });
+    
+    console.log('[User Service Debug] Response data:', response);
+
+    // 构造标准响应格式
+    return {
+      code: 0,
+      msg: 'success',
+      data: {
+        list: response.data.list || [],
+        total: response.data.total || 0
+      }
+    };
+    
   } catch (error) {
     console.error('[User Service Debug] API error:', error);
-    throw error;
+    return {
+      code: -1,
+      msg: error instanceof Error ? error.message : '获取用户列表失败',
+      data: { list: [], total: 0 }
+    };
   }
 }
 
 // 更新用户状态
 export async function updateUserStatus(userId: string, status: string): Promise<ApiResponse<User>> {
-  const response = await api.put<User>(`/api/open/app/user/${userId}/status`, { status });
+  const response = await api.put<User>(`/open/app/user/${userId}/status`, { status });
   return response;
 }
 
 // 更新用户密码
 export async function updateUserPassword(userId: string, password: string): Promise<ApiResponse<User>> {
-  const response = await api.put<User>(`/api/open/app/user/${userId}/password`, { password });
+  const response = await api.put<User>(`/open/app/user/${userId}/password`, { password });
   return response;
 }
 
@@ -42,7 +60,7 @@ export async function updateUserPassword(userId: string, password: string): Prom
 export async function createUser(data: CreateUserParams): Promise<ApiResponse<User>> {
   try {
     console.log('[Create User Service Debug] Request data:', data);
-    const response = await api.post<User>('/api/open/app/user/create', data);
+    const response = await api.post<User>('/open/app/user/create', data);
     console.log('[Create User Service Debug] Raw response:', response);
     console.log('[Create User Service Debug] Response data:', response);
     return response;

@@ -16,6 +16,8 @@ from app.models.dashboard import ProxyInfo
 from app.models.resource_usage import ResourceUsageStatistics
 from app.models.static_order import StaticOrder as Order
 from app.models.transaction import Transaction
+from tests.mocks.ipproxy_api import MockIPIPVAPI
+from app.services.sync import ipproxy_service
 
 # 使用SQLite内存数据库进行测试
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -44,13 +46,14 @@ app.dependency_overrides[get_db] = override_get_db
 @pytest.fixture(scope="session")
 def test_db():
     """创建测试数据库会话"""
-    Base.metadata.create_all(bind=engine)  # 创建所有表
+    SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
+    engine = create_engine(SQLALCHEMY_DATABASE_URL)
+    TestingSessionLocal = sessionmaker(bind=engine)
+    
+    Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-        Base.metadata.drop_all(bind=engine)
+    yield db
+    Base.metadata.drop_all(bind=engine)
 
 @pytest.fixture
 def test_agent_token(test_db):
@@ -378,3 +381,10 @@ def db_session():
     finally:
         session.close()
         Base.metadata.drop_all(bind=engine)  # 测试结束后清理 
+
+@pytest.fixture
+def mock_ipproxy_api():
+    """创建并设置Mock API"""
+    mock_api = MockIPIPVAPI()
+    ipproxy_service.set_mock_api(mock_api)
+    return mock_api 

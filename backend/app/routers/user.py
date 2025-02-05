@@ -94,7 +94,7 @@ async def get_user_list(
                 "id": user.id,
                 "username": user.username,
                 "email": user.email,
-                "status": user.status,
+                "status": "active" if user.status == 1 else "disabled",  # 将整数状态转换为字符串
                 "agent_id": user.agent_id,
                 "balance": user.balance,
                 "remark": user.remark,
@@ -140,23 +140,30 @@ async def create_user(
         # 创建新用户
         user = User(
             username=user_data.username,
-            password=user_data.password,
+            password=user_data.password,  # 模型的 __init__ 会自动加密密码
             email=user_data.email,
             remark=user_data.remark,
             agent_id=None if current_user.is_admin else current_user.id,
-            status="active"
+            status=1  # 使用整数状态
         )
         db.add(user)
         db.commit()
         db.refresh(user)
         
+        logger.info(f"[Create User] Created user: {user.to_dict()}")
+        
+        # 转换用户数据
+        user_data = user.to_dict()
+        user_data['status'] = 'active' if user_data['status'] == 1 else 'disabled'
+        
         return {
             "code": 0,
             "msg": "success",
-            "data": user.to_dict()
+            "data": user_data
         }
     except Exception as e:
         db.rollback()
+        logger.error(f"[Create User] Failed to create user: {str(e)}")
         return {
             "code": 500,
             "msg": f"创建用户失败: {str(e)}",

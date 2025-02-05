@@ -16,10 +16,12 @@ from app.routers.instance import sync_instances
 from app.models.main_user import MainUser
 from app.models.user import User
 from app.services.auth import get_current_user
-from app.services.dashboard import get_dashboard_data
+from app.services.dashboard import get_dashboard_data, DashboardService
 from app.models.transaction import Transaction
 from app.models.resource_type import ResourceType
 from app.models.resource_usage import ResourceUsageStatistics, ResourceUsageHistory
+from app.models.dynamic_order import DynamicOrder
+from app.models.static_order import StaticOrder
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -172,73 +174,32 @@ def sync_resource_usage(db: Session, main_user: MainUser):
 
 @router.get("/open/app/dashboard/info/v2")
 async def get_dashboard_info(
-    agent_id: Optional[int] = Query(None, description="代理商ID，不传则返回当前用户的仪表盘数据"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-) -> dict:
-    """
-    获取用户的仪表盘数据
-    :param agent_id: 代理商ID，不传则返回当前用户的仪表盘数据
-    :return: 仪表盘数据
-    """
-    try:
-        # 获取用户信息
-        user = current_user  # 直接使用当前用户
-        if agent_id:
-            # 如果指定了代理商ID，检查权限并获取代理商信息
-            if current_user.agent_id:  # 如果当前用户是普通用户
-                return {
-                    "code": 403,
-                    "message": "没有权限查看其他代理商数据"
-                }
-            agent = db.query(User).filter(User.id == agent_id).first()
-            if not agent:
-                return {
-                    "code": 404,
-                    "message": "代理商不存在"
-                }
-            user = agent
-
-        # 获取当前时间
-        now = datetime.now()
-        current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        last_month_start = (current_month_start - timedelta(days=1)).replace(day=1)
-        next_month_start = (current_month_start + timedelta(days=32)).replace(day=1)
-
-        # 统计数据
-        statistics = {
-            "balance": user.balance,  # 当前余额
-            "total_recharge": get_total_recharge(db, user.id),  # 累计充值
-            "total_consumption": get_total_consumption(db, user.id),  # 累计消费
-            "monthly_recharge": get_monthly_recharge(db, user.id, current_month_start),  # 本月充值
-            "monthly_consumption": get_monthly_consumption(db, user.id, current_month_start, next_month_start),  # 本月消费
-            "last_month_consumption": get_monthly_consumption(db, user.id, last_month_start, current_month_start),  # 上月消费
+):
+    """获取仪表盘信息"""
+    logger.info(f"Getting dashboard info for user: {current_user.username}")
+    
+    dashboard_service = DashboardService(db)
+    
+    # 获取用户相关统计信息
+    user_stats = dashboard_service.get_user_statistics(current_user)
+    
+    # 获取订单相关统计信息
+    order_stats = dashboard_service.get_order_statistics(current_user)
+    
+    # 获取代理使用统计信息
+    proxy_stats = dashboard_service.get_proxy_statistics(current_user)
+    
+    return {
+        "code": 0,
+        "msg": "success",
+        "data": {
+            "user": user_stats,
+            "order": order_stats,
+            "proxy": proxy_stats
         }
-
-        # 动态资源使用情况
-        dynamic_resources = get_dynamic_resources_usage(db, user.id)
-
-        # 静态资源使用情况
-        static_resources = get_static_resources_usage(db, user.id)
-
-        return {
-            "code": 0,
-            "message": "success",
-            "data": {
-                "statistics": statistics,
-                "dynamic_resources": dynamic_resources,
-                "static_resources": static_resources
-            }
-        }
-    except Exception as e:
-        logger.error(f"获取仪表盘数据失败: {str(e)}", exc_info=True)
-        return {
-            "code": 500,
-            "message": str(e),
-            "data": None
-        }
-    finally:
-        db.close()
+    }
 
 def get_total_recharge(db: Session, user_id: int) -> float:
     """获取累计充值金额"""

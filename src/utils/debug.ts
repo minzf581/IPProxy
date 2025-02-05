@@ -19,8 +19,8 @@ export class Debug {
   }
 
   private getPrefix(level: string): string {
-    const timestamp = this.showTimestamp ? `[${new Date().toISOString()}]` : '';
-    return `${timestamp} [${this.namespace}] [${level}]`;
+    const timestamp = this.showTimestamp ? `[${new Date().toLocaleTimeString()}]` : '';
+    return `${timestamp}${this.namespace}:${level}`;
   }
 
   private formatArgs(args: any[]): any[] {
@@ -28,14 +28,10 @@ export class Debug {
       if (typeof arg === 'object' && arg !== null) {
         try {
           if (arg instanceof Error) {
-            return {
-              message: arg.message,
-              stack: arg.stack,
-              name: arg.name,
-              ...(arg as any)
-            };
+            return arg.message;
           }
-          return JSON.stringify(arg, null, 2);
+          const str = JSON.stringify(arg);
+          return str.length > 50 ? `${str.slice(0, 50)}...` : str;
         } catch (e) {
           return arg;
         }
@@ -101,17 +97,17 @@ export class Debug {
   }): void {
     if (this.shouldLog()) {
       this.group('API Request');
-      this.log('URL:', config.url);
-      this.log('Method:', config.method);
-      this.log('Headers:', config.headers);
-      if (config.params) this.log('Query Params:', config.params);
+      this.log(`${config.method} ${config.url}`);
+      if (config.params) this.log('Params:', config.params);
       if (config.data) {
-        this.log('Request Body:', {
+        const params = config.data?.params;
+        const data = {
           ...config.data,
-          params: config.data.params.length > 100 
-            ? `${config.data.params.slice(0, 100)}...`
-            : config.data.params
-        });
+          params: params && params.length > 30 
+            ? `${params.slice(0, 30)}...`
+            : params
+        };
+        this.log('Body:', data);
       }
       this.groupEnd();
     }
@@ -125,19 +121,11 @@ export class Debug {
   }): void {
     if (this.shouldLog()) {
       this.group('API Response');
-      this.log('Status:', response.status);
-      this.log('Headers:', response.headers);
-      this.log('Response Data:', {
-        code: response.data.code,
-        msg: response.data.msg,
-        reqId: response.data.reqId,
-        hasData: !!response.data.data,
-        dataType: typeof response.data.data
-      });
+      this.log(`Status: ${response.status}`);
       if (response.data.data) {
         const dataStr = JSON.stringify(response.data.data);
-        this.log('Data:', dataStr.length > 200 
-          ? `${dataStr.slice(0, 200)}...`
+        this.log('Data:', dataStr.length > 50 
+          ? `${dataStr.slice(0, 50)}...`
           : dataStr
         );
       }
@@ -149,25 +137,14 @@ export class Debug {
   logError(error: any): void {
     if (this.shouldLog()) {
       this.group('Error Details');
-      this.error('Type:', error.constructor.name);
-      this.error('Message:', error.message);
-      if (error.response) {
-        this.error('Response:', {
+      this.error('Error:', {
+        type: error.constructor.name,
+        message: error.message,
+        response: error.response && {
           status: error.response.status,
-          statusText: error.response.statusText,
           data: error.response.data
-        });
-      }
-      if (error.config) {
-        this.error('Request Config:', {
-          url: error.config.url,
-          method: error.config.method,
-          headers: error.config.headers,
-          params: error.config.params,
-          data: error.config.data
-        });
-      }
-      this.error('Stack:', error.stack);
+        }
+      });
       this.groupEnd();
     }
   }
@@ -176,9 +153,7 @@ export class Debug {
   logApiParams(params: Record<string, any>): void {
     if (this.shouldLog()) {
       this.group('API Parameters');
-      Object.entries(params).forEach(([key, value]) => {
-        this.log(`${key}:`, value);
-      });
+      this.log('API Params:', params);
       this.groupEnd();
     }
   }
@@ -211,26 +186,22 @@ export const debug: DebugNamespaces = {
   user: new Debug({ namespace: 'User' }),
   log: (namespace: string, message: string, ...args: any[]) => {
     if (process.env.NODE_ENV !== 'production') {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [${namespace}] ${message}`, ...args);
+      console.log(`${namespace}:`, message, ...args);
     }
   },
   info: (namespace: string, message: string, ...args: any[]) => {
     if (process.env.NODE_ENV !== 'production') {
-      const timestamp = new Date().toISOString();
-      console.log(`[${timestamp}] [${namespace}] [INFO] ${message}`, ...args);
+      console.log(`${namespace}:INFO`, message, ...args);
     }
   },
   error: (namespace: string, message: string, ...args: any[]) => {
     if (process.env.NODE_ENV !== 'production') {
-      const timestamp = new Date().toISOString();
-      console.error(`[${timestamp}] [${namespace}] [ERROR] ${message}`, ...args);
+      console.error(`${namespace}:ERROR`, message, ...args);
     }
   },
   warn: (namespace: string, message: string, ...args: any[]) => {
     if (process.env.NODE_ENV !== 'production') {
-      const timestamp = new Date().toISOString();
-      console.warn(`[${timestamp}] [${namespace}] [WARN] ${message}`, ...args);
+      console.warn(`${namespace}:WARN`, message, ...args);
     }
   }
 }; 

@@ -164,18 +164,13 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
     console.log('[handleRegionChange] 开始处理区域变化:', areaCode);
     
     try {
-      const [countriesData, stockData] = await Promise.all([
-        ipProxyAPI.getCountriesByRegion(areaCode),
-        ipProxyAPI.getRegionStock(areaCode)
-      ]);
+      const countriesData = await ipProxyAPI.getCountriesByRegion(areaCode);
 
       console.log('[handleRegionChange] 获取数据成功:', {
-        countries: countriesData,
-        stock: stockData
+        countries: countriesData
       });
 
       setCountries(countriesData.map(convertAreaResponseToCountry));
-      setRegionStock(stockData.stock);
       
       // 重置相关字段
       form.setFieldsValue({ 

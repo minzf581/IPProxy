@@ -1,5 +1,5 @@
 import { encrypt, decrypt } from './crypto';
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import type { Area, Country, City, IpRange } from '@/types/api';
 
 export interface APIResponse<T> {
@@ -122,14 +122,27 @@ export interface AreaResponse {
 
 export const API_ROUTES = {
   AREA: {
-    LIST: '/api/open/app/area/v2',
-    CITIES: '/api/open/app/city/list/v2',
-    IP_RANGES: '/api/open/app/area/ip-ranges/v2'
+    LIST: '/open/app/area/v2',
+    CITIES: '/open/app/city/list/v2',
+    IP_RANGES: '/open/app/area/ip-ranges/v2'
   },
   PROXY: {
-    INFO: '/api/open/app/proxy/info/v2',
-    BALANCE: '/api/open/app/proxy/balance/v2',
-    DRAW: '/api/open/app/proxy/draw/api/v2'
+    INFO: '/open/app/proxy/info/v2',
+    BALANCE: '/open/app/proxy/balance/v2',
+    DRAW: '/open/app/proxy/draw/api/v2'
+  },
+  DASHBOARD: {
+    INFO: '/open/app/dashboard/info/v2'
+  },
+  AGENT: {
+    LIST: '/open/app/agent/list'
+  },
+  USER: {
+    LIST: '/open/app/user/list',
+    CREATE: '/open/app/user/create',
+    UPDATE: '/open/app/user/update',
+    DELETE: '/open/app/user/delete',
+    STATUS: '/open/app/user/status'
   }
 };
 
@@ -142,7 +155,7 @@ export class IPProxyAPI {
 
   constructor() {
     // 在开发环境中使用代理
-    this.baseURL = '';
+    this.baseURL = 'http://localhost:8000';
     this.appKey = 'bf3ffghlt0hpc4omnvc2583jt0fag6a4';
     this.appId = 'AK20241120145620';
     this.token = null;
@@ -159,7 +172,7 @@ export class IPProxyAPI {
 
     // 创建axios实例
     this.axiosInstance = axios.create({
-      baseURL: '',  // 使用空的 baseURL
+      baseURL: this.baseURL,
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
@@ -172,7 +185,9 @@ export class IPProxyAPI {
       (config) => {
         // 确保URL正确
         if (config.url && !config.url.startsWith('/')) {
-          config.url = `/${config.url}`;
+          config.url = `/api/${config.url}`;
+        } else if (config.url && !config.url.startsWith('/api/')) {
+          config.url = `/api${config.url}`;
         }
 
         // 调试日志
@@ -252,11 +267,11 @@ export class IPProxyAPI {
     return normalizedEndpoint;
   }
 
-  private async request<T>(endpoint: string, params: Record<string, any>): Promise<T> {
+  private async request<T>(endpoint: string, params?: Record<string, any>): Promise<T> {
     try {
       // 1. 添加必要的参数
       const fullParams = {
-        ...params,
+        ...(params || {}),
         appUsername: 'test_user',
       };
 
@@ -276,7 +291,10 @@ export class IPProxyAPI {
       };
 
       // 5. 构建请求路径
-      const apiPath = endpoint.startsWith('/api/') ? endpoint : `/api/open/app/${endpoint}`;
+      const apiPath = endpoint.startsWith('/api/') ? endpoint.substring(4) : 
+                     endpoint.startsWith('/') ? endpoint.substring(1) : 
+                     endpoint;
+      
       console.log('[request] Using API path:', apiPath);
 
       // 6. 发送请求
@@ -284,11 +302,7 @@ export class IPProxyAPI {
 
       // 7. 检查响应
       if (!response.data) {
-        throw new Error('No response data received');
-      }
-
-      if (response.data.code !== 200) {
-        throw new Error(`API Error (${response.data.code}): ${response.data.msg || response.data.message}`);
+        throw new Error('未收到响应数据');
       }
 
       // 8. 解密响应数据
@@ -297,15 +311,40 @@ export class IPProxyAPI {
           const decryptedData = decrypt(response.data.data, this.appKey);
           return JSON.parse(decryptedData);
         } catch (decryptError) {
-          console.error('[Decrypt Error]:', decryptError);
-          throw new Error('Failed to decrypt response data');
+          console.error('[解密错误]:', decryptError);
+          throw new Error('解密响应数据失败');
         }
       }
 
-      return response.data.data;
-    } catch (error) {
-      console.error('[API Error]:', error);
-      throw error;
+      // 9. 如果响应数据不需要解密，直接返回
+      if (response.data.data) {
+        return response.data.data;
+      }
+
+      // 10. 如果响应本身就是数组或对象，直接返回
+      if (Array.isArray(response.data) || typeof response.data === 'object') {
+        return response.data as T;
+      }
+
+      throw new Error('无效的响应数据格式');
+    } catch (error: any) {
+      if (error.message?.includes('API Error')) {
+        throw error;
+      }
+      console.error('[IPProxyAPI] 请求异常:', {
+        url: endpoint,
+        params,
+        error
+      });
+      if (error.response?.status === 404) {
+        throw new Error('API接口不存在');
+      } else if (error.response?.status === 403) {
+        throw new Error('没有权限访问该API');
+      } else if (error.response?.status === 401) {
+        throw new Error('用户未登录或登录已过期');
+      } else {
+        throw new Error(`请求失败: ${error.message || '未知错误'}`);
+      }
     }
   }
 
@@ -408,16 +447,59 @@ export class IPProxyAPI {
   }
 
   // 获取区域列表
-  async getAreaList(codes?: string[]): Promise<AreaResponse[]> {
-    console.log('[getAreaList] Starting request with codes:', codes);
+  async getAreaList(): Promise<AreaResponse[]> {
     try {
-      const params: Record<string, any> = {};
-      if (codes && codes.length > 0) {
-        params.codes = codes;
+      const response = await this.request<AreaResponse[] | { data: AreaResponse[] }>('open/app/area/v2', {
+        codes: [],  // 空数组表示获取所有区域
+        appUsername: 'test_user'
+      });
+
+      console.log('[IPProxyAPI] 区域列表原始响应:', response);
+
+      // 如果响应直接就是数组，说明是成功的响应
+      if (Array.isArray(response)) {
+        // 确保每个区域对象都有必要的字段
+        const validAreas = response.filter((area: Partial<AreaResponse>) => {
+          const isValid = area && typeof area === 'object' && 
+            'code' in area && 
+            ('name' in area || 'cname' in area);
+          if (!isValid) {
+            console.warn('[IPProxyAPI] 跳过无效的区域数据:', area);
+          }
+          return isValid;
+        }).map((area: Partial<AreaResponse>) => ({
+          code: area.code || '',
+          name: area.name || area.cname || '',
+          cname: area.cname || area.name || '',
+          children: Array.isArray(area.children) ? area.children.map((child: Partial<AreaResponse>) => ({
+            code: child.code || '',
+            name: child.name || child.cname || '',
+            cname: child.cname || child.name || ''
+          })) : []
+        }));
+
+        console.log('[IPProxyAPI] 处理后的区域列表:', validAreas);
+        return validAreas;
       }
-      return this.request<AreaResponse[]>(API_ROUTES.AREA.LIST, params);
+
+      // 如果响应是对象，尝试从 data 字段获取数组
+      if (response && 'data' in response && Array.isArray(response.data)) {
+        return response.data.map((area: Partial<AreaResponse>) => ({
+          code: area.code || '',
+          name: area.name || area.cname || '',
+          cname: area.cname || area.name || '',
+          children: Array.isArray(area.children) ? area.children.map((child: Partial<AreaResponse>) => ({
+            code: child.code || '',
+            name: child.name || child.cname || '',
+            cname: child.cname || child.name || ''
+          })) : []
+        }));
+      }
+
+      console.error('[IPProxyAPI] 响应格式不正确:', response);
+      return [];
     } catch (error) {
-      console.error('[getAreaList] Error:', error);
+      console.error('[IPProxyAPI] 获取区域列表失败:', error);
       throw error;
     }
   }
@@ -499,7 +581,28 @@ export class IPProxyAPI {
     list: UserInfo[];
     total: number;
   }> {
-    return this.request('open/app/user/list/v2', params);
+    try {
+      console.log('[IPProxyAPI Debug] Getting user list with params:', params);
+      const queryParams = {
+        page: params.page,
+        pageSize: params.pageSize,
+        ...(params.searchAccount && { username: params.searchAccount }),
+        ...(params.agentId && { agentId: params.agentId }),
+        ...(params.status && { status: params.status })
+      };
+
+      console.log('[IPProxyAPI Debug] Formatted params:', queryParams);
+      const response = await this.request<{
+        list: UserInfo[];
+        total: number;
+      }>(API_ROUTES.USER.LIST, queryParams);
+
+      console.log('[IPProxyAPI Debug] User list response:', response);
+      return response;
+    } catch (error) {
+      console.error('[IPProxyAPI Debug] Failed to get user list:', error);
+      return { list: [], total: 0 };
+    }
   }
 
   // 获取代理商列表
@@ -694,10 +797,23 @@ export class IPProxyAPI {
   // 根据区域获取国家列表
   async getCountriesByRegion(regionCode: string): Promise<AreaResponse[]> {
     try {
-      const params = {
-        codes: regionCode
-      };
-      return this.request<AreaResponse[]>(API_ROUTES.AREA.LIST, params);
+      console.log('[getCountriesByRegion] Starting request with region code:', regionCode);
+      // 先获取完整的区域列表
+      const response = await this.request<AreaResponse[]>(API_ROUTES.AREA.LIST, {
+        appUsername: 'test_user'
+      });
+      
+      // 找到指定区域的数据
+      const region = response.find(area => area.code === regionCode);
+      
+      if (!region || !region.children) {
+        console.warn('[getCountriesByRegion] No countries found for region:', regionCode);
+        return [];
+      }
+      
+      console.log('[getCountriesByRegion] Found countries:', region.children);
+      return region.children;
+      
     } catch (error) {
       console.error('[getCountriesByRegion] Error:', error);
       throw error;
@@ -707,10 +823,37 @@ export class IPProxyAPI {
   // 根据国家获取城市列表
   async getCitiesByCountry(countryCode: string): Promise<City[]> {
     try {
+      console.log('[getCitiesByCountry] Starting request with country code:', countryCode);
       const params = {
-        countryCode
+        countryCode,
+        appUsername: 'test_user'
       };
-      return this.request<City[]>(API_ROUTES.AREA.CITIES, params);
+      
+      const response = await this.request<City[]>(API_ROUTES.AREA.CITIES, params);
+      
+      if (!Array.isArray(response)) {
+        console.warn('[getCitiesByCountry] Invalid response format:', response);
+        return [];
+      }
+      
+      // 确保每个城市对象都有必要的字段
+      const validCities = response.filter((city): city is City => {
+        const isValid = city && typeof city === 'object' && 
+          'code' in city && 
+          ('name' in city || 'cname' in city);
+        if (!isValid) {
+          console.warn('[getCitiesByCountry] Invalid city data:', city);
+        }
+        return isValid;
+      }).map(city => ({
+        code: city.code,
+        name: city.name || city.cname || '',
+        cname: city.cname || city.name || ''
+      }));
+      
+      console.log('[getCitiesByCountry] Processed cities:', validCities);
+      return validCities;
+      
     } catch (error) {
       console.error('[getCitiesByCountry] Error:', error);
       throw error;

@@ -6,6 +6,9 @@ from app.models.transaction import Transaction
 from app.models.instance import Instance
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+from app.models.dynamic_order import DynamicOrder
+from app.models.static_order import StaticOrder
 
 async def get_dashboard_data(user_id: int) -> Dict[str, Any]:
     """
@@ -186,4 +189,90 @@ def get_static_resources_usage(db: Session, user_id: int) -> list:
             "expired": 140,
             "usage_rate": 30
         }
-    ] 
+    ]
+
+class DashboardService:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def get_user_statistics(self, user: User) -> Dict[str, Any]:
+        """获取用户统计信息"""
+        now = datetime.now()
+        current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        # 获取用户数量统计
+        total_users = self.db.query(User).filter(
+            User.agent_id == user.id if user.is_agent else User.id == user.id
+        ).count()
+        
+        # 获取活跃用户数量
+        active_users = self.db.query(User).filter(
+            (User.agent_id == user.id if user.is_agent else User.id == user.id) &
+            (User.last_login_at >= current_month_start)
+        ).count()
+        
+        return {
+            "total_users": total_users,
+            "active_users": active_users,
+            "balance": user.balance
+        }
+
+    def get_order_statistics(self, user: User) -> Dict[str, Any]:
+        """获取订单统计信息"""
+        now = datetime.now()
+        current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        # 统计动态订单
+        dynamic_orders = self.db.query(func.count(DynamicOrder.id)).filter(
+            DynamicOrder.user_id == user.id,
+            DynamicOrder.created_at >= current_month_start
+        ).scalar()
+        
+        # 统计静态订单
+        static_orders = self.db.query(func.count(StaticOrder.id)).filter(
+            StaticOrder.user_id == user.id,
+            StaticOrder.created_at >= current_month_start
+        ).scalar()
+        
+        # 统计交易金额
+        transactions = self.db.query(func.sum(Transaction.amount)).filter(
+            Transaction.user_id == user.id,
+            Transaction.created_at >= current_month_start
+        ).scalar()
+        
+        return {
+            "dynamic_orders": dynamic_orders or 0,
+            "static_orders": static_orders or 0,
+            "total_amount": float(transactions or 0)
+        }
+
+    def get_proxy_statistics(self, user: User) -> Dict[str, Any]:
+        """获取代理使用统计信息"""
+        # 统计动态代理使用情况
+        dynamic_usage = self.db.query(
+            func.count(DynamicOrder.id).label('total'),
+            func.sum(DynamicOrder.used_traffic).label('used_traffic')
+        ).filter(
+            DynamicOrder.user_id == user.id,
+            DynamicOrder.status == 1  # 假设1表示活跃状态
+        ).first()
+        
+        # 统计静态代理使用情况
+        static_usage = self.db.query(
+            func.count(StaticOrder.id).label('total'),
+            func.sum(StaticOrder.duration).label('total_duration')
+        ).filter(
+            StaticOrder.user_id == user.id,
+            StaticOrder.status == 1  # 假设1表示活跃状态
+        ).first()
+        
+        return {
+            "dynamic": {
+                "total": dynamic_usage[0] or 0,
+                "used_traffic": float(dynamic_usage[1] or 0)
+            },
+            "static": {
+                "total": static_usage[0] or 0,
+                "total_duration": int(static_usage[1] or 0)
+            }
+        } 

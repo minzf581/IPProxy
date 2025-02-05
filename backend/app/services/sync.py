@@ -64,16 +64,6 @@ async def sync_countries(db: Session, region_code: str, max_retries: int = 3) ->
             logger.error(f"[Sync] 无效的区域代码: {region_code}")
             return []
             
-        # 先从数据库获取
-        existing_countries = db.query(Country).filter(
-            Country.region_code == normalized_region_code,
-            Country.status == 1
-        ).all()
-        
-        if existing_countries:
-            logger.info(f"[Sync] 从数据库获取到 {len(existing_countries)} 个国家数据")
-            return [{"code": c.code, "name": c.name} for c in existing_countries]
-            
         # 数据库没有，从API获取
         while retry_count < max_retries:
             try:

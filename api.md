@@ -75,12 +75,58 @@
 ### 3. 代理商相关 (agent.py)
 前端路由：
 - `/agent/dashboard`：代理商仪表盘
-- `/agent/users`：代理商用户管理
+- `/agent/list`：代理商列表管理
+- `/agent/detail`：代理商详情
 
 后端路由：
-- `GET /api/agent/users`：获取代理商的用户列表
-- `POST /api/agent/{agent_id}/balance`：调整代理商余额
-- `PUT /api/agent/{agent_id}/status`：更新代理商状态
+- `GET /api/open/app/agent/list`：获取代理商列表
+- `GET /api/open/app/agent/{agent_id}`：获取代理商详情
+- `GET /api/open/app/agent/{agent_id}/statistics`：获取代理商统计信息
+- `POST /api/open/app/proxy/user/v2`：创建代理商
+- `PUT /api/open/app/agent/{agent_id}`：更新代理商信息
+- `PUT /api/open/app/agent/{agent_id}/status`：更新代理商状态
+
+请求参数说明：
+1. 获取代理商列表：
+   - page: 页码，默认1
+   - pageSize: 每页数量，默认100
+   - username: 可选，按用户名筛选
+   - status: 可选，按状态筛选
+
+2. 创建代理商：
+   ```json
+   {
+       "username": "string",
+       "password": "string",
+       "email": "string",
+       "remark": "string",
+       "status": "active",
+       "balance": 1000.0
+   }
+   ```
+
+3. 更新代理商：
+   ```json
+   {
+       "status": "string",
+       "remark": "string",
+       "balance": 0.0
+   }
+   ```
+
+响应格式：
+```json
+{
+    "code": 0,
+    "message": "success",
+    "data": {
+        "total": 0,
+        "list": [],
+        "page": 1,
+        "pageSize": 100
+    }
+}
+```
 
 ### 4. 仪表盘相关 (dashboard.py)
 前端路由：
@@ -713,3 +759,62 @@ interface IpRange {
 - 可以轻松添加新的数据源
 - 可以实现数据转换和清洗
 - 可以添加缓存层
+
+## 前端代码结构
+
+前端代码主要位于 `src` 目录下，关键文件和目录如下：
+
+1. API 配置相关：
+   - `src/config/api.ts`: API 基础配置，包含基础URL、版本、超时等
+   - `src/services/`: API 服务实现目录
+   - `src/utils/request.ts`: 封装的 axios 请求工具
+
+2. API 配置示例 (src/config/api.ts):
+```typescript
+export const API_BASE_URL = 'http://localhost:8000/api';
+export const API_VERSION = 'v2';
+
+export const API_PATHS = {
+  AUTH: {
+    LOGIN: 'auth/login',
+    LOGOUT: 'auth/logout'
+  },
+  APP: {
+    INFO: 'open/app/info/v2',
+    PRODUCT: 'open/app/product/v2'
+  },
+  PROXY: {
+    INFO: 'settings/proxy/info',
+    BALANCE: 'settings/proxy/balance'
+  }
+  // ... 其他路径配置
+};
+
+export const API_CONFIG = {
+  baseURL: API_BASE_URL,
+  TIMEOUT: 30000,
+  HEADERS: {
+    'Content-Type': 'application/json'
+  },
+  APP_KEY: 'AK20241120145620',
+  APP_SECRET: 'bf3ffghlt0hpc4omnvc2583jt0fag6a4',
+  version: 'v2',
+  encrypt: 'AES'
+};
+```
+
+3. 目录结构：
+```
+src/
+├── api/          # API 类型定义
+├── config/       # 配置文件
+│   └── api.ts    # API 配置
+├── services/     # API 服务实现
+│   ├── auth.ts
+│   ├── user.ts
+│   └── ...
+├── types/        # TypeScript 类型定义
+├── utils/
+│   └── request.ts # 请求工具
+└── ...
+```

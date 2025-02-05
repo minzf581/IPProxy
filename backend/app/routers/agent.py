@@ -13,6 +13,7 @@ from datetime import datetime
 import logging
 from sqlalchemy import func
 import uuid
+from app.schemas.agent import AgentList, AgentCreate, AgentUpdate
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -85,26 +86,43 @@ async def create_agent(
             "data": None
         }
 
-@router.get("/open/app/agent/list")
+@router.get("/open/app/agent/list", response_model=AgentList)
 async def get_agent_list(
     page: int = 1,
-    pageSize: int = 10,
+    pageSize: int = 100,
+    username: Optional[str] = None,
+    status: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-) -> Dict[str, Any]:
+):
     """获取代理商列表"""
-    skip = (page - 1) * pageSize
-    total = db.query(User).filter(User.is_agent == True).count()
+    logger.info(f"Getting agent list. Page: {page}, PageSize: {pageSize}, Username: {username}, Status: {status}")
+    logger.info(f"Current user: {current_user.username}, Is admin: {current_user.is_admin}")
     
-    agents = db.query(User).filter(User.is_agent == True).offset(skip).limit(pageSize).all()
-    agent_list = [agent.to_dict() for agent in agents]
+    # 只有管理员可以查看所有代理商
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Only administrators can view agent list")
+    
+    # 构建查询
+    query = db.query(User).filter(User.is_agent == True)
+    
+    if username:
+        query = query.filter(User.username.ilike(f"%{username}%"))
+    if status is not None:
+        query = query.filter(User.status == status)
+        
+    # 获取总数
+    total = query.count()
+    
+    # 分页
+    skip = (page - 1) * pageSize
+    agents = query.order_by(User.created_at.desc()).offset(skip).limit(pageSize).all()
     
     return {
-        "code": 0,
-        "msg": "success",
-        "data": {
-            "list": agent_list,
-            "total": total
-        }
+        "total": total,
+        "list": agents,
+        "page": page,
+        "pageSize": pageSize
     }
 
 @router.get("/open/app/agent/{agent_id}")
@@ -426,26 +444,30 @@ async def get_agent_transactions(
         raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
 
 @router.api_route("/open/app/area/v2", methods=["GET", "POST"])
-async def get_area_list() -> Dict[str, Any]:
+async def get_area_list(
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
     """获取地区列表"""
     try:
         # 调用服务获取区域列表
-        result = await ipproxy_service.get_area_v2({"type": 1})
+        service = IPProxyService()
+        result = await service.get_area_v2({})
         
         # 确保返回的数据格式正确
-        if not result:
+        if not isinstance(result, list):
+            logger.error(f"区域列表数据格式不正确: {type(result)}")
             result = []
             
         # 返回标准格式的响应
         return {
-            "code": 200,  # 修改为200以匹配前端预期
-            "msg": "success",  # 使用msg而不是message
-            "data": result
+            "code": 0,
+            "msg": "success",
+            "data": result  # 直接返回列表，不需要包装在 list 字段中
         }
     except Exception as e:
         logger.error(f"获取地区列表失败: {str(e)}")
         return {
             "code": 500,
-            "msg": str(e),  # 使用msg而不是message
-            "data": None
+            "msg": str(e),
+            "data": []  # 错误时直接返回空列表
         } 

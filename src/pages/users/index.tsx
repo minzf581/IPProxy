@@ -70,27 +70,30 @@ const UserManagementPage: React.FC = () => {
       
       console.log('[User List Debug] API response:', response);
       
-      if (response.code === 0 && response.data?.list) {
-        console.log('[User List Debug] Setting data with length:', response.data.list.length);
-        setData(response.data.list);
+      if (response.code === 0 && response.data) {
+        const { list = [], total = 0 } = response.data;
+        console.log('[User List Debug] Parsed data:', { list, total });
+        
+        setData(list);
         setPagination(prev => ({
           ...prev,
           current: params.page || prev.current,
-          total: response.data.total
+          total: total
         }));
-        console.log('[User List Debug] Updated pagination:', {
-          current: params.page || pagination.current,
-          total: response.data.total
+        
+        console.log('[User List Debug] Updated state:', {
+          dataLength: list.length,
+          pagination: {
+            current: params.page || pagination.current,
+            total: total
+          }
         });
       } else {
-        console.error('[User List Debug] Invalid response structure:', response);
+        console.error('[User List Debug] Invalid response:', response);
         message.error(response.msg || '获取用户列表失败');
       }
     } catch (error: any) {
-      console.error('[User List Debug] Error details:', {
-        message: error.message,
-        stack: error.stack
-      });
+      console.error('[User List Debug] Error:', error);
       message.error(error.message || '获取用户列表失败');
     } finally {
       setLoading(false);
