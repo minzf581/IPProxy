@@ -54,8 +54,11 @@ export interface Country {
 }
 
 export interface City {
-  cityCode: string;
-  cityName: string;
+  code: string;      // 城市代码
+  name?: string;     // 城市英文名
+  cname: string;     // 城市中文名
+  cityCode?: string; // 兼容旧版 API
+  cityName?: string; // 兼容旧版 API
 }
 
 export interface Area {
