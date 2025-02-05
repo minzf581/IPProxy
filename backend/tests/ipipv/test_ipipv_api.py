@@ -6,17 +6,6 @@ import hashlib
 from app.services.ipproxy_service import IPProxyService
 from app.utils.logging_utils import truncate_response
 
-def truncate_response(response, max_length=20):
-    """截断响应内容，使日志更简洁"""
-    if response is None:
-        return None
-    if isinstance(response, (list, dict)):
-        return f"{type(response).__name__}[{len(response)}]"
-    str_response = str(response)
-    if len(str_response) > max_length:
-        return f"{str_response[:max_length]}..."
-    return str_response
-
 # 设置日志级别和格式
 logging.basicConfig(
     level=logging.WARNING,
@@ -27,11 +16,11 @@ logging.basicConfig(
 for logger_name in ['httpcore', 'httpx', 'asyncio', 'urllib3', 'requests']:
     logging.getLogger(logger_name).setLevel(logging.ERROR)
 
-logger = logging.getLogger('test_api')
+logger = logging.getLogger('test_ipipv_api')
 logger.setLevel(logging.INFO)
 
 @pytest.mark.asyncio
-class TestRealIPIPVAPI:
+class TestIPIPVAPI:
     @pytest.fixture(scope="class")
     def ipproxy_service(self):
         """创建IPIPV服务实例"""
@@ -98,21 +87,6 @@ class TestRealIPIPVAPI:
         """测试获取代理信息"""
         username = await test_user  # 等待test_user协程完成
         
-        # 先创建产品
-        create_product_response = await ipproxy_service._make_request("api/open/app/product/create/v2", {
-            "version": "v2",
-            "encrypt": "AES",
-            "proxyType": 104,  # DYNAMIC_FOREIGN类型
-            "productNo": "out_dynamic_1",
-            "username": username,
-            "appUsername": username,
-            "count": 1,
-            "autoRenew": 0,
-            "timestamp": str(int(time.time())),
-            "reqId": hashlib.md5(f"{time.time()}".encode()).hexdigest()
-        })
-        logger.info(f"产品创建: {truncate_response(create_product_response)}")
-        
         # 获取代理信息
         response = await ipproxy_service._make_request("api/open/app/proxy/info/v2", {
             "version": "v2",
@@ -128,8 +102,10 @@ class TestRealIPIPVAPI:
             logger.error("获取代理信息失败")
             assert False
         assert response is not None
-        assert "list" in response
-        assert len(response["list"]) > 0
+        assert isinstance(response, dict)
+        assert "used" in response
+        assert "total" in response
+        assert "balance" in response
 
     async def test_4_get_ip_ranges(self, ipproxy_service):
         """测试获取IP段列表"""
@@ -187,4 +163,4 @@ class TestRealIPIPVAPI:
         # 验证响应
         for response in [response1, response2, response3]:
             if response is not None:
-                assert isinstance(response, (list, dict)), "响应应该是列表或字典类型"
+                assert isinstance(response, (list, dict)), "响应应该是列表或字典类型" 

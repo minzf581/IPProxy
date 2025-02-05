@@ -11,6 +11,7 @@ import hashlib
 import logging
 import traceback
 import httpx
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +24,10 @@ def truncate_str(s: str, max_length: int = 20) -> str:
 
 class IPProxyService:
     def __init__(self):
-        # 从环境变量获取配置，如果没有则使用默认值
-        self.base_url = os.getenv('IPPROXY_API_URL', 'https://sandbox.ipipv.com/api')  # 修改默认值，确保包含 /api
-        self.app_key = os.getenv('IPPROXY_APP_KEY', 'AK20241120145620')
-        self.app_secret = os.getenv('IPPROXY_APP_SECRET', 'bf3ffghlt0hpc4omnvc2583jt0fag6a4')
+        # 从配置中获取设置
+        self.base_url = settings.IPPROXY_API_URL.rstrip('/')  # 移除末尾的斜杠
+        self.app_key = settings.IPPROXY_APP_KEY
+        self.app_secret = settings.IPPROXY_APP_SECRET
         self._mock_api = None
         
     def set_mock_api(self, mock_api):
@@ -41,12 +42,13 @@ class IPProxyService:
         try:
             # 确保 endpoint 格式正确
             endpoint = endpoint.lstrip('/')  # 移除开头的斜杠
-            if not endpoint.startswith('open/'):
-                endpoint = f"open/{endpoint}"  # 确保包含 open 前缀
                 
+            logger.info(f"[IPIPV] 开始处理请求，endpoint: {endpoint}")
+            logger.info(f"[IPIPV] 原始参数: {json.dumps(params, ensure_ascii=False)}")
+            
             encrypted_params = self._encrypt_params(params)
             req_id = hashlib.md5(f"{time.time()}".encode()).hexdigest()
-            timestamp = str(int(time.time()) + 60 * 60 * 24 * 365)
+            timestamp = str(int(time.time()))  # 使用当前时间戳
             
             request_params = {
                 'version': params.get('version', 'v2'),
@@ -62,7 +64,8 @@ class IPProxyService:
             
             url = f"{self.base_url}/{endpoint}"
             logger.info(f"[IPIPV] 发送请求: {url}")
-            logger.debug(f"[IPIPV] 请求参数: {truncate_str(request_params)}")
+            logger.info(f"[IPIPV] 请求参数: {json.dumps(request_params, ensure_ascii=False)}")
+            logger.info(f"[IPIPV] 加密后参数: {encrypted_params}")
             
             async with httpx.AsyncClient(verify=False) as client:
                 response = await client.post(
@@ -74,6 +77,9 @@ class IPProxyService:
                     }
                 )
                 
+                logger.info(f"[IPIPV] 响应状态码: {response.status_code}")
+                logger.info(f"[IPIPV] 响应头: {dict(response.headers)}")
+                
                 if not response.is_success:
                     logger.error(f"[IPIPV] HTTP请求失败: {response.status_code}")
                     logger.error(f"[IPIPV] 响应内容: {response.text}")
@@ -81,7 +87,7 @@ class IPProxyService:
                 
                 try:
                     data = response.json()
-                    logger.debug(f"[IPIPV] 原始响应: {truncate_str(data)}")
+                    logger.info(f"[IPIPV] 原始响应: {json.dumps(data, ensure_ascii=False)}")
                     
                     if data.get('code') != 200:
                         logger.error(f"[IPIPV] API错误: {data.get('msg')}")
@@ -98,7 +104,8 @@ class IPProxyService:
                             logger.error("[IPIPV] 解密数据为空")
                             return None
                             
-                        logger.debug(f"[IPIPV] 解密后数据: {truncate_str(str(decrypted_data))}")
+                        logger.info(f"[IPIPV] 解密后数据类型: {type(decrypted_data)}")
+                        logger.info(f"[IPIPV] 解密后数据: {json.dumps(decrypted_data, ensure_ascii=False)}")
                         return decrypted_data
                         
                     except Exception as e:
@@ -425,25 +432,172 @@ class IPProxyService:
             List[Dict[str, Any]]: 城市列表
         """
         try:
+            if not country_code:
+                logger.error("[IPProxyService] 国家代码为空")
+                return []
+            
+            # 构造请求参数
             params = {
                 "version": "v2",
                 "encrypt": "AES",
+                "proxyType": [104],  # 动态国外
                 "countryCode": country_code,
                 "appUsername": "test_user"
             }
-            logger.info(f"[IPProxyService] 获取城市列表，参数：{params}")
-            response = await self._make_request("open/app/city/list/v2", params)
+            logger.info(f"[IPProxyService] 获取城市列表，请求参数：{params}")
             
-            if not response:
+            # 发送请求获取城市列表
+            response = await self._make_request("open/app/city/list/v2", params)
+            logger.info(f"[IPProxyService] 收到原始响应类型：{type(response)}")
+            logger.info(f"[IPProxyService] 收到原始响应内容：{response}")
+            
+            if response is None:
                 logger.warning(f"[IPProxyService] 获取城市列表为空，国家代码：{country_code}")
                 return []
+            
+            # 如果响应是字典，尝试从 data 字段获取城市列表
+            if isinstance(response, dict):
+                response = response.get('data', [])
+                if not isinstance(response, list):
+                    logger.error(f"[IPProxyService] 城市列表响应格式错误：{type(response)}")
+                    return []
+            
+            # 转换响应格式
+            cities = []
+            for idx, city in enumerate(response):
+                if not isinstance(city, dict):
+                    logger.warning(f"[IPProxyService] 跳过非字典类型的城市数据：{type(city)}")
+                    continue
                 
-            if not isinstance(response, list):
-                logger.error(f"[IPProxyService] 城市列表响应格式错误：{response}")
-                return []
+                # 记录原始城市数据
+                logger.info(f"[IPProxyService] 原始城市数据 #{idx}: {city}")
                 
-            return response
+                # 检查城市代码
+                city_code = city.get("cityCode") or city.get("code", "")
+                if not city_code:
+                    logger.warning(f"[IPProxyService] 城市代码为空：{city}")
+                    continue
+                    
+                # 检查城市代码是否属于指定国家
+                if not city_code.startswith(country_code):
+                    logger.debug(f"[IPProxyService] 跳过不属于 {country_code} 的城市：{city_code}")
+                    continue
+                
+                # 添加城市数据
+                city_data = {
+                    "code": city_code,
+                    "name": city.get("cityName", ""),  # 使用 cityName 字段
+                    "cname": city.get("cityName", ""),  # 由于API只返回 cityName，暂时用它作为中文名
+                    "cityCode": city_code,
+                    "cityName": city.get("cityName", "")
+                }
+                cities.append(city_data)
+                
+                # 记录处理后的城市数据
+                logger.info(f"[IPProxyService] 处理后的城市数据：{city_data}")
+                    
+            logger.info(f"[IPProxyService] 城市列表（{country_code}）：共 {len(cities)} 个城市")
+            if cities:
+                logger.info(f"[IPProxyService] 示例城市：{cities[0]}")
+            
+            return cities
             
         except Exception as e:
             logger.error(f"[IPProxyService] 获取城市列表失败：{str(e)}")
+            logger.exception(e)
+            return []
+
+    async def get_ip_ranges(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """获取IP段列表
+        Args:
+            params: {
+                "proxyType": int,       # 必填：代理类型 (101=静态住宅, 102=静态数据中心, 103=静态手机)
+                "regionCode": str,      # 可选：区域代码
+                "countryCode": str,     # 可选：国家代码
+                "cityCode": str,        # 可选：城市代码
+                "staticType": str,      # 可选：静态代理类型
+                "appUsername": str,     # 可选：用户名
+            }
+        Returns:
+            List[Dict[str, Any]]: IP段列表，每个IP段包含：
+                - ipRange: str        # IP段
+                - ipCount: int        # IP数量
+                - price: float        # 价格
+                - duration: int       # 时长(天)
+        """
+        try:
+            # 验证 proxyType 参数
+            proxy_type = params.get("proxyType")
+            if not proxy_type:
+                logger.error(f"[IPProxyService] 缺少必要参数 proxyType: {params}")
+                return []
+                
+            # 验证是否为有效的静态代理类型
+            valid_proxy_types = [101, 102, 103]  # 静态代理类型
+            if proxy_type not in valid_proxy_types:
+                logger.error(f"[IPProxyService] 无效的代理类型: {proxy_type}，必须是静态代理类型 (101, 102, 103)")
+                return []
+                
+            # 构造请求参数
+            request_params = {
+                "version": "v2",
+                "encrypt": "AES",
+                "proxyType": proxy_type
+            }
+            
+            # 添加可选参数
+            optional_fields = ["regionCode", "countryCode", "cityCode", "staticType", "appUsername"]
+            for field in optional_fields:
+                if field in params and params[field]:  # 只添加非空的可选参数
+                    request_params[field] = params[field]
+                    
+            logger.info(f"[IPProxyService] 获取IP段列表，请求参数：{json.dumps(request_params, ensure_ascii=False)}")
+            
+            # 发送请求获取IP段列表
+            response = await self._make_request("open/app/area/ip-ranges/v2", request_params)
+            logger.info(f"[IPProxyService] 收到原始响应类型：{type(response)}")
+            logger.info(f"[IPProxyService] 收到原始响应内容：{response}")
+            
+            if response is None:
+                logger.warning(f"[IPProxyService] 获取IP段列表为空，参数：{params}")
+                return []
+                
+            # 如果响应是字典，尝试从 data 字段获取IP段列表
+            if isinstance(response, dict):
+                response = response.get('data', [])
+                if not isinstance(response, list):
+                    logger.error(f"[IPProxyService] IP段列表响应格式错误：{type(response)}")
+                    return []
+                    
+            # 转换响应格式
+            ip_ranges = []
+            for idx, ip_range in enumerate(response):
+                if not isinstance(ip_range, dict):
+                    logger.warning(f"[IPProxyService] 跳过非字典类型的IP段数据：{type(ip_range)}")
+                    continue
+                    
+                # 记录原始IP段数据
+                logger.info(f"[IPProxyService] 原始IP段数据 #{idx}: {ip_range}")
+                
+                # 添加IP段数据
+                ip_range_data = {
+                    "ipRange": ip_range.get("ipRange", ""),
+                    "ipCount": int(ip_range.get("ipCount", 0)),
+                    "price": float(ip_range.get("price", 0)),
+                    "duration": int(ip_range.get("duration", 0))
+                }
+                ip_ranges.append(ip_range_data)
+                
+                # 记录处理后的IP段数据
+                logger.info(f"[IPProxyService] 处理后的IP段数据：{ip_range_data}")
+                
+            logger.info(f"[IPProxyService] IP段列表：共 {len(ip_ranges)} 个IP段")
+            if ip_ranges:
+                logger.info(f"[IPProxyService] 示例IP段：{ip_ranges[0]}")
+                
+            return ip_ranges
+            
+        except Exception as e:
+            logger.error(f"[IPProxyService] 获取IP段列表失败：{str(e)}")
+            logger.exception(e)
             return []

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.models.base import Base
 from app.database import engine, init_db, init_test_data, get_db
 from app.routers import user, agent, dashboard, settings, auth, transaction, order, proxy, instance
+from app.api.v2 import area
 from sqlalchemy.orm import Session
 import uvicorn
 import logging
@@ -25,7 +26,7 @@ app = FastAPI(
 # 配置 CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000"],  # 明确指定允许的源
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -43,10 +44,12 @@ app.include_router(order.router, prefix=prefix, tags=["订单"])
 app.include_router(instance.router, prefix=prefix, tags=["实例"])
 app.include_router(dashboard.router, prefix=prefix, tags=["仪表盘"])
 app.include_router(settings.router, prefix=prefix, tags=["设置"])
+app.include_router(area.router, prefix=prefix, tags=["地区"])
 
 # 打印所有注册的路由
 @app.on_event("startup")
 async def print_routes():
+    """打印所有注册的路由"""
     logger.info("\n=== Registered Routes ===")
     for route in app.routes:
         if hasattr(route, "methods"):
