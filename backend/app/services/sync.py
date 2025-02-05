@@ -4,11 +4,11 @@ from app.models.region import Region, Country, City
 import logging
 import json
 import traceback
-from app.services.ipproxy_service import IPProxyService
+from app.services import AreaService
 import asyncio
 
 logger = logging.getLogger(__name__)
-ipproxy_service = IPProxyService()
+area_service = AreaService()
 
 async def sync_regions(db: Session, max_retries: int = 3) -> List[Dict[str, Any]]:
     """同步区域数据"""
@@ -67,10 +67,8 @@ async def sync_countries(db: Session, region_code: str, max_retries: int = 3) ->
         # 数据库没有，从API获取
         while retry_count < max_retries:
             try:
-                # 调用代理服务获取区域数据
-                response = await ipproxy_service._make_request("open/app/area/v2", {
-                    "code": normalized_region_code
-                })
+                # 调用区域服务获取区域数据
+                response = await area_service.get_area_list()
                 
                 if not response:
                     retry_count += 1
@@ -165,11 +163,8 @@ async def sync_cities(db: Session, country_code: str) -> List[Dict[str, Any]]:
             logger.error(f"[Sync] 国家代码 {country_code} 不存在")
             return []
         
-        # 从IPIPV API获取城市数据
-        data = await ipproxy_service._make_request("open/app/city/list/v2", {
-            "proxyType": [103],
-            "countryCode": country_code
-        })
+        # 从区域服务获取城市数据
+        data = await area_service.get_city_list(country_code)
         
         # 处理空响应
         if data is None:
@@ -237,55 +232,19 @@ async def sync_ip_ranges(db: Session, params: Dict[str, Any]) -> List[Dict[str, 
             logger.error("[Sync] 缺少必要参数: countryCode 或 cityCode")
             return []
 
-        # 从IPIPV API获取IP段数据
+        # 从区域服务获取IP段数据
         try:
-            data = await ipproxy_service._make_request("open/app/product/query/v2", {
+            data = await area_service.get_ip_ranges({
                 "proxyType": [103],  # 静态国外家庭
                 "countryCode": country_code,
                 "cityCode": city_code
             })
-            logger.info(f"[Sync] IPIPV API响应数据: {data}")
+            logger.info(f"[Sync] 区域服务响应数据: {data}")
+            return data if isinstance(data, list) else []
         except Exception as e:
-            logger.error(f"[Sync] 调用IPIPV API失败: {str(e)}")
+            logger.error(f"[Sync] 调用区域服务失败: {str(e)}")
             return []
-
-        # 检查响应数据格式
-        if not data or not isinstance(data, (list, dict)):
-            logger.error(f"[Sync] 无效的IP段数据响应: {data}")
-            return []
-
-        # 处理响应数据
-        ip_ranges = []
-        if isinstance(data, dict):
-            # 如果是字典，尝试获取ranges字段
-            ranges = data.get('ranges', [])
-            if ranges:
-                ip_ranges.extend(ranges)
-        elif isinstance(data, list):
-            # 如果是列表，直接使用
-            ip_ranges.extend(data)
-
-        # 处理每个IP段
-        processed_ranges = []
-        for item in ip_ranges:
-            try:
-                processed_range = {
-                    "ipStart": item.get('ipStart') or item.get('startIp'),
-                    "ipEnd": item.get('ipEnd') or item.get('endIp'),
-                    "ipCount": item.get('ipCount') or item.get('count', 0),
-                    "stock": item.get('stock', 0),
-                    "staticType": item.get('staticType', ''),
-                    "countryCode": country_code,
-                    "cityCode": city_code
-                }
-                processed_ranges.append(processed_range)
-            except Exception as e:
-                logger.error(f"[Sync] 处理IP段数据失败: {str(e)}")
-                continue
-
-        logger.info(f"[Sync] 同步IP段数据成功: {len(processed_ranges)} 个IP段")
-        return processed_ranges
-
+            
     except Exception as e:
         logger.error(f"[Sync] 同步IP段数据失败: {str(e)}")
         logger.error(f"[Sync] 错误堆栈: {traceback.format_exc()}")
@@ -305,7 +264,7 @@ async def sync_ip_counts(db: Session, params: Dict[str, Any]) -> Dict[str, Any]:
 
         # 从IPIPV API获取IP数量数据
         try:
-            data = await ipproxy_service._make_request("/product/count/v2", {
+            data = await area_service._make_request("/product/count/v2", {
                 "proxyType": [103],  # 静态国外家庭
                 "countryCode": country_code,
                 "cityCode": city_code

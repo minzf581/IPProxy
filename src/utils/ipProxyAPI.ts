@@ -1,6 +1,32 @@
 import { encrypt, decrypt } from './crypto';
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
-import type { Area, Country, City, IpRange } from '@/types/api';
+import type { Area, Country, City, IpRange, ApiResponse } from '@/types/api';
+import type { DynamicProxyParams, DynamicProxyPool } from '@/types/instance';
+import type { DynamicOrder } from '@/types/order';
+import { api } from './request';
+import { message } from 'antd';
+
+const DEBUG = process.env.NODE_ENV === 'development';
+
+function logDebug(methodName: string, ...args: any[]) {
+  if (DEBUG) {
+    console.log(`[IPProxyAPI][${methodName}]`, ...args);
+  }
+}
+
+function logError(methodName: string, error: any) {
+  console.error(`[IPProxyAPI][${methodName}] Error:`, error);
+  if (error.response) {
+    console.error(`[IPProxyAPI][${methodName}] Response data:`, error.response.data);
+    console.error(`[IPProxyAPI][${methodName}] Response status:`, error.response.status);
+    console.error(`[IPProxyAPI][${methodName}] Response headers:`, error.response.headers);
+  } else if (error.request) {
+    console.error(`[IPProxyAPI][${methodName}] No response received:`, error.request);
+  } else {
+    console.error(`[IPProxyAPI][${methodName}] Error setting up request:`, error.message);
+  }
+  console.error(`[IPProxyAPI][${methodName}] Stack trace:`, error.stack);
+}
 
 export interface APIResponse<T> {
   reqId: string;
@@ -129,7 +155,14 @@ export const API_ROUTES = {
   PROXY: {
     INFO: '/open/app/proxy/info/v2',
     BALANCE: '/open/app/proxy/balance/v2',
-    DRAW: '/open/app/proxy/draw/api/v2'
+    DRAW: '/open/app/proxy/draw/api/v2',
+    DYNAMIC: {
+      OPEN: '/open/app/instance/open/v2',
+      CALCULATE_PRICE: '/open/app/instance/calculate/v2',
+      REFRESH: '/open/app/instance/refresh/v2',
+      LIST: '/open/app/instance/list/v2',
+      POOLS: '/open/app/pool/list/v2'
+    }
   },
   DASHBOARD: {
     INFO: '/open/app/dashboard/info/v2'
@@ -774,23 +807,37 @@ export class IPProxyAPI {
     }
   }
 
-  async getDynamicProxies(params: any) {
+  // 刷新动态代理
+  async refreshDynamicProxy(instanceId: string): Promise<ApiResponse<DynamicOrder>> {
     try {
-      const response = await this.request<any>('proxies/dynamic', { params });
+      const response = await this.axiosInstance.post(API_ROUTES.PROXY.DYNAMIC.REFRESH, { instanceId });
       return response.data;
     } catch (error) {
-      console.error('Failed to get dynamic proxies:', error);
-      return { list: [], total: 0 };
+      console.error('刷新动态代理失败:', error);
+      throw error;
     }
   }
 
-  async getStaticOrders(params: any) {
+  // 获取动态代理列表
+  async getDynamicProxies(params: {
+    page: number;
+    pageSize: number;
+    status?: string;
+    sortField?: string;
+    sortOrder?: string;
+  }): Promise<ApiResponse<{
+    list: DynamicOrder[];
+    total: number;
+  }>> {
+    const methodName = 'getDynamicProxies';
     try {
-      const response = await this.request<any>('orders/static', { params });
+      logDebug(methodName, 'Request params:', params);
+      const response = await this.axiosInstance.get(API_ROUTES.PROXY.DYNAMIC.LIST, { params });
+      logDebug(methodName, 'Response:', response.data);
       return response.data;
     } catch (error) {
-      console.error('Failed to get static orders:', error);
-      return { data: [], total: 0 };
+      logError(methodName, error);
+      throw error;
     }
   }
 
@@ -898,6 +945,49 @@ export class IPProxyAPI {
       console.error('[getIpRanges] Error:', error);
       throw error;
     }
+  }
+
+  // 计算动态代理价格
+  async calculateDynamicProxyPrice(params: { poolId: string; trafficAmount: number }): Promise<APIResponse<{ price: number }>> {
+    try {
+      const response = await this.axiosInstance.post(API_ROUTES.PROXY.DYNAMIC.CALCULATE_PRICE, params);
+      return response.data;
+    } catch (error) {
+      console.error('计算动态代理价格失败:', error);
+      throw error;
+    }
+  }
+
+  // 开通动态代理
+  async openDynamicProxy(params: DynamicProxyParams): Promise<ApiResponse<DynamicOrder>> {
+    const methodName = 'openDynamicProxy';
+    try {
+      logDebug(methodName, 'Request params:', params);
+      const response = await this.axiosInstance.post(API_ROUTES.PROXY.DYNAMIC.OPEN, params);
+      logDebug(methodName, 'Response:', response.data);
+      return response.data;
+    } catch (error) {
+      logError(methodName, error);
+      throw error;
+    }
+  }
+
+  // 获取代理池列表
+  async getProxyPools(): Promise<ApiResponse<DynamicProxyPool[]>> {
+    const methodName = 'getProxyPools';
+    try {
+      logDebug(methodName, 'Fetching proxy pools');
+      const response = await this.axiosInstance.get(API_ROUTES.PROXY.DYNAMIC.POOLS);
+      logDebug(methodName, 'Response:', response.data);
+      return response.data;
+    } catch (error) {
+      logError(methodName, error);
+      throw error;
+    }
+  }
+
+  private generateReqId(): string {
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
   }
 }
 

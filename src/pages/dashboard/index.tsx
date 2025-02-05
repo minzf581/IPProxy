@@ -9,28 +9,30 @@ import { AxiosError } from 'axios';
 interface DashboardData {
   statistics: {
     balance: number;
-    total_recharge: number;
-    total_consumption: number;
-    monthly_recharge: number;
-    monthly_consumption: number;
-    last_month_consumption: number;
+    totalRecharge: number;
+    totalConsumption: number;
+    monthRecharge: number;
+    monthConsumption: number;
+    lastMonthConsumption: number;
   };
-  dynamic_resources: Array<{
+  dynamicResources: Array<{
+    id: string;
     name: string;
-    total_usage: number;
-    monthly_usage: number;
-    daily_usage: number;
-    last_month_usage: number;
-    usage_rate: number;
+    usageRate: number;
+    total: number;
+    monthly: number;
+    today: number;
+    lastMonth: number;
   }>;
-  static_resources: Array<{
+  staticResources: Array<{
+    id: string;
     name: string;
-    total_opened: number;
-    monthly_opened: number;
-    last_month_opened: number;
+    usageRate: number;
+    total: number;
+    monthly: number;
+    lastMonth: number;
     available: number;
     expired: number;
-    usage_rate: number;
   }>;
 }
 
@@ -39,9 +41,111 @@ interface Props {
   setCurrentAgent: (agent: Agent | null) => void;
 }
 
+const defaultDashboardData: IDashboardData = {
+  statistics: {
+    balance: 0,
+    totalRecharge: 0,
+    totalConsumption: 0,
+    monthRecharge: 0,
+    monthConsumption: 0,
+    lastMonthConsumption: 0
+  },
+  dynamicResources: [
+    {
+      id: '1',
+      name: '动态住宅代理',
+      usageRate: 0,
+      total: 0,
+      monthly: 0,
+      today: 0,
+      lastMonth: 0
+    },
+    {
+      id: '2',
+      name: '动态数据中心代理',
+      usageRate: 0,
+      total: 0,
+      monthly: 0,
+      today: 0,
+      lastMonth: 0
+    },
+    {
+      id: '3',
+      name: '动态手机代理',
+      usageRate: 0,
+      total: 0,
+      monthly: 0,
+      today: 0,
+      lastMonth: 0
+    }
+  ],
+  staticResources: [
+    {
+      id: '1',
+      name: '静态住宅代理',
+      usageRate: 0,
+      total: 0,
+      monthly: 0,
+      lastMonth: 0,
+      available: 0,
+      expired: 0
+    },
+    {
+      id: '2',
+      name: '静态数据中心代理',
+      usageRate: 0,
+      total: 0,
+      monthly: 0,
+      lastMonth: 0,
+      available: 0,
+      expired: 0
+    },
+    {
+      id: '3',
+      name: '静态手机代理',
+      usageRate: 0,
+      total: 0,
+      monthly: 0,
+      lastMonth: 0,
+      available: 0,
+      expired: 0
+    },
+    {
+      id: '4',
+      name: '静态住宅代理2',
+      usageRate: 0,
+      total: 0,
+      monthly: 0,
+      lastMonth: 0,
+      available: 0,
+      expired: 0
+    },
+    {
+      id: '5',
+      name: '静态数据中心代理2',
+      usageRate: 0,
+      total: 0,
+      monthly: 0,
+      lastMonth: 0,
+      available: 0,
+      expired: 0
+    },
+    {
+      id: '7',
+      name: '静态手机代理2',
+      usageRate: 0,
+      total: 0,
+      monthly: 0,
+      lastMonth: 0,
+      available: 0,
+      expired: 0
+    }
+  ]
+};
+
 const Dashboard: React.FC<Props> = ({ currentAgent }) => {
   const [loading, setLoading] = useState(false);
-  const [dashboardData, setDashboardData] = useState<IDashboardData | null>(null);
+  const [dashboardData, setDashboardData] = useState<IDashboardData>(defaultDashboardData);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -115,7 +219,7 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
           <Card>
             <Statistic
               title="总充值"
-              value={statistics.total_recharge}
+              value={statistics.totalRecharge}
               precision={2}
               suffix="元"
             />
@@ -125,7 +229,7 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
           <Card>
             <Statistic
               title="总消费"
-              value={statistics.total_consumption}
+              value={statistics.totalConsumption}
               precision={2}
               suffix="元"
             />
@@ -135,7 +239,7 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
           <Card>
             <Statistic
               title="本月消费"
-              value={statistics.monthly_consumption}
+              value={statistics.monthConsumption}
               precision={2}
               suffix="元"
             />
@@ -150,7 +254,7 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
       <Col span={8} key={resource.id}>
         <Card>
           <Statistic title={resource.name} value={resource.total} suffix="Gb" />
-          <Progress percent={resource.usage_rate} status="active" />
+          <Progress percent={resource.usageRate} status="active" />
           <Row gutter={16}>
             <Col span={8}>
               <Statistic title="本月" value={resource.monthly} suffix="Gb" />
@@ -159,7 +263,7 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
               <Statistic title="今日" value={resource.today} suffix="Gb" />
             </Col>
             <Col span={8}>
-              <Statistic title="上月" value={resource.last_month} suffix="Gb" />
+              <Statistic title="上月" value={resource.lastMonth} suffix="Gb" />
             </Col>
           </Row>
         </Card>
@@ -172,13 +276,13 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
       <Col span={8} key={resource.id}>
         <Card>
           <Statistic title={resource.name} value={resource.total} />
-          <Progress percent={resource.usage_rate} status="active" />
+          <Progress percent={resource.usageRate} status="active" />
           <Row gutter={16}>
             <Col span={8}>
               <Statistic title="本月" value={resource.monthly} />
             </Col>
             <Col span={8}>
-              <Statistic title="上月" value={resource.last_month} />
+              <Statistic title="上月" value={resource.lastMonth} />
             </Col>
           </Row>
           <Row gutter={16} style={{ marginTop: '16px' }}>
@@ -220,13 +324,13 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
         <div className={styles.resourceSection}>
           <h2>动态资源</h2>
           <Row gutter={[16, 16]}>
-            {dashboardData?.dynamic_resources ? renderDynamicResources(dashboardData.dynamic_resources) : null}
+            {dashboardData?.dynamicResources ? renderDynamicResources(dashboardData.dynamicResources) : null}
           </Row>
         </div>
         <div className={styles.resourceSection}>
           <h2>静态资源</h2>
           <Row gutter={[16, 16]}>
-            {dashboardData?.static_resources ? renderStaticResources(dashboardData.static_resources) : null}
+            {dashboardData?.staticResources ? renderStaticResources(dashboardData.staticResources) : null}
           </Row>
         </div>
       </div>

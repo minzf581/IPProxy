@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.main_user import MainUser
 from app.models.instance import Instance
-from app.services.ipproxy_service import IPProxyService
+from app.services import ProxyService
 import logging
 
 router = APIRouter(prefix="/api/open/app")
@@ -27,7 +27,7 @@ async def sync_instances(db: Session = Depends(get_db)):
         logger.info(f"Syncing instances with params: {params}")
         
         # 调用 API 获取实例列表
-        service = IPProxyService()
+        service = ProxyService()
         response = await service.get_instances(params)
         
         if not response or "data" not in response:

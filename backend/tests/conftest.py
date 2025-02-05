@@ -281,11 +281,13 @@ def test_env():
     os.environ["APP_ID"] = "test_app_id"
     os.environ["APP_KEY"] = "test_app_key"
     os.environ["SECRET_KEY"] = "test_secret_key"
+    os.environ["TESTING"] = "true"
     yield
     # 清理环境变量
     del os.environ["APP_ID"]
     del os.environ["APP_KEY"]
     del os.environ["SECRET_KEY"]
+    del os.environ["TESTING"]
 
 @pytest_asyncio.fixture
 async def client():

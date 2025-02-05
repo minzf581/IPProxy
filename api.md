@@ -103,11 +103,49 @@
 前端路由：
 - `/user/profile`：用户信息页面
 - `/user/settings`：用户设置页面
+- `/user/list`：用户列表页面
 
 后端路由：
 - `GET /api/user/profile`：获取用户信息
 - `PUT /api/user/profile`：更新用户信息
 - `POST /api/user/{user_id}/change-password`：修改密码
+- `POST /api/open/app/user/create`：创建用户
+
+请求参数说明：
+1. 创建用户：
+   ```json
+   {
+       "username": "string",  // 必填，用户名
+       "password": "string",  // 必填，密码
+       "email": "string",    // 可选，邮箱
+       "remark": "string",   // 可选，备注
+       "agent_id": "number"  // 可选，代理商ID。如果不提供，则根据当前登录用户角色处理：
+                            // - 如果当前用户是管理员，创建的用户不属于任何代理商
+                            // - 如果当前用户是代理商，创建的用户自动关联到当前代理商
+   }
+   ```
+   响应格式：
+   ```json
+   {
+       "code": 0,
+       "msg": "success",
+       "data": {
+           "id": "number",
+           "username": "string",
+           "email": "string",
+           "status": "string",
+           "agent_id": "number",
+           "created_at": "string",
+           "updated_at": "string"
+       }
+   }
+   ```
+   错误码：
+   - 400：用户名已存在
+   - 401：未授权
+   - 403：无权操作（例如代理商尝试指定其他代理商ID）
+   - 404：指定的代理商不存在
+   - 500：服务器错误
 
 ### 3. 代理商相关 (agent.py)
 前端路由：

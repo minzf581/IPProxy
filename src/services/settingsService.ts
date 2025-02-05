@@ -15,14 +15,18 @@ const DEFAULT_PRICES: ResourcePrices = {
 // 获取资源价格设置
 export const getResourcePrices = async (agentId: string): Promise<ResourcePrices> => {
   try {
-    const response = await api.get(`/settings/agent/${agentId}/prices`);
-    if (response.code === 0 && response.data) {
+    const { data: responseData } = await api.get(`/settings/agent/${agentId}/prices`);
+    
+    // 检查响应格式
+    if (responseData && responseData.code === 0 && responseData.data) {
+      const priceData = responseData.data;
       return {
-        dynamic_proxy_price: response.data.dynamic_proxy_price || DEFAULT_PRICES.dynamic_proxy_price,
-        static_proxy_price: response.data.static_proxy_price || DEFAULT_PRICES.static_proxy_price
+        dynamic_proxy_price: priceData.dynamic?.pool1 || DEFAULT_PRICES.dynamic_proxy_price,
+        static_proxy_price: priceData.static?.residential || DEFAULT_PRICES.static_proxy_price
       };
     }
-    console.warn('获取价格设置返回异常:', response);
+    
+    console.warn('获取价格设置返回异常:', responseData);
     message.warning('获取价格设置失败，使用默认价格');
     return DEFAULT_PRICES;
   } catch (error: any) {

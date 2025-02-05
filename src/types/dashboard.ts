@@ -26,37 +26,37 @@ export interface StaticResourceData {
 export interface DynamicResource {
   id: string;
   name: string;
-  usage_rate: number;
+  usageRate: number;
   total: number;
   monthly: number;
   today: number;
-  last_month: number;
+  lastMonth: number;
 }
 
 export interface StaticResource {
   id: string;
   name: string;
-  usage_rate: number;
+  usageRate: number;
   total: number;
   monthly: number;
-  last_month: number;
+  lastMonth: number;
   available: number;
   expired: number;
 }
 
 export interface Statistics {
-  total_recharge: number;
-  total_consumption: number;
+  totalRecharge: number;
+  totalConsumption: number;
   balance: number;
-  monthly_recharge: number;
-  monthly_consumption: number;
-  last_month_consumption: number;
+  monthRecharge: number;
+  monthConsumption: number;
+  lastMonthConsumption: number;
 }
 
 export interface DashboardData {
   statistics: Statistics;
-  dynamic_resources: DynamicResource[];
-  static_resources: StaticResource[];
+  dynamicResources: DynamicResource[];
+  staticResources: StaticResource[];
   recentOrders: Array<{
     id: number;
     userId: number;
@@ -85,4 +85,10 @@ export interface AgentListResponse {
     updated_at: string;
   }>;
   total: number;
+}
+
+export interface ApiResponse<T> {
+  code: number;
+  msg: string;
+  data: T;
 } 

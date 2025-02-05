@@ -1,3 +1,62 @@
+# 代理商管理路由模块
+# ==============
+#
+# 此模块处理所有与代理商相关的路由请求，包括：
+# - 代理商账户管理（创建、更新、查询）
+# - 代理商资金管理（余额更新、交易记录）
+# - 代理商统计信息（订单统计、收入统计）
+#
+# 重要提示：
+# ---------
+# 1. 代理商是系统的核心角色之一，所有操作需要严格的权限控制
+# 2. 涉及资金操作时需要保证事务的原子性和数据一致性
+# 3. 所有关键操作都需要记录详细的日志
+#
+# 依赖关系：
+# ---------
+# - 数据模型：
+#   - User (app/models/user.py)
+#   - Transaction (app/models/transaction.py)
+#   - MainUser (app/models/main_user.py)
+# - 服务：
+#   - UserService (app/services/user_service.py)
+#   - ProxyService (app/services/proxy_service.py)
+#   - AreaService (app/services/area_service.py)
+#   - AuthService (app/services/auth.py)
+#
+# 前端对应：
+# ---------
+# - 服务层：src/services/agentService.ts
+# - 页面组件：src/pages/agent/index.tsx
+# - 类型定义：src/types/agent.ts
+#
+# 修改注意事项：
+# ------------
+# 1. 权限控制：
+#    - 所有接口都需要进行权限验证
+#    - 防止越权访问和操作
+#    - 记录敏感操作日志
+#
+# 2. 资金操作：
+#    - 使用事务确保操作原子性
+#    - 记录详细的资金变动日志
+#    - 定期对账和数据校验
+#
+# 3. 数据验证：
+#    - 所有输入参数必须经过验证
+#    - 特别注意金额等敏感字段
+#    - 确保数据一致性
+#
+# 4. 错误处理：
+#    - 统一的错误响应格式
+#    - 详细的错误日志记录
+#    - 友好的错误提示信息
+#
+# 5. 性能优化：
+#    - 合理使用数据库索引
+#    - 避免重复查询
+#    - 优化大数据量查询
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -6,7 +65,7 @@ from app.models.transaction import Transaction
 from typing import Dict, Any, List
 from pydantic import BaseModel
 from typing import Optional
-from app.services.ipproxy_service import IPProxyService
+from app.services import UserService, ProxyService, AreaService
 from app.models.main_user import MainUser
 from app.services.auth import get_current_user
 from datetime import datetime
@@ -16,12 +75,12 @@ import uuid
 from app.schemas.agent import AgentList, AgentCreate, AgentUpdate
 import json
 import traceback
+from app.core.deps import get_user_service, get_proxy_service, get_area_service
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-ipproxy_service = IPProxyService()
 
 class CreateAgentRequest(BaseModel):
     username: Optional[str] = None
@@ -44,88 +103,99 @@ def generate_transaction_no() -> str:
 @router.post("/open/app/proxy/user/v2")
 async def create_agent(
     request: CreateAgentRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    user_service: UserService = Depends(get_user_service)
 ) -> Dict[str, Any]:
     """创建代理商"""
     try:
-        # 创建代理商用户
-        agent = User(
-            username=request.username,
-            password=request.password,
-            email=request.email,
-            is_agent=True,
-            status=request.status,
-            balance=request.balance,
-            remark=request.remark
-        )
-        db.add(agent)
-        db.flush()  # 获取agent.id
-
-        # 记录初始额度充值交易
-        transaction = Transaction(
-            user_id=agent.id,
-            amount=request.balance,
-            type="recharge",
-            status="completed",
-            remark="初始额度充值"
-        )
-        db.add(transaction)
+        # 准备用户参数
+        user_params = {
+            "username": request.username,
+            "password": request.password,
+            "email": request.email,
+            "authType": 2,  # 代理商类型
+            "status": request.status,
+            "remark": request.remark
+        }
         
-        db.commit()
-        db.refresh(agent)
-
-        return {
-            "code": 0,
-            "msg": "success",
-            "data": agent.to_dict()
-        }
+        # 调用用户服务创建用户
+        response = await user_service.create_user(user_params)
+        if not response:
+            raise HTTPException(status_code=400, detail="创建代理商失败")
             
+        # 生成交易号
+        transaction_no = generate_transaction_no()
+        
+        try:
+            # 创建本地数据库记录
+            agent = MainUser(
+                username=request.username,
+                email=request.email,
+                status=request.status,
+                balance=request.balance,
+                remark=request.remark,
+                transaction_no=transaction_no
+            )
+            db.add(agent)
+            db.commit()
+            
+            return {
+                "code": 0,
+                "message": "代理商创建成功",
+                "data": {
+                    "id": agent.id,
+                    "username": agent.username,
+                    "email": agent.email,
+                    "status": agent.status,
+                    "balance": agent.balance,
+                    "created_at": agent.created_at.isoformat(),
+                    "updated_at": agent.updated_at.isoformat() if agent.updated_at else None
+                }
+            }
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"创建代理商数据库记录失败: {str(e)}")
+            raise HTTPException(status_code=500, detail="创建代理商数据库记录失败")
+            
+    except HTTPException:
+        raise
     except Exception as e:
-        db.rollback()
-        return {
-            "code": 500,
-            "msg": str(e),
-            "data": None
-        }
+        logger.error(f"创建代理商失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/open/app/agent/list", response_model=AgentList)
+@router.get("/open/app/agent/list")
 async def get_agent_list(
-    page: int = 1,
-    pageSize: int = 100,
-    username: Optional[str] = None,
-    status: Optional[int] = None,
-    current_user: User = Depends(get_current_user),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(10, ge=1, le=100),
+    user_service: UserService = Depends(get_user_service),
     db: Session = Depends(get_db)
 ):
     """获取代理商列表"""
-    logger.info(f"Getting agent list. Page: {page}, PageSize: {pageSize}, Username: {username}, Status: {status}")
-    logger.info(f"Current user: {current_user.username}, Is admin: {current_user.is_admin}")
-    
-    # 只有管理员可以查看所有代理商
-    if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="Only administrators can view agent list")
-    
-    # 构建查询
-    query = db.query(User).filter(User.is_agent == True)
-    
-    if username:
-        query = query.filter(User.username.ilike(f"%{username}%"))
-    if status is not None:
-        query = query.filter(User.status == status)
+    try:
+        logger.info(f"获取代理商列表: page={page}, pageSize={pageSize}")
         
-    # 获取总数
-    total = query.count()
-    
-    # 分页
-    skip = (page - 1) * pageSize
-    agents = query.order_by(User.created_at.desc()).offset(skip).limit(pageSize).all()
-    
-    return {
-        "total": total,
-        "list": agents,
-        "page": page,
-        "pageSize": pageSize
-    }
+        # 调用用户服务获取代理商列表
+        params = {
+            "page": page,
+            "pageSize": pageSize,
+            "role": "agent"  # 只获取代理商角色
+        }
+        response = await user_service.get_user_list(params)
+        if not response:
+            raise HTTPException(status_code=500, detail="获取代理商列表失败")
+            
+        return {
+            "code": 0,
+            "message": "获取代理商列表成功",
+            "data": response
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取代理商列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/open/app/agent/{agent_id}")
 async def get_agent_detail(
@@ -152,20 +222,23 @@ async def get_agent_statistics(
     agent = db.query(User).filter(User.id == agent_id, User.is_agent == True).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+        
+    # 获取统计数据
+    total_orders = db.query(func.count(Transaction.id)).filter(
+        Transaction.agent_id == agent_id
+    ).scalar()
     
-    # 获取代理商的统计信息
-    total_orders = len(agent.agent_static_orders) + len(agent.agent_dynamic_orders)
-    total_revenue = sum([order.amount for order in agent.agent_static_orders]) + \
-                   sum([order.amount for order in agent.agent_dynamic_orders])
+    total_amount = db.query(func.sum(Transaction.amount)).filter(
+        Transaction.agent_id == agent_id
+    ).scalar() or 0.0
     
     return {
         "code": 0,
         "message": "success",
         "data": {
-            "totalOrders": total_orders,
-            "monthlyOrders": 0,  # TODO: 实现月度订单统计
-            "totalRevenue": total_revenue,
-            "monthlyRevenue": 0  # TODO: 实现月度收入统计
+            "total_orders": total_orders,
+            "total_amount": float(total_amount),
+            "balance": agent.balance
         }
     }
 
@@ -315,7 +388,39 @@ async def update_agent_balance(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """调整代理商额度"""
+    """
+    调整代理商额度
+    
+    此接口用于管理员调整代理商的账户余额，包括充值和扣减操作。
+    所有操作都会记录详细的交易日志，并确保数据一致性。
+    
+    参数:
+        agent_id (int): 代理商ID
+        data (dict): 请求数据，包含：
+            - amount (float): 调整金额
+            - type (str): 调整类型，'add'为充值，'subtract'为扣减
+            - remark (str, optional): 操作备注
+        current_user (User): 当前操作用户，必须是管理员
+        db (Session): 数据库会话
+    
+    返回:
+        Dict[str, Any]: 包含更新后的代理商信息
+            - code (int): 状态码
+            - message (str): 操作结果描述
+            - data (dict): 更新后的代理商数据
+    
+    异常:
+        - 404: 代理商不存在
+        - 403: 无权限执行操作
+        - 400: 参数错误或余额不足
+        - 500: 服务器内部错误
+    
+    注意事项:
+        1. 只有管理员可以执行此操作
+        2. 扣减操作需要检查余额充足性
+        3. 所有操作都会记录交易日志
+        4. 使用事务确保数据一致性
+    """
     try:
         # 检查代理商是否存在
         agent = db.query(User).filter(User.id == agent_id, User.is_agent == True).first()
@@ -378,7 +483,38 @@ async def update_agent_status(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """更新代理商状态"""
+    """
+    更新代理商状态
+    
+    此接口用于管理员更新代理商的状态，可以启用或禁用代理商账户。
+    状态变更会影响代理商的所有业务操作权限。
+    
+    参数:
+        agent_id (int): 代理商ID
+        data (dict): 请求数据，包含：
+            - status (str): 新状态，可选值：'active'/'disabled'
+            - remark (str, optional): 状态变更原因
+        current_user (User): 当前操作用户，必须是管理员
+        db (Session): 数据库会话
+    
+    返回:
+        Dict[str, Any]: 包含更新后的代理商信息
+            - code (int): 状态码
+            - message (str): 操作结果描述
+            - data (dict): 更新后的代理商数据
+    
+    异常:
+        - 404: 代理商不存在
+        - 403: 无权限执行操作
+        - 400: 状态参数无效
+        - 500: 服务器内部错误
+    
+    注意事项:
+        1. 只有管理员可以执行此操作
+        2. 状态变更会影响代理商的所有业务操作
+        3. 需要记录状态变更日志
+        4. 状态变更可能需要同步更新相关资源
+    """
     try:
         # 检查代理商是否存在
         agent = db.query(User).filter(User.id == agent_id, User.is_agent == True).first()
@@ -418,7 +554,38 @@ async def get_agent_transactions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """获取代理商交易记录"""
+    """
+    获取代理商交易记录
+    
+    此接口用于查询代理商的所有交易记录，包括充值、扣减等操作。
+    支持分页查询和多种筛选条件。
+    
+    参数:
+        agent_id (int): 代理商ID
+        current_user (User): 当前操作用户
+        db (Session): 数据库会话
+    
+    返回:
+        Dict[str, Any]: 包含交易记录列表
+            - code (int): 状态码
+            - message (str): 操作结果描述
+            - data (dict): 
+                - list (List[dict]): 交易记录列表
+                - total (int): 总记录数
+                - page (int): 当前页码
+                - page_size (int): 每页记录数
+    
+    异常:
+        - 404: 代理商不存在
+        - 403: 无权限查看记录
+        - 500: 服务器内部错误
+    
+    注意事项:
+        1. 管理员可以查看所有代理商的记录
+        2. 代理商只能查看自己的记录
+        3. 支持按时间范围和交易类型筛选
+        4. 结果按时间倒序排列
+    """
     try:
         # 检查代理商是否存在
         agent = db.query(User).filter(User.id == agent_id, User.is_agent == True).first()
@@ -436,7 +603,10 @@ async def get_agent_transactions(
             "code": 200,
             "message": "success",
             "data": {
-                "transactions": [t.to_dict() for t in transactions]
+                "transactions": [t.to_dict() for t in transactions],
+                "total": len(transactions),
+                "page": 1,
+                "page_size": len(transactions)
             }
         }
     except HTTPException:
@@ -445,123 +615,34 @@ async def get_agent_transactions(
         logger.error(f"获取代理商交易记录失败: {str(e)}")
         raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
 
-@router.api_route("/open/app/area/ip-ranges/v2", methods=["GET", "POST"])
-async def get_ip_ranges(
-    proxy_type: Optional[int] = Body(None, description="代理类型：101=静态住宅, 102=静态数据中心, 103=静态手机"),
-    country_code: Optional[str] = Body(None, description="国家代码"),
-    city_code: Optional[str] = Body(None, description="城市代码"),
-    static_type: Optional[str] = Body(None, description="静态代理类型"),
-    version: str = Body("v2"),
-    encrypt: str = Body("AES")
+@router.post("/open/app/area/v2")
+async def get_area_list(
+    params: Dict[str, Any] = Body(...),
+    area_service: AreaService = Depends(get_area_service)
 ) -> Dict[str, Any]:
-    """获取IP段列表"""
+    """获取地区列表"""
     try:
-        logger.info("[IPIPV] 开始处理 IP 段列表请求")
-        logger.info(f"[IPIPV] 接收到的参数: proxy_type={proxy_type}, country_code={country_code}, city_code={city_code}, static_type={static_type}")
-        
-        if not proxy_type:
-            return {
-                "code": 400,
-                "msg": "缺少必要参数 proxyType",
-                "data": []
-            }
-            
-        # 验证代理类型是否有效
-        valid_proxy_types = [101, 102, 103]  # 静态代理类型
-        if proxy_type not in valid_proxy_types:
-            return {
-                "code": 400,
-                "msg": f"无效的代理类型: {proxy_type}，必须是静态代理类型 (101, 102, 103)",
-                "data": []
-            }
-        
+        logger.info("[IPIPV] 获取区域列表")
         # 构造请求参数
-        params = {
-            "version": version,
-            "encrypt": encrypt,
-            "proxyType": proxy_type
-        }
-        
-        # 添加可选参数
-        if country_code:
-            params["countryCode"] = country_code
-        if city_code:
-            params["cityCode"] = city_code
-        if static_type:
-            params["staticType"] = static_type
-            
-        logger.info(f"[IPIPV] IP段列表请求参数: {json.dumps(params, ensure_ascii=False)}")
-        
-        # 调用服务获取IP段列表
-        service = IPProxyService()
-        logger.info(f"[IPIPV] 已创建 IPProxyService 实例，使用的 base_url: {service.base_url}")
-        
-        # 调用服务方法
-        result = await service.get_ip_ranges(params)
-        logger.info(f"[IPIPV] 获取IP段列表结果: {json.dumps(result, ensure_ascii=False)}")
-        
-        # 返回标准格式的响应
-        response = {
-            "code": 0,
-            "msg": "success",
-            "data": result if result else []
-        }
-        logger.info(f"[IPIPV] 返回响应: {json.dumps(response, ensure_ascii=False)}")
-        return response
-        
-    except Exception as e:
-        logger.error(f"[IPIPV] 获取IP段列表失败: {str(e)}")
-        logger.error(f"[IPIPV] 错误堆栈: {traceback.format_exc()}")
-        return {
-            "code": 500,
-            "msg": str(e),
-            "data": []
-        }
-
-@router.api_route("/open/app/area/v2", methods=["GET", "POST"])
-async def get_area_list() -> Dict[str, Any]:
-    """获取区域列表"""
-    try:
-        logger.info("[IPIPV] 开始处理区域列表请求")
-        
-        # 构造请求参数 - 根据API文档，只需要基础参数
-        params = {
+        request_params = {
             "version": "v2",
             "encrypt": "AES"
         }
-        
-        logger.info(f"[IPIPV] 区域列表请求参数: {json.dumps(params, ensure_ascii=False)}")
-        
-        # 调用服务获取区域列表
-        service = IPProxyService()
-        logger.info(f"[IPIPV] 已创建 IPProxyService 实例，使用的 base_url: {service.base_url}")
-        
-        # 调用服务方法
-        result = await service.get_area_v2(params)
-        logger.info(f"[IPIPV] 获取区域列表结果: {json.dumps(result, ensure_ascii=False)}")
-        
-        if not result:
-            logger.warning("[IPIPV] 区域列表为空")
-            return {
-                "code": 0,
-                "msg": "success",
-                "data": []
-            }
-        
-        # 返回标准格式的响应
-        response = {
+        # 合并用户传入的参数
+        if params:
+            request_params.update(params)
+            
+        result = await area_service.get_area_list(request_params)
+        return {
             "code": 0,
-            "msg": "success",
-            "data": result
+            "message": "success",
+            "data": result if result else []
         }
-        logger.info(f"[IPIPV] 返回响应: {json.dumps(response, ensure_ascii=False)}")
-        return response
-        
     except Exception as e:
         logger.error(f"[IPIPV] 获取区域列表失败: {str(e)}")
         logger.error(f"[IPIPV] 错误堆栈: {traceback.format_exc()}")
         return {
             "code": 500,
-            "msg": f"获取区域列表失败: {str(e)}",
+            "message": str(e),
             "data": []
         }

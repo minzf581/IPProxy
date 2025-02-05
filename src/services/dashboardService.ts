@@ -49,7 +49,7 @@ export async function getDashboardData(agentId?: string | number): Promise<Dashb
     console.log('[Dashboard Service] Getting dashboard data for agent:', agentId);
     console.log('[Dashboard Service] Agent ID type:', typeof agentId);
     
-    const url = '/api/open/app/dashboard/info/v2';
+    const url = '/open/app/dashboard/info/v2';
     const params = agentId ? { agent_id: agentId } : undefined;
       
     console.log('[Dashboard Service] Request URL:', url);
@@ -80,7 +80,7 @@ export async function getDashboardData(agentId?: string | number): Promise<Dashb
 export async function getAgentList(params: { page: number; pageSize: number }): Promise<AgentListResponse> {
   try {
     console.log('[Dashboard Service] Getting agent list with params:', params);
-    const response = await api.get<ApiResponse<AgentListResponse>>('/api/open/app/agent/list', { params });
+    const response = await api.get<ApiResponse<AgentListResponse>>('/open/app/agent/list', { params });
     console.log('[Dashboard Service] Agent list response:', response);
     return response.data.data;
   } catch (error) {

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     IPPROXY_API_URL: str = os.getenv("IPPROXY_API_URL", "https://sandbox.ipipv.com")
     IPPROXY_APP_KEY: str = os.getenv("IPPROXY_APP_KEY", "AK20241120145620")
     IPPROXY_APP_SECRET: str = os.getenv("IPPROXY_APP_SECRET", "bf3ffghlt0hpc4omnvc2583jt0fag6a4")
+    TESTING: bool = os.getenv("TESTING", "false").lower() == "true"
 
     class Config:
         env_file = ".env"

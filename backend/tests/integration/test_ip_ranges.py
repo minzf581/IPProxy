@@ -3,7 +3,7 @@ import os
 import logging
 import time
 import hashlib
-from app.services.ipproxy_service import IPProxyService
+from app.services import AreaService, ProxyService, UserService
 
 # 设置日志级别和格式
 logging.basicConfig(
@@ -16,47 +16,51 @@ logger = logging.getLogger(__name__)
 @pytest.mark.asyncio
 class TestIPRanges:
     @pytest.fixture(scope="class")
-    def ipproxy_service(self):
-        """创建IPIPV服务实例"""
-        service = IPProxyService()
+    def area_service(self):
+        """创建区域服务实例"""
+        service = AreaService()
         service.base_url = os.getenv('IPPROXY_API_URL', 'https://sandbox.ipipv.com')
         service.app_key = os.getenv('IPPROXY_APP_KEY', 'AK20241120145620')
         service.app_secret = os.getenv('IPPROXY_APP_SECRET', 'bf3ffghlt0hpc4omnvc2583jt0fag6a4')
-        logger.info(f"API服务初始化完成, base_url: {service.base_url}")
+        logger.info(f"区域服务初始化完成, base_url: {service.base_url}")
+        return service
+        
+    @pytest.fixture(scope="class")
+    def user_service(self):
+        """创建用户服务实例"""
+        service = UserService()
+        service.base_url = os.getenv('IPPROXY_API_URL', 'https://sandbox.ipipv.com')
+        service.app_key = os.getenv('IPPROXY_APP_KEY', 'AK20241120145620')
+        service.app_secret = os.getenv('IPPROXY_APP_SECRET', 'bf3ffghlt0hpc4omnvc2583jt0fag6a4')
+        logger.info(f"用户服务初始化完成, base_url: {service.base_url}")
         return service
 
     @pytest.fixture(scope="class")
-    async def test_user(self, ipproxy_service):
+    async def test_user(self, user_service):
         """创建测试用户"""
         username = f"test_user_{int(time.time())}"
         user_params = {
-            "version": "v2",
-            "encrypt": "AES",
-            "phone": "13800138000",
+            "username": username,
+            "password": "Test123456",
             "email": f"{username}@example.com",
+            "phone": "13800138000",
             "authType": 1,
-            "status": 1,
-            "appUsername": username
+            "status": 1
         }
         
-        response = await ipproxy_service._make_request("api/open/app/user/create/v2", user_params)
+        response = await user_service.create_user(user_params)
         logger.info(f"用户创建: {response}")
         return username
 
-    async def test_1_get_static_cloud_ip_ranges(self, ipproxy_service, test_user):
+    async def test_1_get_static_cloud_ip_ranges(self, area_service, test_user):
         """测试获取静态云平台代理IP段"""
         username = await test_user
         params = {
-            "version": "v2",
-            "encrypt": "AES",
             "proxyType": [101],  # 静态云平台
             "countryCode": "CN",  # 中国
-            "cityCode": "CN000SHA",  # 上海
-            "appUsername": username,
-            "timestamp": str(int(time.time())),
-            "reqId": hashlib.md5(f"{time.time()}".encode()).hexdigest()
+            "cityCode": "CN000SHA"  # 上海
         }
-        response = await ipproxy_service._make_request("api/open/app/product/query/v2", params)
+        response = await area_service.get_ip_ranges(params)
         logger.info(f"静态云平台代理IP段响应: {response}")
         
         assert response is not None, "响应不应为空"
@@ -69,20 +73,15 @@ class TestIPRanges:
             logger.info(f"IP段详细信息: {response}")
             assert "productNo" in response, "响应中应包含 productNo"
 
-    async def test_2_get_static_domestic_residential_ip_ranges(self, ipproxy_service, test_user):
+    async def test_2_get_static_domestic_residential_ip_ranges(self, area_service, test_user):
         """测试获取静态国内家庭代理IP段"""
         username = await test_user
         params = {
-            "version": "v2",
-            "encrypt": "AES",
             "proxyType": [102],  # 静态国内家庭
             "countryCode": "CN", # 中国
-            "cityCode": "CN000SHA",  # 上海
-            "appUsername": username,
-            "timestamp": str(int(time.time())),
-            "reqId": hashlib.md5(f"{time.time()}".encode()).hexdigest()
+            "cityCode": "CN000SHA"  # 上海
         }
-        response = await ipproxy_service._make_request("api/open/app/product/query/v2", params)
+        response = await area_service.get_ip_ranges(params)
         logger.info(f"静态国内家庭代理IP段响应: {response}")
         
         assert response is not None, "响应不应为空"
@@ -95,20 +94,15 @@ class TestIPRanges:
             logger.info(f"IP段详细信息: {response}")
             assert "productNo" in response, "响应中应包含 productNo"
 
-    async def test_3_get_static_foreign_residential_ip_ranges(self, ipproxy_service, test_user):
+    async def test_3_get_static_foreign_residential_ip_ranges(self, area_service, test_user):
         """测试获取静态国外家庭代理IP段"""
         username = await test_user
         params = {
-            "version": "v2",
-            "encrypt": "AES",
             "proxyType": [103],  # 静态国外家庭
             "countryCode": "JP", # 日本
-            "cityCode": "JP000TYO",  # 东京
-            "appUsername": username,
-            "timestamp": str(int(time.time())),
-            "reqId": hashlib.md5(f"{time.time()}".encode()).hexdigest()
+            "cityCode": "JP000TYO"  # 东京
         }
-        response = await ipproxy_service._make_request("api/open/app/product/query/v2", params)
+        response = await area_service.get_ip_ranges(params)
         logger.info(f"静态国外家庭代理IP段响应: {response}")
         
         assert response is not None, "响应不应为空"
@@ -121,7 +115,7 @@ class TestIPRanges:
             logger.info(f"IP段详细信息: {response}")
             assert "productNo" in response, "响应中应包含 productNo"
 
-    async def test_4_get_all_proxy_types(self, ipproxy_service, test_user):
+    async def test_4_get_all_proxy_types(self, area_service, test_user):
         """测试获取所有类型代理IP段"""
         username = await test_user
         proxy_types = [
@@ -132,12 +126,7 @@ class TestIPRanges:
         
         for proxy_type in proxy_types:
             params = {
-                "version": "v2",
-                "encrypt": "AES",
-                "proxyType": [proxy_type["type"]],
-                "appUsername": username,
-                "timestamp": str(int(time.time())),
-                "reqId": hashlib.md5(f"{time.time()}".encode()).hexdigest()
+                "proxyType": [proxy_type["type"]]
             }
             
             # 根据代理类型设置不同的国家和城市
@@ -148,7 +137,7 @@ class TestIPRanges:
                 params["countryCode"] = "JP"
                 params["cityCode"] = "JP000TYO"
             
-            response = await ipproxy_service._make_request("api/open/app/product/query/v2", params)
+            response = await area_service.get_ip_ranges(params)
             logger.info(f"{proxy_type['name']}代理IP段响应: {response}")
             
             assert response is not None, f"{proxy_type['name']}响应不应为空"

@@ -5,7 +5,7 @@ import { api } from '@/utils/request';
 import styles from './BusinessActivationModal.module.less';
 import type { User } from '@/types/user';
 import { useAuth } from '@/contexts/AuthContext';
-import { getResourcePrices, type ResourcePrices } from '@/services/settingsService';
+import { getResourcePrices, ResourcePrices } from '@/services/settingsService';
 import { ipProxyAPI } from '@/utils/ipProxyAPI';
 import type { Area, Country, City, IpRange, StaticType } from '@/types/api';
 import type { AreaResponse } from '@/utils/ipProxyAPI';
@@ -68,6 +68,20 @@ interface DisplayIpRange {
   stock: number;
 }
 
+// 定义价格类型
+interface PriceConfig {
+  dynamic: {
+    [key: string]: number;
+    pool1: number;
+    pool2: number;
+  };
+  static: {
+    [key: string]: number;
+    residential: number;
+    datacenter: number;
+  };
+}
+
 const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
   visible,
   user,
@@ -78,10 +92,7 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
   const [proxyType, setProxyType] = useState<'dynamic' | 'static'>('dynamic');
   const [loading, setLoading] = useState(false);
   const [hasInput, setHasInput] = useState(false);
-  const [prices, setPrices] = useState<ResourcePrices>({
-    dynamic_proxy_price: 0.1,
-    static_proxy_price: 0.2
-  });
+  const [prices, setPrices] = useState<ResourcePrices | null>(null);
   const { user: currentUser } = useAuth();
 
   // 新增状态
@@ -94,16 +105,16 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
   const [selectedIpRange, setSelectedIpRange] = useState<DisplayIpRange | null>(null);
   const [totalCost, setTotalCost] = useState<number>(0);
 
-  // 获取价格设置
+  // 获取价格配置
   useEffect(() => {
     if (visible && currentUser?.id) {
       getResourcePrices(currentUser.id.toString())
-        .then(prices => {
-          setPrices(prices);
+        .then(priceData => {
+          setPrices(priceData);
         })
         .catch(error => {
-          console.error('获取价格设置失败:', error);
-          message.error('获取价格设置失败，使用默认价格');
+          console.error('获取价格配置失败:', error);
+          message.error('获取价格配置失败');
         });
     }
   }, [visible, currentUser?.id]);
@@ -225,36 +236,38 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
 
   // 计算总费用
   const calculateTotalCost = (values: any) => {
-    if (proxyType === 'static') {
-      const quantity = values.quantity || 0;
-      const duration = values.duration || 0;
-      const selectedType = staticTypes.find(t => t.code === values.staticType);
-      const price = selectedType?.price || prices.static_proxy_price;
-      const total = quantity * duration * price;
+    if (!prices) return;
+    
+    if (proxyType === 'dynamic') {
+      const traffic = parseFloat(values.traffic || '0');
+      const total = traffic * prices.dynamic_proxy_price;
       setTotalCost(total);
+      setHasInput(traffic > 0);
+    } else {
+      const quantity = parseFloat(values.quantity || '0');
+      const duration = parseInt(values.duration || '0');
+      const total = quantity * duration * prices.static_proxy_price;
+      setTotalCost(total);
+      setHasInput(quantity > 0 && duration > 0);
     }
   };
 
   // 处理表单值变化
-  const handleValuesChange = (changedValues: any, allValues: any) => {
-    if (proxyType === 'dynamic') {
-      setHasInput(!!allValues.traffic && parseFloat(allValues.traffic) > 0);
-    } else {
-      setHasInput(!!allValues.quantity && parseFloat(allValues.quantity) > 0 && !!allValues.duration);
-      calculateTotalCost(allValues);
-    }
+  const handleValuesChange = React.useCallback((changedValues: any, allValues: any) => {
+    // 计算总费用
+    calculateTotalCost(allValues);
 
     // 处理级联选择
-    if (changedValues.region) {
+    if ('region' in changedValues) {
       handleRegionChange(changedValues.region);
     }
-    if (changedValues.country) {
+    if ('country' in changedValues) {
       handleCountryChange(changedValues.country);
     }
-    if (changedValues.city || changedValues.staticType) {
+    if ('city' in changedValues || 'staticType' in changedValues) {
       loadIpRanges(allValues);
     }
-  };
+  }, [calculateTotalCost, handleRegionChange, handleCountryChange, loadIpRanges]);
 
   const handleProxyTypeChange = (e: RadioChangeEvent) => {
     setProxyType(e.target.value);
@@ -264,9 +277,14 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
   const handleSubmit = async (values: FormValues) => {
     try {
       setLoading(true);
+      
+      if (!prices) {
+        message.error('价格配置获取失败，请刷新重试');
+        return;
+      }
 
       // 使用动态价格计算总费用
-      const total_cost = values.proxyType === 'dynamic' 
+      const total_cost = proxyType === 'dynamic'
         ? parseInt(values.traffic || '0') * prices.dynamic_proxy_price
         : parseInt(values.quantity || '0') * parseInt(values.duration?.toString() || '0') * prices.static_proxy_price;
 
@@ -296,8 +314,7 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
       console.log('用户名:', user.username);
       console.log('请求数据:', orderData);
       
-      const apiPath = `/api/user/${user.id}/activate-business`;
-      const response = await api.post(apiPath, orderData);
+      const response = await api.post(`/api/user/${user.id}/activate-business`, orderData);
       
       if (response.data?.code === 0) {
         message.success(response.data.msg || '业务激活成功');
@@ -356,8 +373,10 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
     </Space>
   );
 
-  // 在表单中显示价格信息
+  // 渲染价格信息
   const renderPriceInfo = () => {
+    if (!prices) return null;
+    
     if (proxyType === 'dynamic') {
       return (
         <div className={styles.priceInfo}>
@@ -581,6 +600,14 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
                 >
                   <Input.TextArea placeholder="请输入备注（仅显示在订单管理中）" />
                 </Form.Item>
+              </Col>
+            </Row>
+            <Row gutter={24}>
+              <Col span={12}>
+                <Statistic title="剩余额度" value={currentUser?.balance || 0} prefix="¥" precision={2} />
+              </Col>
+              <Col span={12}>
+                <Statistic title="总计费用" value={totalCost} prefix="¥" precision={2} />
               </Col>
             </Row>
           </>

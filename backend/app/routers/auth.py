@@ -1,3 +1,74 @@
+"""
+认证授权路由模块
+==============
+
+此模块处理所有与认证和授权相关的路由请求，包括：
+- 用户登录认证
+- 令牌生成和验证
+- 密码管理
+- 用户信息获取
+
+重要提示：
+---------
+1. 此模块是系统安全的核心，需要特别注意安全性
+2. 所有密码和敏感信息必须加密处理
+3. 令牌的生成和验证需要严格控制
+
+依赖关系：
+---------
+- 数据模型：
+  - User (app/models/user.py)
+  - UserCreate (app/schemas/user.py)
+  - UserLogin (app/schemas/user.py)
+  - UserResponse (app/schemas/user.py)
+- 服务：
+  - AuthService (app/services/auth.py)
+  - OAuth2PasswordBearer (fastapi.security)
+
+前端对应：
+---------
+- 服务层：src/services/authService.ts
+- 页面组件：src/pages/login/index.tsx
+- 类型定义：src/types/auth.ts
+
+认证流程：
+---------
+1. 登录流程：
+   - 验证用户名和密码
+   - 生成访问令牌
+   - 返回用户信息
+
+2. 令牌验证：
+   - 检查令牌有效性
+   - 获取当前用户
+   - 验证用户状态
+
+3. 密码管理：
+   - 验证原密码
+   - 更新新密码
+   - 记录修改日志
+
+修改注意事项：
+------------
+1. 安全性：
+   - 密码必须加密存储
+   - 令牌需要加密传输
+   - 防止暴力破解
+   - 防止重放攻击
+
+2. 错误处理：
+   - 友好的错误提示
+   - 详细的错误日志
+   - 登录失败处理
+   - 异常行为记录
+
+3. 性能优化：
+   - 缓存令牌验证
+   - 优化数据库查询
+   - 异步处理日志
+   - 限制并发请求
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from app.models.user import User

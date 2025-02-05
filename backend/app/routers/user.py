@@ -1,3 +1,80 @@
+# 用户管理路由模块
+# ==============
+#
+# 此模块处理所有与用户相关的路由请求，包括：
+# - 用户账户管理（注册、登录、更新）
+# - 用户权限控制
+# - 用户资金管理
+# - 用户统计信息
+#
+# 重要提示：
+# ---------
+# 1. 用户是系统的基础模块，需要特别注意安全性
+# 2. 所有涉及敏感信息的操作都需要加密处理
+# 3. 用户权限需要严格控制
+#
+# 依赖关系：
+# ---------
+# - 数据模型：
+#   - User (app/models/user.py)
+#   - Transaction (app/models/transaction.py)
+#   - MainUser (app/models/main_user.py)
+# - 服务：
+#   - AuthService (app/services/auth.py)
+#   - IPProxyService (app/services/ipproxy_service.py)
+#
+# 前端对应：
+# ---------
+# - 服务层：src/services/userService.ts
+# - 页面组件：src/pages/user/index.tsx
+# - 类型定义：src/types/user.ts
+#
+# 数据流：
+# -------
+# 1. 用户注册流程：
+#    - 验证注册信息
+#    - 密码加密处理
+#    - 创建用户记录
+#    - 初始化用户配置
+#
+# 2. 用户登录流程：
+#    - 验证登录信息
+#    - 生成访问令牌
+#    - 记录登录日志
+#    - 返回用户信息
+#
+# 3. 用户更新流程：
+#    - 验证更新权限
+#    - 验证更新内容
+#    - 更新用户信息
+#    - 记录更新日志
+#
+# 修改注意事项：
+# ------------
+# 1. 安全性：
+#    - 密码必须加密存储
+#    - 敏感信息脱敏处理
+#    - 防止SQL注入
+#    - 防止XSS攻击
+#
+# 2. 权限控制：
+#    - 基于角色的访问控制
+#    - 操作权限验证
+#    - 数据访问权限
+#    - 敏感操作审计
+#
+# 3. 数据验证：
+#    - 输入数据格式验证
+#    - 业务规则验证
+#    - 数据一致性检查
+#    - 重复数据检查
+#
+# 4. 性能优化：
+#    - 合理使用缓存
+#    - 优化查询性能
+#    - 控制并发访问
+#    - 异步处理耗时操作
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -51,10 +128,11 @@ class CreateUserRequest(BaseModel):
     password: str
     email: Optional[str] = None
     remark: Optional[str] = None
+    agent_id: Optional[int] = None  # 可选的代理商ID
 
 router = APIRouter()
 
-@router.get("/open/app/user/list")
+@router.get("/user/list")
 async def get_user_list(
     page: int = 1,
     pageSize: int = 10,
@@ -137,13 +215,42 @@ async def create_user(
                 "data": None
             }
 
+        # 如果指定了agent_id，检查该代理商是否存在
+        if user_data.agent_id:
+            agent = db.query(User).filter(
+                User.id == user_data.agent_id,
+                User.is_agent == True
+            ).first()
+            if not agent:
+                return {
+                    "code": 404,
+                    "msg": "指定的代理商不存在",
+                    "data": None
+                }
+            # 如果当前用户不是管理员，且尝试指定其他代理商
+            if not current_user.is_admin and agent.id != current_user.id:
+                return {
+                    "code": 403,
+                    "msg": "无权指定其他代理商",
+                    "data": None
+                }
+
+        # 确定agent_id
+        final_agent_id = None
+        if current_user.is_admin:
+            # 管理员可以指定任意代理商ID
+            final_agent_id = user_data.agent_id
+        else:
+            # 非管理员只能创建属于自己的用户
+            final_agent_id = current_user.id if current_user.is_agent else None
+
         # 创建新用户
         user = User(
             username=user_data.username,
             password=user_data.password,  # 模型的 __init__ 会自动加密密码
             email=user_data.email,
             remark=user_data.remark,
-            agent_id=None if current_user.is_admin else current_user.id,
+            agent_id=final_agent_id,
             status=1  # 使用整数状态
         )
         db.add(user)
@@ -327,16 +434,16 @@ async def activate_business(
         # 检查用户是否存在
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
-            raise HTTPException(status_code=404, detail={"code": 404, "message": "用户不存在"})
+            raise HTTPException(status_code=404, detail={"code": 404, "msg": "用户不存在"})
         
         # 检查权限：管理员可以为任何用户激活业务，代理商只能为其下属用户激活业务
         if not current_user.is_admin and current_user.id != user.agent_id:
-            raise HTTPException(status_code=403, detail={"code": 403, "message": "没有权限执行此操作"})
+            raise HTTPException(status_code=403, detail={"code": 403, "msg": "没有权限执行此操作"})
         
         # 获取代理商价格设置
         agent = db.query(User).filter(User.id == user.agent_id).first()
         if not agent:
-            raise HTTPException(status_code=404, detail={"code": 404, "message": "代理商不存在"})
+            raise HTTPException(status_code=404, detail={"code": 404, "msg": "代理商不存在"})
             
         price_settings = db.query(AgentPrice).filter(AgentPrice.agent_id == agent.id).first()
         if not price_settings:
@@ -362,7 +469,7 @@ async def activate_business(
                 status_code=400,
                 detail={
                     "code": 400,
-                    "message": f"代理商余额不足，需要 {total_cost} 元，当前余额 {agent.balance} 元"
+                    "msg": f"代理商余额不足，需要 {total_cost} 元，当前余额 {agent.balance} 元"
                 }
             )
         
@@ -374,7 +481,7 @@ async def activate_business(
         if not api_response.get("success"):
             raise HTTPException(
                 status_code=500,
-                detail={"code": 500, "message": api_response.get("message", "激活业务失败")}
+                detail={"code": 500, "msg": api_response.get("message", "激活业务失败")}
             )
         
         # 创建交易记录
@@ -442,8 +549,8 @@ async def activate_business(
         db.refresh(order)
         
         return {
-            "code": 200,
-            "message": "业务激活成功",
+            "code": 0,
+            "msg": "业务激活成功",
             "data": {
                 "order": order.to_dict(),
                 "agent": agent.to_dict(),
@@ -456,7 +563,13 @@ async def activate_business(
     except Exception as e:
         db.rollback()
         logger.error(f"激活业务失败: {str(e)}")
-        raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
+        raise HTTPException(
+            status_code=500, 
+            detail={
+                "code": 500,
+                "msg": str(e)
+            }
+        )
 
 @router.post("/user/{user_id}/renew")
 async def renew_business(

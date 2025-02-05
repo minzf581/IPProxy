@@ -1,4 +1,5 @@
 import { Dayjs } from 'dayjs';
+import moment from 'moment';
 
 export enum UserRole {
   ADMIN = 'admin',
@@ -26,11 +27,11 @@ export interface UserProfile extends User {
 }
 
 export interface UserListParams {
-  page?: number;
-  pageSize?: number;
+  page: number;
+  pageSize: number;
   username?: string;
   status?: string;
-  dateRange?: [Dayjs, Dayjs];
+  dateRange?: [moment.Moment, moment.Moment];
 }
 
 export interface UserListResponse {
@@ -43,12 +44,11 @@ export interface CreateUserParams {
   password: string;
   email?: string;
   remark?: string;
+  agent_id?: number;  // 可选，代理商ID
 }
 
-export interface CreateUserForm {
-  username: string;
-  password: string;
-  remark?: string;
+export interface CreateUserForm extends CreateUserParams {
+  confirmPassword?: string;  // 用于表单验证
 }
 
 export interface BusinessActivationForm {

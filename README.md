@@ -1,107 +1,88 @@
-# IP管理后台系统
+# IP代理管理系统
 
-## 项目简介
-IP管理后台是一个完整的IP资源管理系统，支持动态IP和静态IP的统一管理，包含多级代理商管理体系，提供订单管理、用户管理等核心功能。
+## 项目结构
+```
+project/
+├── backend/           # 后端代码
+│   ├── app/          # 应用主目录
+│   │   ├── routers/  # 路由处理
+│   │   ├── services/ # 业务服务
+│   │   ├── models/   # 数据模型
+│   │   └── utils/    # 工具函数
+│   └── tests/        # 测试代码
+└── src/              # 前端代码
+    ├── pages/        # 页面组件
+    ├── services/     # API服务
+    ├── utils/        # 工具函数
+    └── types/        # TypeScript类型定义
+```
 
-## 主要功能
+## 核心模块依赖关系
 
-### 1. 仪表盘
-- 财务数据统计（充值、消费、余额）
-- 动态资源使用情况监控
-- 静态资源使用情况监控
-- 数据可视化展示
+### 用户模块
+- 后端主文件：`backend/app/routers/user.py`
+- 核心依赖：
+  - IPProxyService (`backend/app/services/ipproxy_service.py`)
+  - 用户模型 (`backend/app/models/user.py`)
+- 前端对应：
+  - 服务层：`src/services/userService.ts`
+  - 页面组件：`src/pages/user/index.tsx`
+  - 类型定义：`src/types/user.ts`
 
-### 2. 账户管理
-#### 2.1 代理商管理
-- 代理商账户CRUD
-- 余额充值
-- 额度调整
-- 密码管理
-- 状态管理
+### 代理模块
+- 后端主文件：`backend/app/routers/proxy.py`
+- 核心依赖：
+  - IPProxyService (`backend/app/services/ipproxy_service.py`)
+  - 代理模型 (`backend/app/models/proxy.py`)
+- 前端对应：
+  - 服务层：`src/services/proxyService.ts`
+  - 页面组件：`src/pages/proxy/index.tsx`
+  - 类型定义：`src/types/proxy.ts`
 
-#### 2.2 用户管理
-- 用户账户CRUD
-- 状态管理
-- 密码管理
-- 用户仪表盘查看
+### 代理商模块
+- 后端主文件：`backend/app/routers/agent.py`
+- 核心依赖：
+  - 代理商模型 (`backend/app/models/agent.py`)
+  - 订单模型 (`backend/app/models/order.py`)
+- 前端对应：
+  - 服务层：`src/services/agentService.ts`
+  - 页面组件：`src/pages/agent/index.tsx`
 
-### 3. 订单管理
-#### 3.1 代理商订单
-- 订单查询和筛选
-- 订单状态管理
-- 支付确认
-- 订单详情查看
+## API路由规范
+- 所有API路由以 `/api` 开头
+- 用户相关：`/api/user/*`
+- 代理相关：`/api/proxy/*`
+- 代理商相关：`/api/agent/*`
 
-#### 3.2 用户动态订单
-- 订单查询和筛选
-- 流量使用统计
-- 订单详情查看
+## 开发注意事项
 
-#### 3.3 用户静态订单
-- 订单多维度查询
-- IP资源分配管理
-- 订单状态跟踪
-- 到期时间管理
+### 修改路由时
+1. 确保前后端路由一致
+2. 更新相关的API文档
+3. 同步修改前端服务层代码
 
-### 4. 静态IP管理
-- IP资源统计
-- IP使用状态管理
-- IP分配记录
-- 资源导出
+### 修改数据结构时
+1. 同步更新前后端的类型定义
+2. 更新相关的数据库模型
+3. 修改对应的测试用例
 
-### 5. 系统设置
-- 管理员密码修改
-- 系统参数配置
+### 修改业务逻辑时
+1. 检查相关模块的依赖关系
+2. 确保事务的完整性
+3. 更新相关的单元测试
 
-## 技术栈
+## 环境配置
+- 开发环境：`.env.development`
+- 生产环境：`.env.production`
+- 测试环境：`.env.test`
 
-### 前端
-- React 18
-- TypeScript
-- Ant Design 5.x
-- React Router 6
-- Axios
-- ECharts (数据可视化)
-- Redux Toolkit (状态管理)
+## 调试指南
+1. 检查API路由配置
+2. 验证数据库连接
+3. 确认环境变量设置
+4. 查看日志输出
 
-### 后端
-- Node.js
-- Express/Koa
-- TypeScript
-- MySQL/PostgreSQL
-- Redis (缓存)
-- JWT (认证)
-
-### 开发工具和环境
-- Vite (构建工具)
-- ESLint + Prettier (代码规范)
-- Git (版本控制)
-- Docker (容器化)
-
-## 权限控制
-系统实现了基于角色的访问控制(RBAC)：
-- 超级管理员：可访问所有功能
-- 代理商：不可访问代理商管理功能
-- 普通用户：仅可访问基础功能
-
-## 部署要求
-- Node.js >= 16
-- MySQL >= 8.0
-- Redis >= 6.0
-- 现代浏览器支持
-
-## 开发团队
-- 前端开发工程师
-- 后端开发工程师
-- UI设计师
-- 测试工程师
-
-## 项目特点
-1. 完整的多级代理商管理体系
-2. 动态和静态IP资源的统一管理
-3. 详细的数据统计和可视化
-4. 完善的权限控制机制
-5. 响应式设计，支持多端适配
-
-## 未来规划
-暂无
+## 常见问题
+1. 404错误：检查路由配置是否正确
+2. 500错误：检查服务器日志
+3. 类型错误：确认前后端类型定义一致

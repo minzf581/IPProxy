@@ -4,6 +4,23 @@ import {
   USER_STATUS_MAP 
 } from './constants';
 
+/**
+ * 格式化数字为千分位格式
+ */
+export const formatNumber = (num: number): string => {
+  return num.toLocaleString('zh-CN');
+};
+
+/**
+ * 格式化流量大小
+ */
+export const formatTraffic = (gb: number): string => {
+  return `${gb}GB`;
+};
+
+/**
+ * 格式化金额
+ */
 export const formatMoney = (amount: number): string => {
   return `¥${amount.toFixed(2)}`;
 };
@@ -18,10 +35,6 @@ export const formatUserRole = (role: string): string => {
 
 export const formatUserStatus = (status: string): string => {
   return USER_STATUS_MAP[status] || status;
-};
-
-export const formatNumber = (num: number): string => {
-  return new Intl.NumberFormat().format(num);
 };
 
 export const formatPercent = (num: number): string => {
