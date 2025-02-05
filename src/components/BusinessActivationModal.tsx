@@ -3,6 +3,7 @@ import { Modal, Form, Select, InputNumber, Input, message } from 'antd';
 import type { User } from '@/types/user';
 import { ipProxyAPI, AreaResponse } from '@/utils/ipProxyAPI';
 import { getResourcePrices } from '@/services/settingsService';
+import { City } from '@/types/api';
 
 interface CountryItem {
   code: string;
@@ -27,6 +28,7 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
   const [countries, setCountries] = useState<CountryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [areaList, setAreaList] = useState<AreaResponse[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
 
   // 加载初始数据
   useEffect(() => {
@@ -113,6 +115,42 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
     }
   };
 
+  const handleCountryChange = async (countryCode: string) => {
+    if (!countryCode) {
+      console.warn('[BusinessActivationModal] handleCountryChange - 国家代码为空');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log('[BusinessActivationModal] handleCountryChange - 开始获取城市列表，国家代码:', countryCode);
+      
+      const cityList = await ipProxyAPI.getCitiesByCountry(countryCode);
+      console.log('[BusinessActivationModal] handleCountryChange - API返回的城市列表:', cityList);
+      
+      if (Array.isArray(cityList) && cityList.length > 0) {
+        console.log('[BusinessActivationModal] handleCountryChange - 设置城市列表，数量:', cityList.length);
+        setCities(cityList);
+        
+        // 清空已选择的城市
+        form.setFieldValue('city', undefined);
+        
+        // 打印第一个城市数据作为示例
+        console.log('[BusinessActivationModal] handleCountryChange - 城市数据示例:', cityList[0]);
+      } else {
+        console.warn('[BusinessActivationModal] handleCountryChange - 未获取到城市数据');
+        message.warning(`未找到${countryCode}的城市数据`);
+        setCities([]);
+      }
+    } catch (error) {
+      console.error('[BusinessActivationModal] handleCountryChange - 错误:', error);
+      message.error('获取城市列表失败');
+      setCities([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
@@ -121,6 +159,62 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
     } catch (error) {
       console.error('业务开通表单验证失败:', error);
     }
+  };
+
+  const renderCitySelector = () => {
+    console.log('[BusinessActivationModal] renderCitySelector - 开始渲染，当前cities状态:', cities);
+
+    return (
+      <Form.Item
+        name="city"
+        label="城市"
+        rules={[{ required: true, message: '请选择城市' }]}
+      >
+        <Select
+          loading={loading}
+          placeholder="请选择城市"
+          disabled={!form.getFieldValue('country')}
+          showSearch
+          optionFilterProp="children"
+          style={{ width: '100%' }}
+        >
+          {Array.isArray(cities) && cities.map((city, index) => {
+            console.log(`[BusinessActivationModal] renderCitySelector - 处理城市 ${index}:`, city);
+            const cityCode = city.cityCode || city.code;
+            
+            // 优先使用中文名称，如果没有则使用英文名称
+            const displayName = city.cname || city.name || cityCode;
+            
+            // 如果显示名称与城市代码不同，则在括号中显示城市代码
+            const fullDisplayName = displayName === cityCode ? 
+              displayName : 
+              `${displayName} (${cityCode})`;
+            
+            if (!cityCode) {
+              console.warn(`[BusinessActivationModal] renderCitySelector - 城市 ${index} 数据无效:`, city);
+              return null;
+            }
+
+            console.log(`[BusinessActivationModal] renderCitySelector - 渲染城市选项:`, {
+              index,
+              cityCode,
+              displayName,
+              fullDisplayName
+            });
+
+            return (
+              <Select.Option 
+                key={cityCode}
+                value={cityCode}
+                title={fullDisplayName}
+              >
+                {fullDisplayName}
+              </Select.Option>
+            );
+          })}
+        </Select>
+      </Form.Item>
+    );
   };
 
   return (
@@ -165,6 +259,7 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
             loading={loading}
             placeholder="请选择国家"
             disabled={countries.length === 0}
+            onChange={handleCountryChange}
           >
             {countries.map(country => (
               <Select.Option key={country.code} value={country.code}>
@@ -173,6 +268,7 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
             ))}
           </Select>
         </Form.Item>
+        {renderCitySelector()}
         <Form.Item
           name="amount"
           label="开通数量"

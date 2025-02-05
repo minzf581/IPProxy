@@ -9,12 +9,17 @@ from sqlalchemy.orm import Session
 import uvicorn
 import logging
 
-# 配置日志
+# 设置日志配置
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+# 设置 httpx 和其他库的日志级别为 INFO
+for logger_name in ['httpx', 'asyncio']:
+    logging.getLogger(logger_name).setLevel(logging.INFO)
+
+# 获取应用的日志记录器
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
@@ -26,10 +31,11 @@ app = FastAPI(
 # 配置 CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # 明确指定允许的源
+    allow_origins=["*"],  # 允许所有源，生产环境中应该设置具体的域名
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # 允许所有方法
+    allow_headers=["*"],  # 允许所有头部
+    expose_headers=["*"]  # 暴露所有头部
 )
 
 # 设置路由前缀

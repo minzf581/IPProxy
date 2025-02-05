@@ -823,39 +823,64 @@ export class IPProxyAPI {
   // 根据国家获取城市列表
   async getCitiesByCountry(countryCode: string): Promise<City[]> {
     try {
-      console.log('[getCitiesByCountry] Starting request with country code:', countryCode);
+      console.log('[IPProxyAPI] getCitiesByCountry - 开始获取城市列表，国家代码:', countryCode);
+      
       const params = {
-        countryCode,
-        appUsername: 'test_user'
+        version: "v2",
+        encrypt: "AES",
+        countryCode: countryCode,
+        appUsername: "test_user"
       };
       
-      const response = await this.request<City[]>(API_ROUTES.AREA.CITIES, params);
+      const response = await this.request<any>('open/app/city/list/v2', params);
+      console.log('[IPProxyAPI] getCitiesByCountry - 原始响应:', response);
       
       if (!Array.isArray(response)) {
-        console.warn('[getCitiesByCountry] Invalid response format:', response);
+        console.error('[IPProxyAPI] getCitiesByCountry - 响应格式错误:', response);
         return [];
       }
-      
-      // 确保每个城市对象都有必要的字段
-      const validCities = response.filter((city): city is City => {
-        const isValid = city && typeof city === 'object' && 
-          'code' in city && 
-          ('name' in city || 'cname' in city);
+
+      // 添加数据验证和详细日志
+      const cities = response.map((city, index) => {
+        console.log(`[IPProxyAPI] getCitiesByCountry - 处理城市数据 ${index}:`, city);
+        
+        const cityCode = city.cityCode || city.code || '';
+        
+        // 从城市代码中提取城市名称（例如：CAN000TOR -> Toronto）
+        const extractCityName = (code: string) => {
+          const cityPart = code.slice(-3);  // 获取最后三个字符
+          const cityMap: { [key: string]: string } = {
+            'TOR': 'Toronto',
+            'MTR': 'Montreal',
+            'LOD': 'London',
+            '000': 'All Cities'
+          };
+          return cityMap[cityPart] || code;
+        };
+        
+        // 优先使用 API 返回的名称，如果为空则使用从代码中提取的名称
+        const cityData = {
+          code: cityCode,
+          name: city.cityName || city.name || extractCityName(cityCode),
+          cname: city.cname || city.cityName || extractCityName(cityCode),
+          cityCode: cityCode,
+          cityName: city.cityName || city.name || extractCityName(cityCode)
+        };
+        
+        console.log(`[IPProxyAPI] getCitiesByCountry - 处理后的城市数据 ${index}:`, cityData);
+        return cityData;
+      }).filter(city => {
+        const isValid = Boolean(city.code);
         if (!isValid) {
-          console.warn('[getCitiesByCountry] Invalid city data:', city);
+          console.warn('[IPProxyAPI] getCitiesByCountry - 过滤掉无效的城市数据:', city);
         }
         return isValid;
-      }).map(city => ({
-        code: city.code,
-        name: city.name || city.cname || '',
-        cname: city.cname || city.name || ''
-      }));
+      });
       
-      console.log('[getCitiesByCountry] Processed cities:', validCities);
-      return validCities;
-      
+      console.log('[IPProxyAPI] getCitiesByCountry - 最终城市列表:', cities);
+      return cities;
     } catch (error) {
-      console.error('[getCitiesByCountry] Error:', error);
+      console.error('[IPProxyAPI] getCitiesByCountry - 错误:', error);
       throw error;
     }
   }

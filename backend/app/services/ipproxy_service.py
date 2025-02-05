@@ -42,9 +42,15 @@ class IPProxyService:
         try:
             # 确保 endpoint 格式正确
             endpoint = endpoint.lstrip('/')  # 移除开头的斜杠
+            
+            # 确保 params 不为 None
+            if params is None:
+                params = {}
                 
             logger.info(f"[IPIPV] 开始处理请求，endpoint: {endpoint}")
             logger.info(f"[IPIPV] 原始参数: {json.dumps(params, ensure_ascii=False)}")
+            logger.info(f"[IPIPV] 使用的 base_url: {self.base_url}")
+            logger.info(f"[IPIPV] 使用的 app_key: {self.app_key}")
             
             encrypted_params = self._encrypt_params(params)
             req_id = hashlib.md5(f"{time.time()}".encode()).hexdigest()
@@ -63,9 +69,10 @@ class IPProxyService:
             request_params['sign'] = hashlib.md5(sign_str.encode()).hexdigest().upper()
             
             url = f"{self.base_url}/{endpoint}"
-            logger.info(f"[IPIPV] 发送请求: {url}")
-            logger.info(f"[IPIPV] 请求参数: {json.dumps(request_params, ensure_ascii=False)}")
-            logger.info(f"[IPIPV] 加密后参数: {encrypted_params}")
+            logger.info(f"[IPIPV] 完整请求 URL: {url}")
+            logger.info(f"[IPIPV] 完整请求参数: {json.dumps(request_params, ensure_ascii=False)}")
+            logger.info(f"[IPIPV] 签名字符串: {sign_str}")
+            logger.info(f"[IPIPV] 计算的签名: {request_params['sign']}")
             
             async with httpx.AsyncClient(verify=False) as client:
                 response = await client.post(
@@ -79,6 +86,7 @@ class IPProxyService:
                 
                 logger.info(f"[IPIPV] 响应状态码: {response.status_code}")
                 logger.info(f"[IPIPV] 响应头: {dict(response.headers)}")
+                logger.info(f"[IPIPV] 完整响应内容: {response.text}")
                 
                 if not response.is_success:
                     logger.error(f"[IPIPV] HTTP请求失败: {response.status_code}")
@@ -87,9 +95,9 @@ class IPProxyService:
                 
                 try:
                     data = response.json()
-                    logger.info(f"[IPIPV] 原始响应: {json.dumps(data, ensure_ascii=False)}")
+                    logger.info(f"[IPIPV] 解析后的响应: {json.dumps(data, ensure_ascii=False)}")
                     
-                    if data.get('code') != 200:
+                    if data.get('code') != 0 and data.get('msg') != "OK":
                         logger.error(f"[IPIPV] API错误: {data.get('msg')}")
                         return None
                         
@@ -105,7 +113,7 @@ class IPProxyService:
                             return None
                             
                         logger.info(f"[IPIPV] 解密后数据类型: {type(decrypted_data)}")
-                        logger.info(f"[IPIPV] 解密后数据: {json.dumps(decrypted_data, ensure_ascii=False)}")
+                        logger.info(f"[IPIPV] 完整解密后数据: {json.dumps(decrypted_data, ensure_ascii=False)}")
                         return decrypted_data
                         
                     except Exception as e:
@@ -117,7 +125,7 @@ class IPProxyService:
                     logger.error(f"[IPIPV] JSON解析错误: {str(e)}")
                     logger.error(f"[IPIPV] 响应内容: {response.text}")
                     return None
-                
+                    
         except Exception as e:
             logger.error(f"[IPIPV] 请求失败: {str(e)}")
             logger.error(f"[IPIPV] 错误堆栈: {traceback.format_exc()}")
@@ -129,39 +137,88 @@ class IPProxyService:
             params = {}
             
         try:
-            json_params = json.dumps(params, separators=(',', ':'), ensure_ascii=False)
+            # 移除不需要加密的参数
+            params_to_encrypt = params.copy()
+            for key in ['version', 'encrypt', 'appKey', 'reqId', 'timestamp', 'sign']:
+                params_to_encrypt.pop(key, None)
+                
+            logger.info(f"[IPIPV] 待加密参数: {json.dumps(params_to_encrypt, ensure_ascii=False)}")
+            
+            json_params = json.dumps(params_to_encrypt, separators=(',', ':'), ensure_ascii=False)
+            logger.info(f"[IPIPV] JSON字符串: {json_params}")
+            
             key = self.app_secret.encode('utf-8')[:32]
             iv = self.app_secret.encode('utf-8')[:16]
+            logger.info(f"[IPIPV] 加密密钥长度: {len(key)}, IV长度: {len(iv)}")
             
             cipher = AES.new(key, AES.MODE_CBC, iv)
             padded_data = pad(json_params.encode('utf-8'), AES.block_size, style='pkcs7')
+            logger.info(f"[IPIPV] 填充后数据长度: {len(padded_data)}")
+            
             encrypted = cipher.encrypt(padded_data)
             encrypted_params = base64.b64encode(encrypted).decode('utf-8')
+            logger.info(f"[IPIPV] 加密后参数长度: {len(encrypted_params)}")
             
             return encrypted_params
         except Exception as e:
-            logger.error(f"加密失败: {str(e)}")
+            logger.error(f"[IPIPV] 加密失败: {str(e)}")
+            logger.error(f"[IPIPV] 错误堆栈: {traceback.format_exc()}")
             raise
         
     def _decrypt_response(self, encrypted_text: str) -> Dict[str, Any]:
         """解密API响应数据"""
         try:
             if not encrypted_text:
-                logger.warning("空加密数据")
+                logger.warning("[IPIPV] 空加密数据")
                 return None
             
-            encrypted = base64.b64decode(encrypted_text)
+            logger.info(f"[IPIPV] 开始解密数据，加密文本长度: {len(encrypted_text)}")
+            logger.info(f"[IPIPV] 加密文本前20字符: {encrypted_text[:20]}...")
+            
+            try:
+                encrypted = base64.b64decode(encrypted_text)
+                logger.info(f"[IPIPV] Base64解码后数据长度: {len(encrypted)}")
+            except Exception as e:
+                logger.error(f"[IPIPV] Base64解码失败: {str(e)}")
+                return None
+            
             key = self.app_secret.encode('utf-8')[:32]
             iv = self.app_secret.encode('utf-8')[:16]
+            logger.info(f"[IPIPV] 解密密钥长度: {len(key)}, IV长度: {len(iv)}")
             
-            cipher = AES.new(key, AES.MODE_CBC, iv)
-            decrypted = unpad(cipher.decrypt(encrypted), AES.block_size, style='pkcs7')
-            result = json.loads(decrypted.decode('utf-8'))
+            try:
+                cipher = AES.new(key, AES.MODE_CBC, iv)
+                decrypted = unpad(cipher.decrypt(encrypted), AES.block_size, style='pkcs7')
+                logger.info(f"[IPIPV] 解密后数据长度: {len(decrypted)}")
+            except Exception as e:
+                logger.error(f"[IPIPV] AES解密失败: {str(e)}")
+                return None
             
-            return result
+            try:
+                decrypted_text = decrypted.decode('utf-8')
+                logger.info(f"[IPIPV] 解密后文本前100字符: {decrypted_text[:100]}...")
+            except Exception as e:
+                logger.error(f"[IPIPV] UTF-8解码失败: {str(e)}")
+                return None
+            
+            try:
+                result = json.loads(decrypted_text)
+                logger.info(f"[IPIPV] JSON解析结果类型: {type(result)}")
+                
+                if not isinstance(result, (dict, list)):
+                    logger.error(f"[IPIPV] 解密后数据格式错误: {type(result)}")
+                    return None
+                    
+                return result
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"[IPIPV] JSON解析失败: {str(e)}")
+                logger.error(f"[IPIPV] 解密后文本: {decrypted_text}")
+                return None
                 
         except Exception as e:
-            logger.error(f"解密失败: {str(e)}")
+            logger.error(f"[IPIPV] 解密失败: {str(e)}")
+            logger.error(f"[IPIPV] 错误堆栈: {traceback.format_exc()}")
             return None
             
     async def create_proxy_user(self, params: dict) -> dict:
@@ -348,7 +405,7 @@ class IPProxyService:
             List[Dict[str, Any]]: 区域列表
         """
         try:
-            # 构造区域请求参数
+            # 构造区域请求参数 - 根据API文档，只需要基础参数和可选的 codes 参数
             area_params = {
                 "version": "v2",
                 "encrypt": "AES"
@@ -361,14 +418,16 @@ class IPProxyService:
             logger.info(f"[IPIPV] area/v2 请求参数: {json.dumps(area_params, ensure_ascii=False)}")
             
             # 发送请求到 IPIPV API
-            response = await self._make_request("app/area/v2", area_params)
+            logger.info("[IPIPV] 开始调用 _make_request")
+            response = await self._make_request("api/open/app/area/v2", area_params)
+            logger.info(f"[IPIPV] _make_request 返回结果: {json.dumps(response, ensure_ascii=False) if response else None}")
             
             if response is None:
                 logger.error("[IPIPV] API请求失败或返回空数据")
                 return []
                 
             logger.info(f"[IPIPV] 收到响应数据类型: {type(response).__name__}")
-            logger.debug(f"[IPIPV] 响应数据: {json.dumps(response, ensure_ascii=False)}")
+            logger.info(f"[IPIPV] 响应数据: {json.dumps(response, ensure_ascii=False)}")
             
             # 确保响应是列表类型
             if not isinstance(response, list):
@@ -376,9 +435,12 @@ class IPProxyService:
                 if isinstance(response, dict):
                     # 尝试从字典中获取列表
                     response = response.get('list', [])
+                    if not response:
+                        response = response.get('data', [])
+                    logger.info(f"[IPIPV] 从字典中提取列表后的数据: {json.dumps(response, ensure_ascii=False)}")
                 else:
                     return []
-                
+                    
             # 转换字段名称
             result = []
             for item in response:
@@ -386,27 +448,31 @@ class IPProxyService:
                     logger.error(f"[IPIPV] 响应项不是字典类型: {type(item)}")
                     continue
                 
+                logger.info(f"[IPIPV] 处理区域项: {json.dumps(item, ensure_ascii=False)}")
+                
                 result_item = {
-                    "code": item.get("code"),
-                    "name": item.get("name"),
-                    "cname": item.get("cname", item.get("name")),
+                    "code": item.get("code") or item.get("areaCode"),
+                    "name": item.get("name") or item.get("areaName"),
+                    "cname": item.get("cname") or item.get("areaName"),
                     "children": []
                 }
                 
                 # 如果有子项（国家列表），也转换字段名称
-                children = item.get("children", [])
+                children = item.get("children") or item.get("countryList", [])
                 if children and isinstance(children, list):
+                    logger.info(f"[IPIPV] 处理子区域列表，数量: {len(children)}")
                     result_item["children"] = [
                         {
-                            "code": child.get("code"),
-                            "name": child.get("name"),
-                            "cname": child.get("cname", child.get("name"))
+                            "code": child.get("code") or child.get("countryCode"),
+                            "name": child.get("name") or child.get("countryName"),
+                            "cname": child.get("cname") or child.get("countryName")
                         }
                         for child in children
                         if isinstance(child, dict)
                     ]
                 
                 result.append(result_item)
+                logger.info(f"[IPIPV] 处理后的区域项: {json.dumps(result_item, ensure_ascii=False)}")
             
             logger.info(f"[IPIPV] 处理完成，返回 {len(result)} 个区域")
             return result
@@ -419,10 +485,39 @@ class IPProxyService:
     async def get_area_list(self) -> Dict[str, Any]:
         """获取地区列表"""
         try:
-            return await self._make_request('open/app/area/v2', {})
+            # 构造请求参数
+            params = {
+                "version": "v2",
+                "encrypt": "AES",
+                "appUsername": "test_user",
+                "proxyType": [101, 102, 103]
+            }
+            
+            logger.info(f"[IPIPV] get_area_list - 开始获取区域列表，参数：{json.dumps(params, ensure_ascii=False)}")
+            logger.info(f"[IPIPV] get_area_list - 使用的 base_url: {self.base_url}")
+            logger.info(f"[IPIPV] get_area_list - 使用的 app_key: {self.app_key}")
+            
+            # 调用 get_area_v2 方法
+            result = await self.get_area_v2(params)
+            logger.info(f"[IPIPV] get_area_list - get_area_v2 返回结果：{json.dumps(result, ensure_ascii=False)}")
+            
+            # 返回标准格式的响应
+            response = {
+                "code": 0,
+                "msg": "success",
+                "data": result
+            }
+            logger.info(f"[IPIPV] get_area_list - 返回响应：{json.dumps(response, ensure_ascii=False)}")
+            return response
+            
         except Exception as e:
-            logger.error(f"[IPProxyService] 获取地区列表失败：{str(e)}")
-            raise e
+            logger.error(f"[IPIPV] get_area_list - 获取地区列表失败：{str(e)}")
+            logger.error(f"[IPIPV] get_area_list - 错误堆栈：{traceback.format_exc()}")
+            return {
+                "code": 500,
+                "msg": str(e),
+                "data": []
+            }
 
     async def get_city_list(self, country_code: str) -> List[Dict[str, Any]]:
         """获取城市列表
@@ -436,20 +531,18 @@ class IPProxyService:
                 logger.error("[IPProxyService] 国家代码为空")
                 return []
             
-            # 构造请求参数
+            # 构造请求参数 - 根据API文档，只需要基础参数和国家代码
             params = {
                 "version": "v2",
                 "encrypt": "AES",
-                "proxyType": [104],  # 动态国外
-                "countryCode": country_code,
-                "appUsername": "test_user"
+                "countryCode": country_code
             }
-            logger.info(f"[IPProxyService] 获取城市列表，请求参数：{params}")
+            logger.info(f"[IPProxyService] 获取城市列表，请求参数：{json.dumps(params, ensure_ascii=False)}")
             
-            # 发送请求获取城市列表
-            response = await self._make_request("open/app/city/list/v2", params)
+            # 发送请求获取城市列表 - 注意这里使用完整的 API 路径
+            response = await self._make_request("api/open/app/city/list/v2", params)
             logger.info(f"[IPProxyService] 收到原始响应类型：{type(response)}")
-            logger.info(f"[IPProxyService] 收到原始响应内容：{response}")
+            logger.info(f"[IPProxyService] 收到原始响应内容：{json.dumps(response, ensure_ascii=False) if response else None}")
             
             if response is None:
                 logger.warning(f"[IPProxyService] 获取城市列表为空，国家代码：{country_code}")
@@ -553,10 +646,10 @@ class IPProxyService:
                     
             logger.info(f"[IPProxyService] 获取IP段列表，请求参数：{json.dumps(request_params, ensure_ascii=False)}")
             
-            # 发送请求获取IP段列表
-            response = await self._make_request("open/app/area/ip-ranges/v2", request_params)
+            # 发送请求获取IP段列表 - 注意这里使用完整的 API 路径
+            response = await self._make_request("api/open/app/area/ip-ranges/v2", request_params)
             logger.info(f"[IPProxyService] 收到原始响应类型：{type(response)}")
-            logger.info(f"[IPProxyService] 收到原始响应内容：{response}")
+            logger.info(f"[IPProxyService] 收到原始响应内容：{json.dumps(response, ensure_ascii=False) if response else None}")
             
             if response is None:
                 logger.warning(f"[IPProxyService] 获取IP段列表为空，参数：{params}")

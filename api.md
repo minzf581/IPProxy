@@ -1,8 +1,64 @@
-# IPProxy API 路由文档
+# IPProxy API 文档
 
-本文档记录了IPProxy系统的前后端路由对应关系。
+## IPIPV API 集成
 
-## 通用说明
+### 基础配置
+- 基础URL: `https://sandbox.ipipv.com`
+- API版本: `v2`
+- 加密方式: `AES`
+- 认证信息:
+  ```
+  APP_KEY: AK20241120145620
+  APP_SECRET: bf3ffghlt0hpc4omnvc2583jt0fag6a4
+  ```
+
+### 请求格式
+所有请求都需要包含以下参数：
+```json
+{
+  "version": "v2",
+  "encrypt": "AES",
+  "appKey": "AK20241120145620",
+  "reqId": "md5生成的请求ID",
+  "timestamp": "当前时间戳",
+  "params": "AES加密的业务参数",
+  "sign": "签名"
+}
+```
+
+### 加密和签名规则
+1. 参数加密：
+   - 使用 AES-256-CBC 模式
+   - 密钥：使用 APP_SECRET 的前32位
+   - IV：使用 APP_SECRET 的前16位
+   - 加密后使用 Base64 编码
+
+2. 签名生成：
+   - 拼接字符串：`appKey={appKey}&params={encrypted_params}&timestamp={timestamp}&key={app_secret}`
+   - 对拼接字符串进行 MD5 加密并转大写
+
+### 已测试的API端点
+
+1. 区域管理
+   - `api/open/app/area/v2`: 获取区域列表
+   - `api/open/app/city/list/v2`: 获取城市列表
+
+2. 用户管理
+   - `api/open/app/user/v2`: 创建用户
+   - `api/open/app/user/create/v2`: 创建子用户
+
+3. 代理信息
+   - `api/open/app/proxy/info/v2`: 获取代理信息
+   - `api/open/app/product/query/v2`: 查询产品信息
+
+### 测试进展
+- [x] 区域列表获取
+- [x] 城市列表获取
+- [x] 用户创建
+- [x] 代理信息查询
+- [x] IP段列表查询
+
+## 后端 API
 
 ### 基础配置
 - 基础URL: `http://localhost:8000/api`
@@ -16,26 +72,7 @@
    - 业务路径: `open/app/{module}/{action}/v2`
    - 完整示例: `http://localhost:8000/api/open/app/product/query/v2`
 
-2. 请求参数格式：
-```json
-{
-  "version": "v2",
-  "encrypt": "AES",
-  "appKey": "AK20241120145620",
-  "reqId": "md5生成的请求ID",
-  "timestamp": "当前时间戳",
-  "params": "AES加密的业务参数",
-  "sign": "签名"
-}
-```
-
-3. 加密和签名：
-   - 业务参数使用AES-CBC加密
-   - 密钥使用appSecret的前32位
-   - IV使用appSecret的前16位
-   - 签名使用所有参数按键排序后拼接，加上timestamp和appSecret，进行MD5加密
-
-4. 认证方式：
+2. 认证方式：
    - 请求头携带Bearer Token
    ```
    Authorization: Bearer <token>
@@ -818,3 +855,38 @@ src/
 │   └── request.ts # 请求工具
 └── ...
 ```
+
+## 获取产品信息 (GetOrder)
+
+#### 请求路径
+```
+POST /api/open/app/product/query/v2
+```
+
+#### 请求参数
+
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| proxyType | []int | 是 | 代理类型数组，可选值：[101: 静态住宅代理, 102: 静态数据中心代理, 103: 静态手机代理] |
+| productNo | string | 否 | 产品编号，如果指定则只返回该产品信息 |
+| countryCode | string | 否 | 国家代码 |
+| cityCode | string | 否 | 城市代码 |
+| supplierCode | string | 否 | 供应商代码 |
+| unit | int | 否 | 时长单位，详见字典 |
+| ispType | int | 否 | ISP类型，4=数据中心 |
+| duration | int | 否 | 相对于时长单位的最小购买时长 |
+
+#### 请求示例
+
+```json
+{
+    "version": "v2",
+    "encrypt": "AES",
+    "proxyType": [101],
+    "productNo": "test_product_1"
+}
+```
+
+#### 响应格式
+
+响应数据为列表或字典格式，包含产品信息。

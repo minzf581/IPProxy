@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
@@ -14,6 +14,8 @@ import logging
 from sqlalchemy import func
 import uuid
 from app.schemas.agent import AgentList, AgentCreate, AgentUpdate
+import json
+import traceback
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -443,31 +445,123 @@ async def get_agent_transactions(
         logger.error(f"获取代理商交易记录失败: {str(e)}")
         raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
 
-@router.api_route("/open/app/area/v2", methods=["GET", "POST"])
-async def get_area_list(
-    db: Session = Depends(get_db)
+@router.api_route("/open/app/area/ip-ranges/v2", methods=["GET", "POST"])
+async def get_ip_ranges(
+    proxy_type: Optional[int] = Body(None, description="代理类型：101=静态住宅, 102=静态数据中心, 103=静态手机"),
+    country_code: Optional[str] = Body(None, description="国家代码"),
+    city_code: Optional[str] = Body(None, description="城市代码"),
+    static_type: Optional[str] = Body(None, description="静态代理类型"),
+    version: str = Body("v2"),
+    encrypt: str = Body("AES")
 ) -> Dict[str, Any]:
-    """获取地区列表"""
+    """获取IP段列表"""
     try:
-        # 调用服务获取区域列表
-        service = IPProxyService()
-        result = await service.get_area_v2({})
+        logger.info("[IPIPV] 开始处理 IP 段列表请求")
+        logger.info(f"[IPIPV] 接收到的参数: proxy_type={proxy_type}, country_code={country_code}, city_code={city_code}, static_type={static_type}")
         
-        # 确保返回的数据格式正确
-        if not isinstance(result, list):
-            logger.error(f"区域列表数据格式不正确: {type(result)}")
-            result = []
+        if not proxy_type:
+            return {
+                "code": 400,
+                "msg": "缺少必要参数 proxyType",
+                "data": []
+            }
             
+        # 验证代理类型是否有效
+        valid_proxy_types = [101, 102, 103]  # 静态代理类型
+        if proxy_type not in valid_proxy_types:
+            return {
+                "code": 400,
+                "msg": f"无效的代理类型: {proxy_type}，必须是静态代理类型 (101, 102, 103)",
+                "data": []
+            }
+        
+        # 构造请求参数
+        params = {
+            "version": version,
+            "encrypt": encrypt,
+            "proxyType": proxy_type
+        }
+        
+        # 添加可选参数
+        if country_code:
+            params["countryCode"] = country_code
+        if city_code:
+            params["cityCode"] = city_code
+        if static_type:
+            params["staticType"] = static_type
+            
+        logger.info(f"[IPIPV] IP段列表请求参数: {json.dumps(params, ensure_ascii=False)}")
+        
+        # 调用服务获取IP段列表
+        service = IPProxyService()
+        logger.info(f"[IPIPV] 已创建 IPProxyService 实例，使用的 base_url: {service.base_url}")
+        
+        # 调用服务方法
+        result = await service.get_ip_ranges(params)
+        logger.info(f"[IPIPV] 获取IP段列表结果: {json.dumps(result, ensure_ascii=False)}")
+        
         # 返回标准格式的响应
-        return {
+        response = {
             "code": 0,
             "msg": "success",
-            "data": result  # 直接返回列表，不需要包装在 list 字段中
+            "data": result if result else []
         }
+        logger.info(f"[IPIPV] 返回响应: {json.dumps(response, ensure_ascii=False)}")
+        return response
+        
     except Exception as e:
-        logger.error(f"获取地区列表失败: {str(e)}")
+        logger.error(f"[IPIPV] 获取IP段列表失败: {str(e)}")
+        logger.error(f"[IPIPV] 错误堆栈: {traceback.format_exc()}")
         return {
             "code": 500,
             "msg": str(e),
-            "data": []  # 错误时直接返回空列表
-        } 
+            "data": []
+        }
+
+@router.api_route("/open/app/area/v2", methods=["GET", "POST"])
+async def get_area_list() -> Dict[str, Any]:
+    """获取区域列表"""
+    try:
+        logger.info("[IPIPV] 开始处理区域列表请求")
+        
+        # 构造请求参数 - 根据API文档，只需要基础参数
+        params = {
+            "version": "v2",
+            "encrypt": "AES"
+        }
+        
+        logger.info(f"[IPIPV] 区域列表请求参数: {json.dumps(params, ensure_ascii=False)}")
+        
+        # 调用服务获取区域列表
+        service = IPProxyService()
+        logger.info(f"[IPIPV] 已创建 IPProxyService 实例，使用的 base_url: {service.base_url}")
+        
+        # 调用服务方法
+        result = await service.get_area_v2(params)
+        logger.info(f"[IPIPV] 获取区域列表结果: {json.dumps(result, ensure_ascii=False)}")
+        
+        if not result:
+            logger.warning("[IPIPV] 区域列表为空")
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": []
+            }
+        
+        # 返回标准格式的响应
+        response = {
+            "code": 0,
+            "msg": "success",
+            "data": result
+        }
+        logger.info(f"[IPIPV] 返回响应: {json.dumps(response, ensure_ascii=False)}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"[IPIPV] 获取区域列表失败: {str(e)}")
+        logger.error(f"[IPIPV] 错误堆栈: {traceback.format_exc()}")
+        return {
+            "code": 500,
+            "msg": f"获取区域列表失败: {str(e)}",
+            "data": []
+        }
