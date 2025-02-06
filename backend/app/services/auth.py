@@ -4,41 +4,23 @@ import jwt
 from jwt import PyJWTError
 from fastapi import Depends, HTTPException, status, Header
 from fastapi.security import OAuth2PasswordBearer
-from passlib.context import CryptContext
 from ..models.user import User
 from ..database import SessionLocal
 import logging
 from sqlalchemy.orm import Session
 from app.database import get_db
-from passlib.hash import bcrypt
 from app.config import SECRET_KEY, ALGORITHM
+from app.core.security import verify_password, get_password_hash
 import os
 
 # 配置日志
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="token",
     auto_error=False  # 允许自定义错误消息
 )
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """验证密码"""
-    try:
-        return bcrypt.verify(plain_password, hashed_password)
-    except Exception as e:
-        logger.error(f"密码验证失败: {str(e)}")
-        return False
-
-def get_password_hash(password: str) -> str:
-    """获取密码哈希值"""
-    try:
-        return bcrypt.hash(password)
-    except Exception as e:
-        logger.error(f"密码哈希失败: {str(e)}")
-        return None
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """创建访问令牌"""
@@ -67,38 +49,24 @@ async def authenticate_user(username: str, password: str, db: Session) -> Option
     """验证用户"""
     try:
         logger.debug(f"开始认证用户: {username}")
-        # 先检查是否是管理员账户
-        if username == "admin":
-            if password == "admin123":
-                logger.debug("管理员登录成功")
-                user = User(
-                    id=1,
-                    username="admin",
-                    password=get_password_hash("admin123"),
-                    email="admin@example.com",
-                    is_admin=True,
-                    status="active",
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
-                )
-                return user
-            else:
-                logger.debug("管理员密码错误")
-                return None
         
-        # 检查用户账户（包括代理商和普通用户）
+        # 从数据库中查询用户
         user = db.query(User).filter(User.username == username).first()
-        if user:
-            logger.debug("找到用户账户")
-            if verify_password(password, user.password):
-                logger.debug("用户密码验证成功")
-                return user
-            else:
-                logger.debug("用户密码验证失败")
-                return None
-        
-        logger.debug(f"用户 {username} 不存在")
-        return None
+        if not user:
+            logger.debug(f"用户 {username} 不存在")
+            return None
+            
+        # 验证密码
+        logger.debug(f"开始验证密码: password={password}, user.password={user.password}")
+        if verify_password(password, user.password):
+            logger.debug("用户密码验证成功")
+            # 更新最后登录时间
+            user.last_login_at = datetime.utcnow()
+            db.commit()
+            return user
+        else:
+            logger.debug("用户密码验证失败")
+            return None
             
     except Exception as e:
         logger.error(f"认证过程发生错误: {str(e)}")

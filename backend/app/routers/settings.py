@@ -79,8 +79,8 @@ from app.database import get_db
 from app.models.resource_type import ResourceType
 from app.models.agent_price import AgentPrice
 from app.models.user import User
-from app.services.auth import get_current_user
-from typing import Dict, List
+from app.utils.auth import get_current_user
+from typing import Dict, List, Any
 from decimal import Decimal
 import logging
 
@@ -153,99 +153,130 @@ def update_resource_prices(prices: Dict[str, float], db: Session = Depends(get_d
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/agent/{agent_id}/prices")
-async def get_resource_prices(
+async def get_agent_prices(
     agent_id: int,
-    db: Session = Depends(get_db)
-):
-    """获取代理商的资源价格设置"""
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """获取代理商价格设置"""
     try:
-        logger.info(f"正在获取代理商[{agent_id}]的价格配置")
+        logger.info(f"获取代理商 {agent_id} 的价格设置，当前用户ID: {current_user.id}")
         
-        # 从数据库获取代理商价格设置
+        # 检查权限：
+        # 1. 管理员可以查看所有价格
+        # 2. 代理商可以查看自己的价格
+        # 3. 代理商可以查看其下级用户的价格
+        if not current_user.is_admin:  # 非管理员
+            if current_user.id != agent_id:  # 不是查看自己的价格
+                # 检查目标用户是否是当前用户的下级
+                target_user = db.query(User).filter(User.id == agent_id).first()
+                if not target_user:
+                    logger.warning(f"目标代理商 {agent_id} 不存在")
+                    raise HTTPException(status_code=404, detail="目标代理商不存在")
+                    
+                # 检查是否为下级代理商（检查代理商层级关系）
+                current_agent = target_user
+                is_subordinate = False
+                while current_agent and current_agent.agent_id:
+                    if current_agent.agent_id == current_user.id:
+                        is_subordinate = True
+                        break
+                    current_agent = db.query(User).filter(User.id == current_agent.agent_id).first()
+                
+                if not is_subordinate:
+                    logger.warning(f"用户 {current_user.id} 尝试访问代理商 {agent_id} 的价格设置被拒绝")
+                    raise HTTPException(status_code=403, detail="没有权限访问此资源")
+            
+        # 获取代理商价格配置
         agent_price = db.query(AgentPrice).filter(AgentPrice.agent_id == agent_id).first()
-        
-        # 如果没有找到价格设置，使用默认价格
         if not agent_price:
-            prices = {
-                "dynamic": {
-                    "pool1": 0.1,  # 动态代理池1的价格
-                    "pool2": 0.2   # 动态代理池2的价格
-                },
-                "static": {
-                    "residential": 0.3,  # 住宅代理价格
-                    "datacenter": 0.4    # 数据中心代理价格
+            logger.warning(f"代理商 {agent_id} 没有价格配置，返回默认价格")
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "dynamic": {
+                        "pool1": 0.1,  # 默认价格
+                        "pool2": 0.2
+                    },
+                    "static": {
+                        "residential": 0.3,
+                        "datacenter": 0.4
+                    }
                 }
             }
-        else:
-            prices = {
-                "dynamic": {
-                    "pool1": float(agent_price.dynamic_proxy_price),
-                    "pool2": float(agent_price.dynamic_proxy_price)
-                },
-                "static": {
-                    "residential": float(agent_price.static_proxy_price),
-                    "datacenter": float(agent_price.static_proxy_price)
-                }
-            }
-        
-        logger.info(f"成功获取代理商[{agent_id}]的价格配置: {prices}")
+            
+        # 返回价格配置
         return {
             "code": 0,
             "msg": "success",
-            "data": prices
+            "data": {
+                "dynamic": {
+                    "pool1": float(agent_price.dynamic_proxy_price),
+                    "pool2": float(agent_price.dynamic_proxy_price * 1.5)  # 高级池价格上浮50%
+                },
+                "static": {
+                    "residential": float(agent_price.static_proxy_price),
+                    "datacenter": float(agent_price.static_proxy_price * 0.8)  # 数据中心价格下浮20%
+                }
+            }
         }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"获取代理商[{agent_id}]价格配置失败: {str(e)}")
-        return {
-            "code": 500,
-            "msg": f"获取价格配置失败: {str(e)}",
-            "data": None
-        }
+        logger.error(f"获取代理商价格设置失败: {str(e)}")
+        logger.exception(e)
+        raise HTTPException(status_code=500, detail="获取价格设置失败")
 
-@router.post("/agent/{agent_id}/prices")
+@router.put("/agent/{agent_id}/prices")
 async def update_agent_prices(
     agent_id: int,
-    prices: Dict[str, float],
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
+    prices: Dict[str, Any],
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
     """更新代理商价格设置"""
     try:
-        # 检查代理商是否存在
-        agent = db.query(User).filter(User.id == agent_id, User.is_agent == True).first()
-        if not agent:
-            raise HTTPException(status_code=404, detail={"code": 404, "message": "代理商不存在"})
+        logger.info(f"更新代理商 {agent_id} 的价格设置: {prices}")
         
-        # 检查权限：只有管理员可以更新价格
+        # 检查权限
         if not current_user.is_admin:
-            raise HTTPException(status_code=403, detail={"code": 403, "message": "没有权限执行此操作"})
-        
-        # 获取或创建价格设置
-        price_settings = db.query(AgentPrice).filter(AgentPrice.agent_id == agent_id).first()
-        if not price_settings:
-            price_settings = AgentPrice(
-                agent_id=agent_id,
-                dynamic_proxy_price=Decimal('0.1'),
-                static_proxy_price=Decimal('0.2')
-            )
-            db.add(price_settings)
-        
+            raise HTTPException(status_code=403, detail="只有管理员可以修改价格设置")
+            
+        # 获取或创建代理商价格配置
+        agent_price = db.query(AgentPrice).filter(AgentPrice.agent_id == agent_id).first()
+        if not agent_price:
+            agent_price = AgentPrice(agent_id=agent_id)
+            db.add(agent_price)
+            
         # 更新价格
-        if 'dynamic_proxy_price' in prices:
-            price_settings.dynamic_proxy_price = Decimal(str(prices['dynamic_proxy_price']))
-        if 'static_proxy_price' in prices:
-            price_settings.static_proxy_price = Decimal(str(prices['static_proxy_price']))
-        
+        if "dynamic" in prices:
+            agent_price.dynamic_proxy_price = prices["dynamic"].get("pool1", 0.1)
+        if "static" in prices:
+            agent_price.static_proxy_price = prices["static"].get("residential", 0.3)
+            
         db.commit()
-        db.refresh(price_settings)
         
         return {
             "code": 0,
-            "message": "价格设置更新成功",
-            "data": price_settings.to_dict()
+            "msg": "success",
+            "data": {
+                "dynamic": {
+                    "pool1": float(agent_price.dynamic_proxy_price),
+                    "pool2": float(agent_price.dynamic_proxy_price * 1.5)
+                },
+                "static": {
+                    "residential": float(agent_price.static_proxy_price),
+                    "datacenter": float(agent_price.static_proxy_price * 0.8)
+                }
+            }
         }
+        
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)}) 
+        logger.error(f"更新代理商价格设置失败: {str(e)}")
+        logger.exception(e)
+        raise HTTPException(status_code=500, detail="更新价格设置失败") 

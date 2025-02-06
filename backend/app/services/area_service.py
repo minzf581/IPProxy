@@ -6,6 +6,7 @@
 1. 区域列表获取
 2. 城市列表获取
 3. 地理位置查询
+4. IP段列表获取
 
 此模块继承自IPIPVBaseAPI，使用其提供的基础通信功能。
 
@@ -271,4 +272,96 @@ class AreaService(IPIPVBaseAPI):
             return None
         except Exception as e:
             logger.error(f"获取城市信息失败: {str(e)}")
-            return None 
+            return None
+    
+    async def get_ip_ranges(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        获取IP段列表
+        
+        Args:
+            params: 请求参数
+                - proxyType: 代理类型 (101=静态云平台, 102=静态国内家庭, 103=静态国外家庭)
+                - regionCode: 区域代码
+                - countryCode: 国家代码
+                - cityCode: 城市代码
+                - staticType: 静态代理类型
+                - version: API版本
+            
+        Returns:
+            list: IP段列表，包含以下字段：
+                - ipStart: 起始IP
+                - ipEnd: 结束IP
+                - ipCount: IP数量
+                - stock: 库存数量
+                - staticType: 静态代理类型
+        """
+        try:
+            logger.info("[IP段服务] 开始获取IP段列表")
+            logger.info(f"[IP段服务] 原始请求参数: {json.dumps(params, ensure_ascii=False)}")
+            
+            # 验证和规范化参数
+            if 'proxyType' not in params:
+                logger.error("[IP段服务] 缺少必要参数: proxyType")
+                return []
+            
+            # 规范化参数
+            normalized_params = {
+                "proxyType": params["proxyType"],
+                "version": params.get("version", "v2")
+            }
+            
+            # 处理国家代码 (转换为两字母代码)
+            if "countryCode" in params:
+                country_code = params["countryCode"]
+                if len(country_code) > 2:
+                    country_code = country_code[:2]  # 取前两位
+                normalized_params["countryCode"] = country_code.upper()
+            
+            # 处理城市代码
+            if "cityCode" in params:
+                city_code = params["cityCode"]
+                if len(city_code) > 9:  # 假设城市代码最长9位
+                    city_code = city_code[:9]
+                normalized_params["cityCode"] = city_code.upper()
+            
+            # 处理区域代码
+            if "regionCode" in params:
+                normalized_params["regionCode"] = str(params["regionCode"])
+            
+            # 处理静态类型
+            if "staticType" in params:
+                normalized_params["staticType"] = str(params["staticType"])
+            
+            logger.info(f"[IP段服务] 规范化后的参数: {json.dumps(normalized_params, ensure_ascii=False)}")
+            
+            # 调用基础请求方法
+            result = await self._make_request("api/open/app/product/query/v2", normalized_params)
+            
+            logger.info(f"[IP段服务] API响应原始数据: {json.dumps(result, ensure_ascii=False) if result else None}")
+            
+            if result is None:
+                logger.error("[IP段服务] API请求返回空结果")
+                return []
+                
+            if isinstance(result, list):
+                logger.info(f"[IP段服务] 成功获取IP段列表，数量: {len(result)}")
+                # 验证返回数据格式
+                validated_result = []
+                for ip_range in result:
+                    if isinstance(ip_range, dict):
+                        validated_ip_range = {
+                            "ipStart": ip_range.get("ipStart", ""),
+                            "ipEnd": ip_range.get("ipEnd", ""),
+                            "ipCount": ip_range.get("ipCount", 0),
+                            "stock": ip_range.get("stock", 0),
+                            "staticType": ip_range.get("staticType", "")
+                        }
+                        validated_result.append(validated_ip_range)
+                return validated_result
+            else:
+                logger.warning(f"[IP段服务] 未知的响应格式: {type(result)}")
+                return []
+                
+        except Exception as e:
+            logger.error(f"[IP段服务] 获取IP段列表失败: {str(e)}", exc_info=True)
+            return []

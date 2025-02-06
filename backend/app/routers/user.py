@@ -7,6 +7,52 @@
 # - 用户资金管理
 # - 用户统计信息
 #
+# 用户类型和创建流程：
+# -----------------
+# 1. 普通用户：
+#    - 由代理商或管理员创建
+#    - 只在本地数据库创建记录
+#    - 不需要调用外部API
+#    - 必须关联到代理商
+#
+# 2. 代理商用户：
+#    - 只能由管理员创建
+#    - 需要同时在本地数据库和IPIPV平台创建
+#    - 创建流程：
+#      a. 验证管理员权限
+#      b. 验证必填信息（手机号、邮箱、认证类型等）
+#      c. 调用IPIPV API创建代理商账号
+#      d. 在本地数据库创建用户记录
+#      e. 保存IPIPV平台返回的用户名和密码
+#
+# 数据模型关系：
+# ------------
+# - User (app/models/user.py)
+#   - username: 用户名
+#   - password: 加密密码
+#   - email: 邮箱
+#   - phone: 手机号
+#   - is_agent: 是否是代理商
+#   - agent_id: 关联的代理商ID
+#   - ipipv_username: IPIPV平台用户名（代理商专用）
+#   - ipipv_password: IPIPV平台密码（代理商专用）
+#
+# IPIPV API集成：
+# -------------
+# 1. 代理商创建API：/api/open/app/user/v2
+#    - 请求参数：
+#      - phone: 手机号
+#      - email: 邮箱
+#      - authType: 认证类型（1=未实名，2=个人实名，3=企业实名）
+#      - authName: 认证名称（可选）
+#      - no: 证件号码（可选）
+#      - status: 状态（1=正常）
+#    - 响应数据：
+#      - username: IPIPV平台用户名
+#      - password: IPIPV平台密码
+#      - status: 用户状态
+#      - authStatus: 认证状态
+#
 # 重要提示：
 # ---------
 # 1. 用户是系统的基础模块，需要特别注意安全性
@@ -28,26 +74,6 @@
 # - 服务层：src/services/userService.ts
 # - 页面组件：src/pages/user/index.tsx
 # - 类型定义：src/types/user.ts
-#
-# 数据流：
-# -------
-# 1. 用户注册流程：
-#    - 验证注册信息
-#    - 密码加密处理
-#    - 创建用户记录
-#    - 初始化用户配置
-#
-# 2. 用户登录流程：
-#    - 验证登录信息
-#    - 生成访问令牌
-#    - 记录登录日志
-#    - 返回用户信息
-#
-# 3. 用户更新流程：
-#    - 验证更新权限
-#    - 验证更新内容
-#    - 更新用户信息
-#    - 记录更新日志
 #
 # 修改注意事项：
 # ------------
@@ -74,8 +100,26 @@
 #    - 优化查询性能
 #    - 控制并发访问
 #    - 异步处理耗时操作
+#
+# 错误处理：
+# --------
+# 1. 本地数据库错误：
+#    - 用户名重复
+#    - 数据库连接失败
+#    - 事务回滚
+#
+# 2. IPIPV API错误：
+#    - API调用超时
+#    - 认证失败
+#    - 参数验证失败
+#    - 业务逻辑错误
+#
+# 3. 权限错误：
+#    - 未授权操作
+#    - 越权访问
+#    - 角色限制
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
@@ -92,6 +136,8 @@ import uuid
 from pydantic import BaseModel
 import logging
 from passlib.hash import bcrypt
+from app.services.ipipv_base_api import IPIPVBaseAPI
+from app.schemas.user import UserCreate, UserResponse, UserLogin, UserBase, UserInDB
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -127,8 +173,13 @@ class CreateUserRequest(BaseModel):
     username: str
     password: str
     email: Optional[str] = None
+    phone: Optional[str] = None
     remark: Optional[str] = None
-    agent_id: Optional[int] = None  # 可选的代理商ID
+    agent_id: Optional[int] = None
+    is_agent: bool = False  # 是否是代理商
+    auth_type: Optional[int] = None  # 认证类型：1=未实名 2=个人实名 3=企业实名
+    auth_name: Optional[str] = None  # 认证名称
+    no: Optional[str] = None  # 证件号码
 
 router = APIRouter()
 
@@ -198,86 +249,101 @@ async def get_user_list(
             detail=f"获取用户列表失败: {str(e)}"
         )
 
-@router.post("/open/app/user/create")
+@router.post("/open/app/user/create", response_model=UserResponse)
 async def create_user(
-    user_data: CreateUserRequest,
+    request: Request,
+    user_data: UserCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-) -> Dict[str, Any]:
-    """创建用户"""
+):
+    """
+    创建新用户
+    - 管理员可以创建代理商和普通用户
+    - 代理商只能创建普通用户
+    - 普通用户不能创建用户
+    """
+    logger.info(f"[用户创建] 收到请求: {user_data}")
+
     try:
+        # 权限检查
+        if not (current_user.is_admin or current_user.is_agent):
+            raise HTTPException(
+                status_code=403,
+                detail="没有创建用户的权限"
+            )
+
         # 检查用户名是否已存在
-        existing_user = db.query(User).filter(User.username == user_data.username).first()
-        if existing_user:
-            return {
-                "code": 400,
-                "msg": "用户名已存在",
-                "data": None
-            }
+        if db.query(User).filter(User.username == user_data.username).first():
+            raise HTTPException(
+                status_code=400,
+                detail="用户名已存在"
+            )
 
-        # 如果指定了agent_id，检查该代理商是否存在
-        if user_data.agent_id:
-            agent = db.query(User).filter(
-                User.id == user_data.agent_id,
-                User.is_agent == True
-            ).first()
-            if not agent:
-                return {
-                    "code": 404,
-                    "msg": "指定的代理商不存在",
-                    "data": None
-                }
-            # 如果当前用户不是管理员，且尝试指定其他代理商
-            if not current_user.is_admin and agent.id != current_user.id:
-                return {
-                    "code": 403,
-                    "msg": "无权指定其他代理商",
-                    "data": None
-                }
+        # 确定 agent_id
+        agent_id = None
+        if current_user.is_agent:
+            agent_id = current_user.id
+        elif user_data.agent_id:
+            agent_id = user_data.agent_id
 
-        # 确定agent_id
-        final_agent_id = None
-        if current_user.is_admin:
-            # 管理员可以指定任意代理商ID
-            final_agent_id = user_data.agent_id
-        else:
-            # 非管理员只能创建属于自己的用户
-            final_agent_id = current_user.id if current_user.is_agent else None
+        # 创建用户基本信息
+        user_dict = {
+            "username": user_data.username,
+            "password": bcrypt.hash(user_data.password),
+            "email": user_data.email,
+            "phone": user_data.phone,
+            "remark": user_data.remark,
+            "is_agent": user_data.is_agent,
+            "agent_id": agent_id,
+            "status": 1
+        }
 
-        # 创建新用户
-        user = User(
-            username=user_data.username,
-            password=user_data.password,  # 模型的 __init__ 会自动加密密码
-            email=user_data.email,
-            remark=user_data.remark,
-            agent_id=final_agent_id,
-            status=1  # 使用整数状态
-        )
-        db.add(user)
+        # 如果是管理员创建代理用户，需要调用 IPIPV API
+        if current_user.is_admin and user_data.is_agent:
+            if not all([user_data.phone, user_data.email, user_data.auth_type]):
+                raise HTTPException(
+                    status_code=400,
+                    detail="创建代理用户需要提供手机号、邮箱和认证类型"
+                )
+            
+            try:
+                ipipv_api = IPIPVBaseAPI()
+                ipipv_user = await ipipv_api.create_user(
+                    username=user_data.username,
+                    password=user_data.password,
+                    email=user_data.email,
+                    phone=user_data.phone,
+                    auth_type=user_data.auth_type,
+                    auth_name=user_data.auth_name,
+                    no=user_data.no
+                )
+                user_dict["ipipv_username"] = ipipv_user.get("username")
+                user_dict["ipipv_password"] = ipipv_user.get("password")
+            except Exception as e:
+                logger.error(f"[用户创建] 调用 IPIPV API 失败: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"创建 IPIPV 用户失败: {str(e)}"
+                )
+
+        # 创建用户
+        new_user = User(**user_dict)
+        db.add(new_user)
         db.commit()
-        db.refresh(user)
-        
-        logger.info(f"[Create User] Created user: {user.to_dict()}")
-        
-        # 转换用户数据
-        user_data = user.to_dict()
-        user_data['status'] = 'active' if user_data['status'] == 1 else 'disabled'
-        
-        return {
-            "code": 0,
-            "msg": "success",
-            "data": user_data
-        }
+        db.refresh(new_user)
+
+        logger.info(f"[用户创建] 成功创建用户: {new_user.username}")
+        return new_user
+
+    except HTTPException as e:
+        raise e
     except Exception as e:
+        logger.error(f"[用户创建] 发生错误: {str(e)}")
         db.rollback()
-        logger.error(f"[Create User] Failed to create user: {str(e)}")
-        return {
-            "code": 500,
-            "msg": f"创建用户失败: {str(e)}",
-            "data": None
-        }
-    finally:
-        db.close()
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
 @router.put("/open/app/user/{user_id}")
 async def update_user(
@@ -486,14 +552,15 @@ async def activate_business(
         
         # 创建交易记录
         transaction = Transaction(
+            transaction_no=f"TR{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}",
             order_no=order_no,
             user_id=user.id,
             agent_id=agent.id,
             amount=total_cost,
-            type="consumption",
-            status="completed",
-            remark=data.get("remark"),
-            operator_id=current_user.id
+            balance=agent.balance - total_cost,  # 添加交易后余额
+            type="consume",  # 修改为正确的交易类型
+            status="success",  # 修改为正确的状态
+            remark=f"业务激活: {data.get('remark', '')}"
         )
         db.add(transaction)
         
@@ -528,18 +595,21 @@ async def activate_business(
         else:
             order = StaticOrder(
                 order_no=order_no,
+                app_order_no=order_no,  # 使用相同的订单号作为 app_order_no
                 user_id=user.id,
-                agent_id=agent.id,
-                region=data["region"],
-                country=data["country"],
-                city=data["city"],
+                agent_id=user.agent_id,  # 添加 agent_id
+                region_code=data["region"],
+                country_code=data["country"],
+                city_code=data["city"],
                 static_type=data["staticType"],
-                ip_range=data["ipRange"],
+                ip_count=int(data["quantity"]),
                 duration=int(data["duration"]),
-                quantity=int(data["quantity"]),
+                unit=1,  # 默认单位为天
+                amount=total_cost,
                 status="active",
                 remark=data.get("remark"),
-                proxy_info=api_response.get("data", {})
+                proxy_type=103,  # 静态代理类型
+                product_no=data.get("product_no", "")
             )
         
         db.add(order)
@@ -634,17 +704,21 @@ async def renew_business(
         else:
             order = StaticOrder(
                 order_no=order_no,
+                app_order_no=order_no,  # 使用相同的订单号作为 app_order_no
                 user_id=user.id,
-                region=data["region"],
-                country=data["country"],
-                city=data["city"],
+                agent_id=user.agent_id,  # 添加 agent_id
+                region_code=data["region"],
+                country_code=data["country"],
+                city_code=data["city"],
                 static_type=data["staticType"],
-                ip_range=data["ipRange"],
+                ip_count=int(data["quantity"]),
                 duration=int(data["duration"]),
-                quantity=int(data["quantity"]),
+                unit=1,  # 默认单位为天
+                amount=total_cost,
                 status="active",
                 remark=data.get("remark"),
-                proxy_info=api_response.get("data", {})
+                proxy_type=103,  # 静态代理类型
+                product_no=data.get("product_no", "")
             )
         
         db.add(order)

@@ -155,11 +155,11 @@ class ProxyService(IPIPVBaseAPI):
         """
         try:
             logger.info(f"获取IP范围列表: {params}")
-            result = await self._make_request(
-                "api/open/app/area/ip-ranges/v2", 
+            response = await self._make_request(
+                "api/open/app/product/query/v2",
                 params
             )
-            return result if isinstance(result, list) else []
+            return response if isinstance(response, list) else []
         except Exception as e:
             logger.error(f"获取IP范围列表失败: {str(e)}")
             return [] 

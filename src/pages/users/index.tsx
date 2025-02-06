@@ -56,7 +56,7 @@ const UserManagementPage: React.FC = () => {
   });
 
   // 加载用户列表
-  const loadUsers = async (params: UserListParams = {}) => {
+  const loadUsers = async (params: UserListParams = { page: 1, pageSize: 10 }) => {
     try {
       console.log('[User List Debug] Loading users with params:', params);
       setLoading(true);
@@ -195,6 +195,7 @@ const UserManagementPage: React.FC = () => {
     const { username, status, dateRange } = values;
     const params: UserListParams = {
       page: 1,
+      pageSize: pagination.pageSize,
       username,
       status,
       dateRange
@@ -205,7 +206,10 @@ const UserManagementPage: React.FC = () => {
   // 处理重置
   const handleReset = () => {
     searchForm.resetFields();
-    loadUsers({ page: 1 });
+    loadUsers({ 
+      page: 1,
+      pageSize: pagination.pageSize
+    });
   };
 
   // 处理更新密码
@@ -273,11 +277,15 @@ const UserManagementPage: React.FC = () => {
   // 处理创建用户
   const handleCreateUser = async (values: CreateUserParams) => {
     try {
-      console.log('[Create User Debug] Creating user with values:', values);
+      console.log('[Create User Debug] Creating user with values:', {
+        ...values,
+        password: '******' // 隐藏密码
+      });
+
       const response = await createUser(values);
       console.log('[Create User Debug] API response:', response);
       
-      if (response.code === 0) {
+      if (response.code === 0 && response.data) {
         message.success('创建用户成功');
         setCreateModalVisible(false);
         createForm.resetFields();
@@ -418,13 +426,18 @@ const UserManagementPage: React.FC = () => {
           visible={businessModalVisible}
           user={selectedUser}
           onCancel={() => {
+            console.log('BusinessActivationModal onCancel 被调用');
             setBusinessModalVisible(false);
             setSelectedUser(null);
+            console.log('BusinessActivationModal 状态已更新:', { businessModalVisible: false, selectedUser: null });
           }}
           onSuccess={() => {
+            console.log('BusinessActivationModal onSuccess 被调用');
             setBusinessModalVisible(false);
             setSelectedUser(null);
+            console.log('准备重新加载用户列表');
             loadUsers();
+            console.log('BusinessActivationModal 处理完成');
           }}
         />
       )}

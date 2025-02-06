@@ -7,6 +7,8 @@ from app.models.instance import Instance
 from app.models.dashboard import ProxyInfo
 from app.models.resource_type import ResourceType
 from app.models.agent_price import AgentPrice
+from app.models.product_inventory import ProductInventory
+from app.models.agent_statistics import AgentStatistics
 
 __all__ = [
     'User',
@@ -18,5 +20,7 @@ __all__ = [
     'Instance',
     'ProxyInfo',
     'ResourceType',
-    'AgentPrice'
+    'AgentPrice',
+    'ProductInventory',
+    'AgentStatistics'
 ] 

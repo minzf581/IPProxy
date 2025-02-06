@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Form, Radio, Input, Row, Col, Button, message, Select, InputNumber, Space, Statistic } from 'antd';
 import type { RadioChangeEvent } from 'antd';
 import { api } from '@/utils/request';
+import { API_PREFIX, API_ROUTES } from '@/shared/routes';
 import styles from './BusinessActivationModal.module.less';
 import type { User } from '@/types/user';
 import { useAuth } from '@/contexts/AuthContext';
@@ -64,8 +65,14 @@ const STATIC_TYPES: StaticType[] = [
 ];
 
 interface DisplayIpRange {
-  range: string;
+  ipStart: string;
+  ipEnd: string;
+  ipCount: number;
   stock: number;
+  staticType: string;
+  countryCode: string;
+  cityCode: string;
+  regionCode: string;
 }
 
 // 定义价格类型
@@ -118,6 +125,29 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
         });
     }
   }, [visible, currentUser?.id]);
+
+  useEffect(() => {
+    if (visible) {
+      // 同步库存信息
+      syncInventory();
+    }
+  }, [visible]);
+
+  // 同步库存信息
+  const syncInventory = async () => {
+    try {
+      message.loading('正在同步库存信息...');
+      const response = await api.post('/proxy/inventory/sync');
+      if (response.data?.code === 0) {
+        message.success('库存同步成功');
+      } else {
+        message.error('库存同步失败');
+      }
+    } catch (error) {
+      console.error('同步库存失败:', error);
+      message.error('库存同步失败');
+    }
+  };
 
   // 类型转换函数
   const convertAreaResponseToArea = (response: AreaResponse): Area => ({
@@ -214,22 +244,69 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
   // 加载IP段列表
   const loadIpRanges = async (values: any) => {
     try {
-      const ranges = await ipProxyAPI.getIpRanges({
+      // 验证必要参数
+      if (!values) {
+        console.warn('[loadIpRanges] 没有提供参数');
+        return;
+      }
+
+      console.log('[loadIpRanges] 开始加载IP段列表，表单值:', values);
+
+      // 构建请求参数，确保必要字段存在
+      const params = {
+        proxyType: 103,  // 静态国外家庭代理
         regionCode: values.region,
         countryCode: values.country,
         cityCode: values.city,
-        staticType: values.staticType
-      });
+        staticType: values.staticType,
+        version: 'v2'
+      };
+
+      console.log('[loadIpRanges] 发送IP段查询请求，参数:', params);
+
+      // 使用路由配置中定义的常量
+      const response = await api.post(API_ROUTES.AREA.IP_RANGES, params);
+      console.log('[loadIpRanges] 收到原始响应:', response);
+
+      if (!response.data || response.data.code !== 0) {
+        console.warn('[loadIpRanges] API响应异常:', response);
+        message.error('加载IP段失败: ' + (response.data?.msg || '未知错误'));
+        return;
+      }
+
+      const ranges = response.data.data;
+      console.log('[loadIpRanges] 解析后的IP段数据:', ranges);
       
-      // 转换 IpRange 到 DisplayIpRange
-      const convertedRanges: DisplayIpRange[] = ranges.map(range => ({
-        range: `${range.ipStart}-${range.ipEnd}`,
-        stock: range.stock
+      if (!ranges || ranges.length === 0) {
+        console.warn('[loadIpRanges] 未找到IP段数据');
+        setIpRanges([]);
+        setSelectedIpRange(null);
+        return;
+      }
+      
+      // 转换数据格式
+      const convertedRanges: DisplayIpRange[] = ranges.map((range: any) => ({
+        ipStart: range.ipStart || "0.0.0.0",
+        ipEnd: range.ipEnd || "0.0.0.0",
+        ipCount: range.ipCount || 0,
+        stock: range.stock || 0,
+        staticType: range.staticType || "",
+        countryCode: range.countryCode || "",
+        cityCode: range.cityCode || "",
+        regionCode: range.regionCode || ""
       }));
       
+      console.log('[loadIpRanges] 处理后的IP段数据:', convertedRanges);
+      
       setIpRanges(convertedRanges);
+      
+      // 如果有IP段，选择第一个作为默认值
+      if (convertedRanges.length > 0) {
+        setSelectedIpRange(convertedRanges[0]);
+        form.setFieldValue('ipRange', `${convertedRanges[0].ipStart}-${convertedRanges[0].ipEnd}`);
+      }
     } catch (error) {
-      console.error('加载IP段失败:', error);
+      console.error('[loadIpRanges] 加载IP段失败:', error);
       message.error('加载IP段失败');
     }
   };
@@ -253,21 +330,37 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
   };
 
   // 处理表单值变化
-  const handleValuesChange = React.useCallback((changedValues: any, allValues: any) => {
+  const handleValuesChange = (changedValues: any, allValues: any) => {
+    console.log('[handleValuesChange] 表单值变化:', {
+      changed: changedValues,
+      all: allValues
+    });
+
     // 计算总费用
     calculateTotalCost(allValues);
 
     // 处理级联选择
     if ('region' in changedValues) {
+      console.log('[handleValuesChange] 区域变化:', changedValues.region);
       handleRegionChange(changedValues.region);
     }
     if ('country' in changedValues) {
+      console.log('[handleValuesChange] 国家变化:', changedValues.country);
       handleCountryChange(changedValues.country);
     }
-    if ('city' in changedValues || 'staticType' in changedValues) {
+
+    // 检查是否需要加载IP段列表
+    const { region, country, city, staticType } = allValues;
+    if (region && country && staticType) {
+      console.log('[handleValuesChange] 加载IP段列表条件满足:', {
+        region,
+        country,
+        city,
+        staticType
+      });
       loadIpRanges(allValues);
     }
-  }, [calculateTotalCost, handleRegionChange, handleCountryChange, loadIpRanges]);
+  };
 
   const handleProxyTypeChange = (e: RadioChangeEvent) => {
     setProxyType(e.target.value);
@@ -313,14 +406,23 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
       console.log('用户ID:', user.id);
       console.log('用户名:', user.username);
       console.log('请求数据:', orderData);
+
+      const activateUrl = API_ROUTES.USER.ACTIVATE_BUSINESS.replace('{id}', user.id.toString());
+      console.log('激活业务URL:', activateUrl);
       
-      const response = await api.post(`/api/user/${user.id}/activate-business`, orderData);
+      const response = await api.post(activateUrl, orderData);
+      console.log('业务激活响应:', response);
       
       if (response.data?.code === 0) {
+        console.log('业务激活成功，准备调用回调函数');
         message.success(response.data.msg || '业务激活成功');
+        console.log('调用onSuccess回调');
         onSuccess();
+        console.log('调用onCancel回调');
         onCancel();
+        console.log('回调函数调用完成');
       } else {
+        console.error('业务激活失败:', response.data);
         message.error(response.data?.msg || '业务激活失败');
       }
     } catch (error: any) {
@@ -333,6 +435,7 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
         message.error(error.response?.data?.msg || '业务激活失败，请稍后重试');
       }
     } finally {
+      console.log('设置loading状态为false');
       setLoading(false);
     }
   };
@@ -490,36 +593,33 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
   // 渲染IP段选择器
   const renderIpRangeSelector = () => (
     <Form.Item
-      name="ipRange"
       label="IP段"
+      name="ipRange"
       rules={[{ required: true, message: '请选择IP段' }]}
-      extra={selectedIpRange ? `当前IP段库存: ${selectedIpRange.stock}个` : ''}
     >
-      <Select 
+      <Select
         placeholder="请选择IP段"
-        disabled={!form.getFieldValue('city') || !form.getFieldValue('staticType')}
+        loading={loading}
         onChange={(value) => {
-          const range = ipRanges.find(r => r.range === value);
-          setSelectedIpRange(range || null);
+          const selectedRange = ipRanges.find(range => 
+            `${range.ipStart}-${range.ipEnd}` === value
+          );
+          if (selectedRange) {
+            form.setFieldsValue({
+              quantity: selectedRange.ipCount.toString()
+            });
+          }
         }}
       >
-        {ipRanges.map((range, index) => (
-          range.range ? (
-            <Option 
-              key={range.range} 
-              value={range.range}
-            >
-              {range.range} (库存: {range.stock}个)
-            </Option>
-          ) : (
-            <Option 
-              key={`range-${range.stock}-${index}`}
-              value={`range-${range.stock}-${index}`}
-            >
-              未知IP段 (库存: {range.stock}个)
-            </Option>
-          )
-        ))}
+        {ipRanges.map((range) => {
+          const key = `${range.ipStart}-${range.ipEnd}`;
+          const label = `${range.ipStart} - ${range.ipEnd} (可用: ${range.stock})`;
+          return (
+            <Select.Option key={key} value={key}>
+              {label}
+            </Select.Option>
+          );
+        })}
       </Select>
     </Form.Item>
   );
@@ -527,17 +627,19 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
   return (
     <Modal
       title="业务开通"
-      open={visible}
+      visible={visible}
       onCancel={onCancel}
       footer={null}
       width={800}
-      className={styles.businessModal}
     >
       <Form
         form={form}
         layout="vertical"
         onFinish={handleSubmit}
         onValuesChange={handleValuesChange}
+        initialValues={{
+          proxyType: 'dynamic'
+        }}
       >
         <Row gutter={24}>
           <Col span={24}>

@@ -62,7 +62,7 @@ export const API_PATHS = {
   USER: {
     MANAGE: 'user/list',    // 对应 user.py 的 get_user_list
     AUTH: 'user/auth',      // 对应 user.py 的 auth_user
-    CREATE: 'user/create',  // 对应 user.py 的 create_user
+    CREATE: '/open/app/user/create',  // 对应 user.py 的 create_user
     UPDATE: 'user/update',  // 对应 user.py 的 update_user
     DELETE: 'user/delete',  // 对应 user.py 的 delete_user
     ACTIVATE: 'user/{id}/activate-business',  // 对应 user.py 的 activate_business
@@ -87,7 +87,7 @@ export const API_PATHS = {
   REGION: {
     AREA: 'open/app/area/v2',              // 对应 area.py
     CITY: 'open/app/city/list/v2',         // 对应 area.py
-    IP_RANGES: 'open/app/area/ip-ranges/v2' // 对应 area.py
+    IP_RANGES: 'open/app/product/query/v2' // 产品查询接口
   },
 
   // 仪表盘相关

@@ -51,6 +51,7 @@ from datetime import datetime
 from app.config import settings
 from app.utils.logging_utils import truncate_response
 import hashlib
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -68,21 +69,21 @@ class IPIPVBaseAPI:
         base_url (str): API基础URL
         app_key (str): 应用密钥
         app_secret (str): 应用密钥
-        _mock_api: 测试模式下的模拟API
+        mock_api: 测试模式下的模拟API
     """
     
     def __init__(self):
         """初始化基础服务"""
         logger.info("[IPIPVBaseAPI] 初始化服务")
-        self.base_url = settings.IPPROXY_API_URL.rstrip('/')
-        self.app_key = settings.IPPROXY_APP_KEY
-        self.app_secret = settings.IPPROXY_APP_SECRET
-        self._mock_api = None
+        self.base_url = os.getenv('IPPROXY_API_URL', 'https://sandbox.ipipv.com')
+        self.app_key = os.getenv('IPPROXY_APP_KEY', 'AK20241120145620')
+        self.app_secret = os.getenv('IPPROXY_APP_SECRET', 'bf3ffghlt0hpc4omnvc2583jt0fag6a4')
+        self.mock_api = None
         
         # 测试模式配置
         if settings.TESTING:
             from app.tests.mocks.ipproxy_api import MockIPIPVAPI
-            self._mock_api = MockIPIPVAPI()
+            self.mock_api = MockIPIPVAPI()
             logger.info("[IPIPVBaseAPI] 使用测试模式")
     
     def set_mock_api(self, mock_api):
@@ -92,7 +93,7 @@ class IPIPVBaseAPI:
         Args:
             mock_api: 模拟API实例
         """
-        self._mock_api = mock_api
+        self.mock_api = mock_api
     
     async def _make_request(
         self, 
@@ -291,42 +292,72 @@ class IPIPVBaseAPI:
         """
         try:
             if not encrypted_text:
+                logger.error("[解密] 输入为空")
                 return None
+            
+            logger.info(f"[解密] 原始输入: {encrypted_text}")
+            logger.info(f"[解密] 输入长度: {len(encrypted_text)}")
             
             # 清理输入字符串
             cleaned_text = ''.join(
                 c for c in encrypted_text 
                 if c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='
             )
+            logger.info(f"[解密] 清理后文本: {cleaned_text}")
+            logger.info(f"[解密] 清理后长度: {len(cleaned_text)}")
             
             # Base64解码
-            encrypted = base64.b64decode(cleaned_text)
+            try:
+                encrypted = base64.b64decode(cleaned_text)
+                logger.info(f"[解密] Base64解码后长度: {len(encrypted)}")
+                logger.info(f"[解密] Base64解码后前20字节: {encrypted[:20].hex()}")
+            except Exception as e:
+                logger.error(f"[解密] Base64解码失败: {str(e)}")
+                return None
             
             # 准备解密密钥和IV
             key = self.app_secret.encode('utf-8')[:32]
             iv = self.app_secret.encode('utf-8')[:16]
+            logger.info(f"[解密] 密钥长度: {len(key)}, IV长度: {len(iv)}")
+            logger.info(f"[解密] 密钥前20字节: {key[:20].hex()}")
+            logger.info(f"[解密] IV: {iv.hex()}")
             
             # 执行解密
-            cipher = AES.new(key, AES.MODE_CBC, iv)
-            decrypted = unpad(
-                cipher.decrypt(encrypted), 
-                AES.block_size, 
-                style='pkcs7'
-            )
+            try:
+                cipher = AES.new(key, AES.MODE_CBC, iv)
+                decrypted = unpad(
+                    cipher.decrypt(encrypted), 
+                    AES.block_size, 
+                    style='pkcs7'
+                )
+                logger.info(f"[解密] 解密后长度: {len(decrypted)}")
+                logger.info(f"[解密] 解密后前50字节: {decrypted[:50].hex()}")
+            except Exception as e:
+                logger.error(f"[解密] AES解密失败: {str(e)}")
+                return None
             
             # 尝试不同编码方式
             for encoding in ['utf-8', 'latin1', 'ascii']:
                 try:
                     decrypted_text = decrypted.decode(encoding)
+                    logger.info(f"[解密] 使用 {encoding} 解码成功")
+                    logger.info(f"[解密] 解码后文本: {decrypted_text}")
                     break
                 except UnicodeDecodeError:
+                    logger.error(f"[解密] {encoding} 解码失败")
                     continue
             else:
+                logger.error("[解密] 所有编码方式都解码失败")
                 return None
             
             # 解析JSON
-            result = json.loads(decrypted_text)
-            return result if isinstance(result, (dict, list)) else None
+            try:
+                result = json.loads(decrypted_text)
+                logger.info(f"[解密] JSON解析结果: {json.dumps(result, ensure_ascii=False)}")
+                return result if isinstance(result, (dict, list)) else None
+            except json.JSONDecodeError as e:
+                logger.error(f"[解密] JSON解析失败: {str(e)}")
+                return None
             
         except Exception as e:
             logger.error(f"[IPIPV] 解密失败: {str(e)}")

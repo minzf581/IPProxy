@@ -17,7 +17,7 @@
  */
 
 import { api } from '@/utils/request';
-import { API_PATHS } from '@/config/api';
+import { API_ROUTES } from '@/shared/routes';
 import type { ApiResponse } from '@/types/api';
 import type { User, UserListParams, UserListResponse, CreateUserParams } from '@/types/user';
 
@@ -48,26 +48,29 @@ export async function getUserList(params: UserListParams): Promise<ApiResponse<U
   
   try {
     console.log('[User Service Debug] Sending request with params:', requestParams);
-    const response = await api.get<ApiResponse<UserListResponse>>(API_PATHS.USER.MANAGE, {
+    const response = await api.get<UserListResponse>(API_ROUTES.USER.LIST, {
       params: requestParams
     });
     
     console.log('[User Service Debug] Response data:', response);
 
-    if (!response.data || !response.data.data) {
+    // 直接使用响应数据
+    const responseData = response.data;
+    
+    // 确保响应数据包含必要的字段
+    if (!responseData || !Array.isArray(responseData.list)) {
       throw new Error('Invalid response format');
     }
 
-    const responseData = response.data.data;
-    
-    const userList = (responseData.list || []).map(user => {
-      const userStatus = String(user.status).toLowerCase();
-      return {
-        ...user,
-        status: userStatus === 'active' || userStatus === '1' ? 'active' as const : 'disabled' as const
-      };
-    });
+    // 处理用户列表数据
+    const userList = responseData.list.map(user => ({
+      ...user,
+      status: String(user.status).toLowerCase() === 'active' || String(user.status) === '1' 
+        ? 'active' as const 
+        : 'disabled' as const
+    }));
 
+    // 返回标准格式的响应
     return {
       code: 0,
       msg: 'success',
@@ -101,7 +104,7 @@ export async function getUserList(params: UserListParams): Promise<ApiResponse<U
  * 2. 状态更新后需要刷新用户列表
  */
 export async function updateUserStatus(userId: string, status: string): Promise<ApiResponse<User>> {
-  const response = await api.put<ApiResponse<User>>(API_PATHS.USER.UPDATE.replace('{id}', userId), { status });
+  const response = await api.put<ApiResponse<User>>(API_ROUTES.USER.UPDATE.replace('{id}', userId), { status });
   if (!response.data) {
     throw new Error('响应数据为空');
   }
@@ -130,12 +133,50 @@ export async function updateUserPassword(userId: string, password: string): Prom
  * 2. 密码需要符合复杂度要求
  * 3. 创建成功后需要刷新用户列表
  */
-export async function createUser(params: CreateUserParams): Promise<ApiResponse<User>> {
-  const requestData = Object.fromEntries(
-    Object.entries(params).filter(([_, value]) => value !== undefined && value !== '')
-  );
-  const response = await api.post<ApiResponse<User>>(API_PATHS.USER.CREATE, requestData);
-  return response.data;
+export async function createUser(params: CreateUserParams): Promise<ApiResponse<User | null>> {
+  try {
+    console.log('[Create User Debug] Creating user with params:', {
+      ...params,
+      password: '******' // 隐藏密码
+    });
+
+    // 过滤掉undefined和空字符串的字段
+    const requestData = Object.fromEntries(
+      Object.entries(params).filter(([_, value]) => value !== undefined && value !== '')
+    );
+
+    console.log('[Create User Debug] Sending request with data:', {
+      ...requestData,
+      password: '******' // 隐藏密码
+    });
+
+    const response = await api.post<User>(API_ROUTES.USER.CREATE, requestData);
+    console.log('[Create User Debug] Response:', response);
+
+    // 直接使用响应数据
+    const userData = response.data;
+    
+    // 转换用户状态
+    const formattedUser = {
+      ...userData,
+      status: String(userData.status).toLowerCase() === '1' || String(userData.status).toLowerCase() === 'active' 
+        ? 'active' as const 
+        : 'disabled' as const
+    };
+
+    return {
+      code: 0,
+      msg: 'success',
+      data: formattedUser
+    };
+  } catch (error) {
+    console.error('[Create User Debug] Error:', error);
+    return {
+      code: -1,
+      msg: error instanceof Error ? error.message : '创建用户失败',
+      data: null
+    };
+  }
 }
 
 /**
@@ -146,7 +187,7 @@ export async function createUser(params: CreateUserParams): Promise<ApiResponse<
  * - 后端函数: get_user_profile (user.py)
  */
 export async function getCurrentUser(): Promise<User> {
-  const response = await api.get<ApiResponse<User>>(API_PATHS.USER.PROFILE);
+  const response = await api.get<ApiResponse<User>>('/auth/profile');
   return response.data.data;
 }
 

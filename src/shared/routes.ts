@@ -1,48 +1,63 @@
 /**
  * 共享的 API 路由配置
- * 前后端都使用这个文件来保持路由一致性
+ * =================
+ * 
+ * 此文件定义了所有API路由，作为前后端的单一真实来源
+ * 前端和后端都应该使用这个文件来保持路由的一致性
  */
 
+// API 版本
+export const API_VERSION = 'v2';
+
+// API 基础路径
+export const API_BASE = '/api';
+
+// API 模块前缀
+export const API_PREFIX = {
+  OPEN: 'open/app',
+  AUTH: 'auth',
+  USER: 'user',
+  ADMIN: 'admin',
+  PROXY: 'proxy'
+} as const;
+
+/**
+ * API 路由配置
+ * 
+ * 使用方式：
+ * 1. 前端：直接导入 API_ROUTES 使用
+ * 2. 后端：使用 ROUTES_PY 中的路由定义
+ */
 export const API_ROUTES = {
-  AREA: {
-    /** 获取区域列表 */
-    LIST: 'open/app/area/v2',
-    /** 获取区域库存 */
-    STOCK: 'open/app/area/stock/v2'
-  },
-  COUNTRY: {
-    /** 获取国家列表 */
-    LIST: 'open/app/country/list/v2'
-  },
-  CITY: {
-    /** 获取城市列表 */
-    LIST: 'open/app/city/list/v2'
-  },
-  PRODUCT: {
-    /** 查询产品列表 */
-    QUERY: 'open/app/product/query/v2',
-    /** 查询产品库存 */
-    STOCK: 'open/app/product/stock/v2'
-  },
   AUTH: {
-    /** 登录 */
-    LOGIN: 'auth/login',
-    /** 登出 */
-    LOGOUT: 'auth/logout'
+    LOGIN: `${API_PREFIX.AUTH}/login`,
+    LOGOUT: `${API_PREFIX.AUTH}/logout`,
+    REFRESH: `${API_PREFIX.AUTH}/refresh`,
+    PROFILE: `${API_PREFIX.AUTH}/profile`
   },
+
   USER: {
-    /** 获取用户信息 */
-    INFO: 'user/info',
-    /** 更新用户信息 */
-    UPDATE: 'user/update'
+    CREATE: `${API_PREFIX.OPEN}/user/create`,
+    LIST: `${API_PREFIX.USER}/list`,
+    UPDATE: `${API_PREFIX.USER}/{id}`,
+    DELETE: `${API_PREFIX.USER}/{id}`,
+    CHANGE_PASSWORD: `${API_PREFIX.USER}/{id}/password`,
+    ACTIVATE_BUSINESS: `${API_PREFIX.USER}/{id}/activate-business`,
+    DEACTIVATE_BUSINESS: `${API_PREFIX.USER}/{id}/deactivate-business`
   },
+
   PROXY: {
-    /** 获取代理信息 */
-    INFO: 'proxy/info',
-    /** 获取代理余额 */
-    BALANCE: 'proxy/balance',
-    /** 获取流量使用记录 */
-    FLOW_USE_LOG: 'proxy/flow/use/log'
+    QUERY: `${API_PREFIX.OPEN}/product/query/${API_VERSION}`,
+    STOCK: `${API_PREFIX.OPEN}/product/stock/${API_VERSION}`,
+    BALANCE: `${API_PREFIX.PROXY}/balance`,
+    FLOW_LOG: `${API_PREFIX.PROXY}/flow/log`
+  },
+
+  AREA: {
+    LIST: `${API_PREFIX.OPEN}/area/${API_VERSION}`,
+    STOCK: `${API_PREFIX.OPEN}/area/stock/${API_VERSION}`,
+    CITY_LIST: `${API_PREFIX.OPEN}/city/list/${API_VERSION}`,
+    IP_RANGES: `${API_PREFIX.OPEN}/product/query/${API_VERSION}`
   }
 } as const;
 
@@ -50,33 +65,44 @@ export const API_ROUTES = {
 export const ROUTES_PY = `
 from typing import Dict, Any
 
-API_ROUTES: Dict[str, Dict[str, str]] = {
-    "AREA": {
-        "LIST": "open/app/area/v2",
-        "STOCK": "open/app/area/stock/v2"
-    },
-    "COUNTRY": {
-        "LIST": "open/app/country/list/v2"
-    },
-    "CITY": {
-        "LIST": "open/app/city/list/v2"
-    },
-    "PRODUCT": {
-        "QUERY": "open/app/product/query/v2",
-        "STOCK": "open/app/product/stock/v2"
-    },
+API_VERSION = "${API_VERSION}"
+API_BASE = "${API_BASE}"
+
+API_PREFIX = {
+    "OPEN": "${API_PREFIX.OPEN}",
+    "AUTH": "${API_PREFIX.AUTH}",
+    "USER": "${API_PREFIX.USER}",
+    "ADMIN": "${API_PREFIX.ADMIN}",
+    "PROXY": "${API_PREFIX.PROXY}"
+}
+
+API_ROUTES = {
     "AUTH": {
-        "LOGIN": "auth/login",
-        "LOGOUT": "auth/logout"
+        "LOGIN": f"{API_PREFIX['AUTH']}/login",
+        "LOGOUT": f"{API_PREFIX['AUTH']}/logout",
+        "REFRESH": f"{API_PREFIX['AUTH']}/refresh",
+        "PROFILE": f"{API_PREFIX['AUTH']}/profile"
     },
     "USER": {
-        "INFO": "user/info",
-        "UPDATE": "user/update"
+        "CREATE": f"{API_PREFIX['OPEN']}/user/create",
+        "LIST": f"{API_PREFIX['USER']}/list",
+        "UPDATE": f"{API_PREFIX['USER']}/{{id}}",
+        "DELETE": f"{API_PREFIX['USER']}/{{id}}",
+        "CHANGE_PASSWORD": f"{API_PREFIX['USER']}/{{id}}/password",
+        "ACTIVATE_BUSINESS": f"{API_PREFIX['USER']}/{{id}}/activate-business",
+        "DEACTIVATE_BUSINESS": f"{API_PREFIX['USER']}/{{id}}/deactivate-business"
     },
     "PROXY": {
-        "INFO": "proxy/info",
-        "BALANCE": "proxy/balance",
-        "FLOW_USE_LOG": "proxy/flow/use/log"
+        "QUERY": f"{API_PREFIX['OPEN']}/product/query/{API_VERSION}",
+        "STOCK": f"{API_PREFIX['OPEN']}/product/stock/{API_VERSION}",
+        "BALANCE": f"{API_PREFIX['PROXY']}/balance",
+        "FLOW_LOG": f"{API_PREFIX['PROXY']}/flow/log"
+    },
+    "AREA": {
+        "LIST": f"{API_PREFIX['OPEN']}/area/{API_VERSION}",
+        "STOCK": f"{API_PREFIX['OPEN']}/area/stock/{API_VERSION}",
+        "CITY_LIST": f"{API_PREFIX['OPEN']}/city/list/{API_VERSION}",
+        "IP_RANGES": f"{API_PREFIX['OPEN']}/product/query/{API_VERSION}"
     }
 }
 `; 

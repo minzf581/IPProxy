@@ -905,26 +905,249 @@ POST /api/open/app/product/query/v2
 
 | 参数名 | 类型 | 必填 | 说明 |
 |--------|------|------|------|
-| proxyType | []int | 是 | 代理类型数组，可选值：[101: 静态住宅代理, 102: 静态数据中心代理, 103: 静态手机代理] |
-| productNo | string | 否 | 产品编号，如果指定则只返回该产品信息 |
+| proxyType | number | 是 | 代理类型 (101=静态云平台, 102=静态国内家庭, 103=静态国外家庭) |
+| regionCode | string | 否 | 区域代码 |
 | countryCode | string | 否 | 国家代码 |
 | cityCode | string | 否 | 城市代码 |
-| supplierCode | string | 否 | 供应商代码 |
-| unit | int | 否 | 时长单位，详见字典 |
-| ispType | int | 否 | ISP类型，4=数据中心 |
-| duration | int | 否 | 相对于时长单位的最小购买时长 |
+| staticType | string | 否 | 静态代理类型 |
+| version | string | 否 | API版本，默认v2 |
 
-#### 请求示例
+#### 响应参数
+| 参数名 | 类型 | 说明 |
+|-------|------|------|
+| code | number | 响应码，0表示成功 |
+| msg | string | 响应消息 |
+| data | array | 产品列表 |
 
+#### 产品信息字段
+| 字段名 | 类型 | 说明 |
+|-------|------|------|
+| productNo | string | 产品编号 |
+| productName | string | 产品名称 |
+| proxyType | number | 代理类型 |
+| useType | string | 使用类型 |
+| protocol | string | 协议 |
+| useLimit | number | 使用限制 |
+| sellLimit | number | 销售限制 |
+| areaCode | string | 区域代码 |
+| countryCode | string | 国家代码 |
+| stateCode | string | 州省代码 |
+| cityCode | string | 城市代码 |
+| detail | string | 商品描述 |
+| costPrice | number | 价格 |
+| inventory | number | 库存 |
+| ipType | number | ip类型 |
+| ispType | number | isp类型 |
+| netType | number | 网络类型 |
+| duration | number | 时长 |
+| unit | number | 单位 |
+| bandWidth | number | 带宽 |
+| bandWidthPrice | number | 额外带宽价格 |
+| maxBandWidth | number | 最大带宽 |
+| flow | number | 流量包大小 |
+| cpu | number | CPU数量 |
+| memory | number | 内存容量 |
+| enable | number | 是否可购买 |
+| supplierCode | string | 供应商代码 |
+| ipCount | number | IP数量 |
+| ipDuration | number | IP时长 |
+| assignIp | number | 是否支持指定IP |
+| cidrStatus | number | 是否支持网段 |
+
+### 示例
+请求：
 ```json
 {
-    "version": "v2",
-    "encrypt": "AES",
-    "proxyType": [101],
-    "productNo": "test_product_1"
+  "proxyType": 101,
+  "countryCode": "CN",
+  "cityCode": "CN000SHA"
 }
 ```
 
-#### 响应格式
+响应：
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": [
+    {
+      "productNo": "ipideash_598",
+      "productName": "上海静态云代理",
+      "proxyType": 101,
+      "useType": "1",
+      "protocol": "1",
+      "useLimit": 1,
+      "sellLimit": 1,
+      "areaCode": "1",
+      "countryCode": "CN",
+      "stateCode": "SH",
+      "cityCode": "CN000SHA",
+      "detail": "上海静态云代理",
+      "costPrice": 100,
+      "inventory": 100,
+      "ipType": 1,
+      "ispType": 1,
+      "netType": 1,
+      "duration": 30,
+      "unit": 3,
+      "bandWidth": 100,
+      "bandWidthPrice": 10,
+      "maxBandWidth": 1000,
+      "flow": 1000,
+      "cpu": 1,
+      "memory": 1,
+      "enable": 1,
+      "supplierCode": "SP001",
+      "ipCount": 1,
+      "ipDuration": 30,
+      "assignIp": 1,
+      "cidrStatus": -1
+    }
+  ]
+}
+```
 
-响应数据为列表或字典格式，包含产品信息。
+# API 路由配置文档
+
+## 区域相关 (AREA)
+
+### 获取区域列表
+- 路径: `/api/open/app/area/v2`
+- 方法: POST
+- 参数:
+  - codes: 获取地域代码对应列表，为null获取全部
+- 返回:
+  - code: 地域代码
+  - name: 地域名称
+  - cname: 地域中文名
+  - children: 下级地域
+
+### 获取区域库存
+- 路径: `/api/open/app/area/stock/v2`
+- 方法: POST
+- 参数: 待补充
+- 返回: 待补充
+
+### 获取IP段列表
+- 路径: `/api/open/app/area/ip-ranges/v2`
+- 方法: POST
+- 参数:
+  - proxyType: 代理类型 (101=静态云平台, 102=静态国内家庭, 103=静态国外家庭)
+  - regionCode: 区域代码（可选）
+  - countryCode: 国家代码（可选）
+  - cityCode: 城市代码（可选）
+  - staticType: 静态代理类型（可选）
+  - version: API版本（可选）
+- 返回:
+  - ipStart: 起始IP
+  - ipEnd: 结束IP
+  - ipCount: IP数量
+  - stock: 库存数量
+  - staticType: 静态代理类型
+
+## 国家相关 (COUNTRY)
+
+### 获取国家列表
+- 路径: `/api/open/app/country/list/v2`
+- 方法: POST
+- 参数: 待补充
+- 返回: 待补充
+
+## 城市相关 (CITY)
+
+### 获取城市列表
+- 路径: `/api/open/app/city/list/v2`
+- 方法: POST
+- 参数:
+  - countryCode: 国家代码
+  - appUsername: 用户名
+- 返回:
+  - cityCode: 城市代码
+  - cityName: 城市中文名称
+  - stateCode: 省、州代码
+  - stateName: 省、州中文名称
+  - countryCode: 国家代码
+  - countryName: 国家中文名称
+  - areaCode: 洲代码
+  - areaName: 洲中文名称
+  - status: 状态 1=正常
+
+## 产品相关 (PRODUCT)
+
+### 查询产品列表
+- 路径: `/api/open/app/product/query/v2`
+- 方法: POST
+- 参数: 待补充
+- 返回: 待补充
+
+### 查询产品库存
+- 路径: `/api/open/app/product/stock/v2`
+- 方法: POST
+- 参数: 待补充
+- 返回: 待补充
+
+## 认证相关 (AUTH)
+
+### 登录
+- 路径: `/api/auth/login`
+- 方法: POST
+- 参数: 待补充
+- 返回: 待补充
+
+### 登出
+- 路径: `/api/auth/logout`
+- 方法: POST
+- 参数: 待补充
+- 返回: 待补充
+
+## 用户相关 (USER)
+
+### 获取用户信息
+- 路径: `/api/user/info`
+- 方法: GET
+- 参数: 待补充
+- 返回: 待补充
+
+### 更新用户信息
+- 路径: `/api/user/update`
+- 方法: POST
+- 参数: 待补充
+- 返回: 待补充
+
+## 代理相关 (PROXY)
+
+### 获取代理信息
+- 路径: `/api/proxy/info`
+- 方法: GET
+- 参数: 待补充
+- 返回: 待补充
+
+### 获取代理余额
+- 路径: `/api/proxy/balance`
+- 方法: GET
+- 参数: 待补充
+- 返回: 待补充
+
+### 获取流量使用记录
+- 路径: `/api/proxy/flow/use/log`
+- 方法: GET
+- 参数: 待补充
+- 返回: 待补充
+
+## 注意事项
+
+1. 所有接口都需要在请求头中携带认证信息
+2. 所有POST请求的Content-Type应为application/json
+3. 所有接口的响应格式统一为：
+   ```json
+   {
+     "code": 0,          // 状态码，0表示成功
+     "msg": "success",   // 状态信息
+     "data": {}         // 具体数据
+   }
+   ```
+4. 错误处理：
+   - 401: 未认证或认证失败
+   - 403: 无权限
+   - 404: 资源不存在
+   - 500: 服务器内部错误

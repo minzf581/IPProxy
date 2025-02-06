@@ -8,4 +8,7 @@ Base = declarative_base()
 class TimestampMixin:
     """时间戳混入类"""
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow) 
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+# 导出 Base 类
+__all__ = ['Base', 'TimestampMixin'] 

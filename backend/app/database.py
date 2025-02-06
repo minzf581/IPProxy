@@ -1,15 +1,15 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
-from passlib.hash import bcrypt
 import logging
-from app.models.base import Base
+from app.models.base import Base, TimestampMixin
+from app.core.security import get_password_hash
 
 # 获取当前文件所在目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
 # 使用相对路径构建数据库URL
-DATABASE_URL = f"sqlite:///{os.path.join(current_dir, '..', 'app.db')}"
+DATABASE_URL = f"sqlite:///{os.path.join(current_dir, '..', 'instance', 'test.db')}"
 
 # 创建引擎
 engine = create_engine(DATABASE_URL)
@@ -31,15 +31,11 @@ def get_db():
 def init_db():
     """初始化数据库"""
     # 确保导入所有模型
-    from app.models import (
-        User, Transaction, ResourceType, ResourceUsageStatistics,
-        ResourceUsageHistory, ProxyInfo, AgentPrice, StaticOrder,
-        DynamicOrder, Instance
-    )
+    import app.models
     
     try:
         # 检查数据库文件是否存在
-        db_path = os.path.join(current_dir, '..', 'app.db')
+        db_path = os.path.join(current_dir, '..', 'instance', 'test.db')
         if not os.path.exists(db_path):
             # 创建所有表
             Base.metadata.create_all(bind=engine)
@@ -66,7 +62,7 @@ def init_test_data():
         if not admin:
             admin = User(
                 username="admin",
-                password="admin123",
+                password=get_password_hash("admin123"),
                 email="admin@example.com",
                 is_admin=True,
                 is_agent=False,
@@ -82,7 +78,7 @@ def init_test_data():
         if not agent:
             agent = User(
                 username="agent",
-                password="agent123",
+                password=get_password_hash("agent123"),
                 email="agent@example.com",
                 is_admin=False,
                 is_agent=True,

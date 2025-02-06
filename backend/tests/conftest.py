@@ -14,10 +14,9 @@ from app.utils.auth import create_access_token, get_password_hash
 from app.models.user import User
 from app.models.dashboard import ProxyInfo
 from app.models.resource_usage import ResourceUsageStatistics
-from app.models.static_order import StaticOrder as Order
+from app.models.static_order import StaticOrder
 from app.models.transaction import Transaction
 from tests.mocks.ipproxy_api import MockIPIPVAPI
-from app.services.sync import ipproxy_service
 
 # 使用SQLite内存数据库进行测试
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -124,6 +123,7 @@ def setup_test_database():
     try:
         # 1. 创建管理员用户
         admin = User(
+            id=100,
             username="admin",
             password=get_password_hash("admin123"),
             email="admin@example.com",
@@ -137,6 +137,7 @@ def setup_test_database():
         
         # 2. 创建测试代理商
         agent1 = User(
+            id=101,
             username="agent1",
             password=get_password_hash("agent123"),
             email="agent1@example.com",
@@ -146,6 +147,7 @@ def setup_test_database():
             remark="测试代理商1"
         )
         agent2 = User(
+            id=102,
             username="agent2",
             password=get_password_hash("agent123"),
             email="agent2@example.com",
@@ -161,6 +163,7 @@ def setup_test_database():
         
         # 3. 创建普通用户
         user1 = User(
+            id=103,
             username="user1",
             password=get_password_hash("user123"),
             email="user1@example.com",
@@ -170,6 +173,7 @@ def setup_test_database():
             agent_id=agent1.id  # 使用实际的agent_id
         )
         user2 = User(
+            id=104,
             username="user2",
             password=get_password_hash("user123"),
             email="user2@example.com",
@@ -179,6 +183,7 @@ def setup_test_database():
             agent_id=agent1.id  # 使用实际的agent_id
         )
         user3 = User(
+            id=105,
             username="user3",
             password=get_password_hash("user123"),
             email="user3@example.com",
@@ -214,50 +219,64 @@ def setup_test_database():
         )
         db.add(usage_stats)
         
-        # 6. 创建订单记录
-        order1 = Order(
+        # 6. 创建静态代理订单记录
+        order1 = StaticOrder(
             order_no="ORD202401010001",
-            user_id=user1.id,  # 使用实际的user_id
-            agent_id=agent1.id,  # 使用实际的agent_id
+            app_order_no="IPIPV202401010001",
+            user_id=user1.id,
+            agent_id=agent1.id,
+            product_no="STATIC001",
+            proxy_type=1,
+            region_code="AS",
+            country_code="CN",
+            city_code="SZ",
+            static_type="residential",
+            ip_count=1,
+            duration=30,
+            unit=1,
             amount=100.0,
             status="completed",
-            resource_type="static1",
-            traffic=100,
-            expire_time=datetime.now() + timedelta(days=30),
-            continent="亚洲",
-            country="中国",
-            province="广东",
-            city="深圳"
+            remark="测试订单1"
         )
-        order2 = Order(
+        order2 = StaticOrder(
             order_no="ORD202401010002",
-            user_id=user2.id,  # 使用实际的user_id
-            agent_id=agent1.id,  # 使用实际的agent_id
+            app_order_no="IPIPV202401010002",
+            user_id=user2.id,
+            agent_id=agent1.id,
+            product_no="STATIC002",
+            proxy_type=1,
+            region_code="EU",
+            country_code="DE",
+            city_code="BER",
+            static_type="datacenter",
+            ip_count=1,
+            duration=60,
+            unit=1,
             amount=200.0,
             status="pending",
-            resource_type="static2",
-            traffic=200,
-            expire_time=datetime.now() + timedelta(days=60),
-            continent="欧洲",
-            country="德国",
-            province="柏林",
-            city="柏林"
+            remark="测试订单2"
         )
         db.add_all([order1, order2])
         
         # 7. 创建交易记录
         transaction1 = Transaction(
+            transaction_no="TRX202401010001",
             order_no="TRX202401010001",
-            user_id=user1.id,  # 使用实际的user_id
+            user_id=user1.id,
+            agent_id=agent1.id,
             amount=100.0,
+            balance=1000.0,  # 交易后的余额
             type="recharge",
             status="completed",
             remark="充值"
         )
         transaction2 = Transaction(
+            transaction_no="TRX202401010002",
             order_no="TRX202401010002",
-            user_id=user2.id,  # 使用实际的user_id
+            user_id=user2.id,
+            agent_id=agent1.id,
             amount=50.0,
+            balance=450.0,  # 交易后的余额
             type="consumption",
             status="completed",
             remark="消费"
@@ -307,6 +326,7 @@ def db_session():
         # 初始化测试数据
         # 1. 创建管理员用户
         admin = User(
+            id=100,
             username="admin",
             password=get_password_hash("admin123"),
             email="admin@example.com",
@@ -320,6 +340,7 @@ def db_session():
         
         # 2. 创建测试代理商
         agent1 = User(
+            id=101,
             username="agent1",
             password=get_password_hash("agent123"),
             email="agent1@example.com",
@@ -329,6 +350,7 @@ def db_session():
             remark="测试代理商1"
         )
         agent2 = User(
+            id=102,
             username="agent2",
             password=get_password_hash("agent123"),
             email="agent2@example.com",
@@ -344,6 +366,7 @@ def db_session():
         
         # 3. 创建普通用户
         user1 = User(
+            id=103,
             username="user1",
             password=get_password_hash("user123"),
             email="user1@example.com",
@@ -353,6 +376,7 @@ def db_session():
             agent_id=agent1.id
         )
         user2 = User(
+            id=104,
             username="user2",
             password=get_password_hash("user123"),
             email="user2@example.com",
@@ -362,6 +386,7 @@ def db_session():
             agent_id=agent1.id
         )
         user3 = User(
+            id=105,
             username="user3",
             password=get_password_hash("user123"),
             email="user3@example.com",
@@ -388,5 +413,4 @@ def db_session():
 def mock_ipproxy_api():
     """创建并设置Mock API"""
     mock_api = MockIPIPVAPI()
-    ipproxy_service.set_mock_api(mock_api)
     return mock_api 

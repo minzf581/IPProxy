@@ -150,7 +150,7 @@ export const API_ROUTES = {
   AREA: {
     LIST: '/open/app/area/v2',
     CITIES: '/open/app/city/list/v2',
-    IP_RANGES: '/open/app/area/ip-ranges/v2'
+    IP_RANGES: '/open/app/product/query/v2'
   },
   PROXY: {
     INFO: '/open/app/proxy/info/v2',
@@ -324,9 +324,9 @@ export class IPProxyAPI {
       };
 
       // 5. 构建请求路径
-      const apiPath = endpoint.startsWith('/api/') ? endpoint.substring(4) : 
-                     endpoint.startsWith('/') ? endpoint.substring(1) : 
-                     endpoint;
+      const apiPath = endpoint.startsWith('/api/') ? endpoint : 
+                     endpoint.startsWith('/') ? `/api${endpoint}` : 
+                     `/api/${endpoint}`;
       
       console.log('[request] Using API path:', apiPath);
 
@@ -934,16 +934,39 @@ export class IPProxyAPI {
 
   // 获取IP段列表
   async getIpRanges(params: {
-    regionCode: string;
-    countryCode: string;
-    cityCode: string;
-    staticType: string;
+    proxyType: number;  // 代理类型 (101=静态云平台, 102=静态国内家庭, 103=静态国外家庭)
+    regionCode?: string;  // 区域代码
+    countryCode?: string;  // 国家代码
+    cityCode?: string;  // 城市代码
+    staticType?: string;  // 静态代理类型
+    version?: string;  // API版本
   }): Promise<IpRange[]> {
+    const methodName = 'getIpRanges';
     try {
-      return this.request<IpRange[]>(API_ROUTES.AREA.IP_RANGES, params);
+      logDebug(methodName, '开始请求IP段列表');
+      logDebug(methodName, '请求参数:', params);
+      
+      // 添加默认参数
+      const requestParams = {
+        ...params,
+        version: params.version || 'v2'
+      };
+      
+      logDebug(methodName, '发送请求到:', API_ROUTES.AREA.IP_RANGES);
+      logDebug(methodName, '完整请求参数:', requestParams);
+      
+      const response = await this.request<IpRange[]>(API_ROUTES.AREA.IP_RANGES, requestParams);
+      logDebug(methodName, '收到响应:', response);
+      
+      if (!response || !Array.isArray(response)) {
+        logDebug(methodName, '响应格式不正确:', response);
+        return [];
+      }
+      
+      return response;
     } catch (error) {
-      console.error('[getIpRanges] Error:', error);
-      throw error;
+      logError(methodName, `请求失败: ${error}`);
+      return [];
     }
   }
 

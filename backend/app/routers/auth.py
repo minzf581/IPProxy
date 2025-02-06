@@ -76,9 +76,9 @@ from app.schemas.user import UserCreate, UserLogin, UserResponse
 from app.services.auth import (
     authenticate_user,
     create_access_token,
-    get_current_user,
-    get_password_hash
+    get_current_user
 )
+from app.core.security import get_password_hash
 from datetime import datetime, timedelta
 import logging
 from sqlalchemy.orm import Session
@@ -106,7 +106,7 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
         access_token = create_access_token(data={"sub": str(user.id)})
         return {
             "code": 0,
-            "message": "登录成功",
+            "msg": "登录成功",
             "data": {
                 "token": access_token,
                 "user": UserResponse.from_orm(user)
@@ -127,7 +127,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
     try:
         return {
             "code": 0,
-            "message": "获取用户信息成功",
+            "msg": "获取用户信息成功",
             "data": UserResponse.from_orm(current_user)
         }
     except Exception as e:
@@ -154,7 +154,7 @@ async def update_password(
         current_user.password = get_password_hash(new_password)
         return {
             "code": 0,
-            "message": "密码修改成功",
+            "msg": "密码修改成功",
             "data": None
         }
     except HTTPException:
