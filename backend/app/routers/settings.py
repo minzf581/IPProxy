@@ -165,27 +165,13 @@ async def get_agent_prices(
         # 检查权限：
         # 1. 管理员可以查看所有价格
         # 2. 代理商可以查看自己的价格
-        # 3. 代理商可以查看其下级用户的价格
-        if not current_user.is_admin:  # 非管理员
-            if current_user.id != agent_id:  # 不是查看自己的价格
-                # 检查目标用户是否是当前用户的下级
-                target_user = db.query(User).filter(User.id == agent_id).first()
-                if not target_user:
-                    logger.warning(f"目标代理商 {agent_id} 不存在")
-                    raise HTTPException(status_code=404, detail="目标代理商不存在")
-                    
-                # 检查是否为下级代理商（检查代理商层级关系）
-                current_agent = target_user
-                is_subordinate = False
-                while current_agent and current_agent.agent_id:
-                    if current_agent.agent_id == current_user.id:
-                        is_subordinate = True
-                        break
-                    current_agent = db.query(User).filter(User.id == current_agent.agent_id).first()
-                
-                if not is_subordinate:
-                    logger.warning(f"用户 {current_user.id} 尝试访问代理商 {agent_id} 的价格设置被拒绝")
-                    raise HTTPException(status_code=403, detail="没有权限访问此资源")
+        # 3. 普通用户可以查看其所属代理商的价格
+        if not current_user.is_admin and current_user.id != agent_id and current_user.agent_id != agent_id:
+            logger.warning(f"用户 {current_user.id} 尝试访问代理商 {agent_id} 的价格设置被拒绝")
+            raise HTTPException(
+                status_code=403,
+                detail={"code": 403, "message": "没有权限访问此资源"}
+            )
             
         # 获取代理商价格配置
         agent_price = db.query(AgentPrice).filter(AgentPrice.agent_id == agent_id).first()
@@ -227,7 +213,10 @@ async def get_agent_prices(
     except Exception as e:
         logger.error(f"获取代理商价格设置失败: {str(e)}")
         logger.exception(e)
-        raise HTTPException(status_code=500, detail="获取价格设置失败")
+        raise HTTPException(
+            status_code=500,
+            detail={"code": 500, "message": "获取价格设置失败"}
+        )
 
 @router.put("/agent/{agent_id}/prices")
 async def update_agent_prices(

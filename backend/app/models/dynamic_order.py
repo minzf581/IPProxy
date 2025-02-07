@@ -25,14 +25,22 @@ class DynamicOrder(Base):
     def to_dict(self):
         """转换为前端需要的格式"""
         return {
-            "id": str(self.id),
-            "orderNo": self.order_no,
-            "userId": str(self.user_id),
-            "username": self.user.username if self.user else None,
-            "poolType": self.pool_type,
-            "traffic": self.traffic,
-            "status": self.status or "active",
-            "remark": self.remark or "",
-            "createTime": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
-            "proxyInfo": self.proxy_info
+            "id": self.id,
+            "order_no": self.order_no,
+            "app_order_no": self.app_order_no,
+            "user_id": self.user_id,
+            "agent_id": self.agent_id,
+            "product_no": self.product_no,
+            "proxy_type": self.proxy_type,
+            "region_code": self.region_code,
+            "country_code": self.country_code,
+            "city_code": self.city_code,
+            "ip_count": self.ip_count,
+            "duration": self.duration,
+            "unit": self.unit,
+            "amount": float(self.amount) if self.amount else 0,
+            "status": self.status,
+            "callback_count": self.callback_count,
+            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+            "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M:%S") if self.updated_at else None
         } 

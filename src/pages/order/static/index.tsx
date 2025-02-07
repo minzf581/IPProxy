@@ -6,6 +6,7 @@ import { SearchOutlined, EyeOutlined, DownloadOutlined, ReloadOutlined } from '@
 import dayjs from 'dayjs';
 import { exportToExcel, exportToTxt } from '@/utils/export';
 import styles from './index.module.less';
+import request from '@/utils/request';
 
 interface StaticOrderData {
   id: number;
@@ -13,7 +14,7 @@ interface StaticOrderData {
   userId: number;
   agentAccount: string;
   amount: number;
-  status: number;
+  status: string;
   resourceType: string;
   traffic: number;
   expireTime: string;
@@ -34,7 +35,7 @@ interface SearchParams {
   orderNo?: string;
   userId?: number;
   agentAccount?: string;
-  status?: number;
+  status?: string;
   resourceType?: string;
   location?: string[];
   startTime?: string;
@@ -51,7 +52,7 @@ const StaticOrderPage: React.FC = () => {
   const [detailVisible, setDetailVisible] = useState(false);
   const [currentOrder, setCurrentOrder] = useState<StaticOrderData | null>(null);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [locationOptions, setLocationOptions] = useState([]);
+  const [locationOptions, setLocationOptions] = useState<any[]>([]);
 
   // 资源类型选项
   const resourceTypeOptions = [
@@ -111,10 +112,10 @@ const StaticOrderPage: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (status: number) => {
-        const statusMap: Record<number, { text: string; color: string }> = {
-          1: { text: '使用中', color: 'green' },
-          2: { text: '已过期', color: 'red' },
+      render: (status: string) => {
+        const statusMap: Record<string, { text: string; color: string }> = {
+          '1': { text: '使用中', color: 'green' },
+          '2': { text: '已过期', color: 'red' },
         };
         return <span style={{ color: statusMap[status]?.color }}>{statusMap[status]?.text}</span>;
       },
@@ -153,28 +154,97 @@ const StaticOrderPage: React.FC = () => {
   const fetchData = async (page = currentPage, size = pageSize, search = {}) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/open/app/order/v2?page=${page}&size=${size}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(search),
+      console.log('[Order List Debug] Fetching data with params:', { page, size, search });
+      const response = await request.post('/open/app/order/v2', search, {
+        params: {
+          page,
+          size
+        }
       });
-      const result = await response.json();
-      if (result.code === 0) {
-        setData(result.data.list);
-        setTotal(result.data.total);
+      
+      console.log('[Order List Debug] Response:', response);
+      
+      if (response.code === 0) {
+        const orderList = response.data.list || [];
+        const totalCount = response.data.total || 0;
+        
+        // 确保数据格式正确
+        const formattedData = orderList.map((order: any) => ({
+          id: order.id || 0,
+          orderNo: order.order_no || '',
+          userId: order.user_id || 0,
+          agentAccount: order.agent_username || '',
+          amount: order.amount || 0,
+          status: order.status || '',
+          resourceType: order.resource_type || '',
+          traffic: order.traffic || 0,
+          expireTime: order.expire_time || '',
+          createTime: order.created_at || '',
+          continent: order.continent || '',
+          country: order.country || '',
+          province: order.province || '',
+          city: order.city || '',
+          proxyInfo: order.proxy_info || null
+        }));
+        
+        console.log('[Order List Debug] Formatted data:', formattedData);
+        
+        setData(formattedData);
+        setTotal(totalCount);
       } else {
-        message.error(result.msg || '获取订单列表失败');
+        message.error(response.msg || '获取订单列表失败');
       }
-    } catch (error) {
-      message.error('获取订单列表失败');
+    } catch (error: any) {
+      console.error('[Order List Error]', error);
+      message.error(error.message || '获取订单列表失败');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
+  };
+
+  // 加载地理位置选项
+  const loadLocationOptions = async () => {
+    try {
+      console.log('[Location Options Debug] Loading location options');
+      const response = await request.get('/open/app/location/options/v2');
+      
+      if (response.code === 0) {
+        const options = response.data || {};
+        const formattedOptions = [
+          {
+            value: 'all',
+            label: '全部',
+            children: Object.entries(options.regions || {}).map(([code, name]) => ({
+              value: code,
+              label: name,
+              children: Object.entries(options.countries || {})
+                .filter(([_, country]) => country.region === code)
+                .map(([countryCode, country]) => ({
+                  value: countryCode,
+                  label: country.name,
+                  children: Object.entries(options.cities || {})
+                    .filter(([_, city]) => city.country === countryCode)
+                    .map(([cityCode, city]) => ({
+                      value: cityCode,
+                      label: city.name
+                    }))
+                }))
+            }))
+          }
+        ];
+        
+        console.log('[Location Options Debug] Formatted options:', formattedOptions);
+        setLocationOptions(formattedOptions);
+      }
+    } catch (error: any) {
+      console.error('[Location Options Error]', error);
+      message.error('加载位置选项失败');
+    }
   };
 
   useEffect(() => {
     fetchData();
+    loadLocationOptions();
   }, []);
 
   const handleSearch = async (values: SearchParams) => {
@@ -229,17 +299,6 @@ const StaticOrderPage: React.FC = () => {
     ]
   };
 
-  // 加载地理位置选项
-  useEffect(() => {
-    fetch('/api/open/app/location/options/v2')
-      .then(res => res.json())
-      .then(data => {
-        if (data.code === 0) {
-          setLocationOptions(data.data);
-        }
-      });
-  }, []);
-
   return (
     <div className={styles.container}>
       <Card bordered={false}>
@@ -293,8 +352,8 @@ const StaticOrderPage: React.FC = () => {
                   allowClear
                   style={{ width: '100%' }}
                 >
-                  <Select.Option value={1}>使用中</Select.Option>
-                  <Select.Option value={2}>已过期</Select.Option>
+                  <Select.Option value="1">使用中</Select.Option>
+                  <Select.Option value="2">已过期</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
@@ -361,7 +420,7 @@ const StaticOrderPage: React.FC = () => {
               <p><strong>位置信息：</strong>{currentOrder.continent} / {currentOrder.country} / {currentOrder.province} / {currentOrder.city}</p>
               <p><strong>资源类型：</strong>{currentOrder.resourceType}</p>
               <p><strong>金额：</strong>¥{currentOrder.amount.toFixed(2)}</p>
-              <p><strong>状态：</strong>{currentOrder.status === 1 ? '使用中' : '已过期'}</p>
+              <p><strong>状态：</strong>{currentOrder.status === '1' ? '使用中' : '已过期'}</p>
               <p><strong>过期时间：</strong>{dayjs(currentOrder.expireTime).format('YYYY-MM-DD HH:mm:ss')}</p>
               <p><strong>创建时间：</strong>{dayjs(currentOrder.createTime).format('YYYY-MM-DD HH:mm:ss')}</p>
               {currentOrder.proxyInfo && (

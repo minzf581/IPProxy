@@ -138,6 +138,9 @@ import logging
 from passlib.hash import bcrypt
 from app.services.ipipv_base_api import IPIPVBaseAPI
 from app.schemas.user import UserCreate, UserResponse, UserLogin, UserBase, UserInDB
+import json
+import traceback
+from app.services.static_order_service import StaticOrderService
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -495,150 +498,110 @@ async def activate_business(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """激活业务"""
+    """激活用户业务"""
     try:
-        # 检查用户是否存在
+        logger.info(f"[Business Activation] 开始处理业务激活请求: user_id={user_id}")
+        logger.info(f"[Business Activation] 请求数据: {json.dumps(data, ensure_ascii=False)}")
+        
+        # 验证用户存在
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
-            raise HTTPException(status_code=404, detail={"code": 404, "msg": "用户不存在"})
-        
-        # 检查权限：管理员可以为任何用户激活业务，代理商只能为其下属用户激活业务
-        if not current_user.is_admin and current_user.id != user.agent_id:
-            raise HTTPException(status_code=403, detail={"code": 403, "msg": "没有权限执行此操作"})
-        
-        # 获取代理商价格设置
-        agent = db.query(User).filter(User.id == user.agent_id).first()
-        if not agent:
-            raise HTTPException(status_code=404, detail={"code": 404, "msg": "代理商不存在"})
+            logger.error(f"[Business Activation] 用户不存在: user_id={user_id}")
+            raise HTTPException(
+                status_code=404,
+                detail={"code": 404, "message": "用户不存在"}
+            )
             
-        price_settings = db.query(AgentPrice).filter(AgentPrice.agent_id == agent.id).first()
-        if not price_settings:
-            price_settings = AgentPrice(agent_id=agent.id)
-            db.add(price_settings)
-            db.commit()
-            db.refresh(price_settings)
-        
-        # 计算业务费用
-        if data["proxyType"] == "dynamic":
-            resource_type = data.get("poolType", "resource1")  # 默认使用resource1的价格
-            unit_price = price_settings.get_dynamic_price(resource_type)
-            total_cost = int(data["traffic"]) * unit_price
-        else:
-            resource_type = data.get("staticType", "resource1")  # 默认使用resource1的价格
-            region = data.get("region", "asia").lower()  # 默认使用亚洲的价格
-            unit_price = price_settings.get_static_price(resource_type, region)
-            total_cost = int(data["quantity"]) * int(data["duration"]) * unit_price
-        
-        # 检查代理商余额是否充足
-        if agent.balance < total_cost:
+        # 验证权限
+        if not current_user.is_admin and current_user.id != user_id:
+            logger.error(f"[Business Activation] 权限不足: current_user={current_user.id}, target_user={user_id}")
+            raise HTTPException(
+                status_code=403,
+                detail={"code": 403, "message": "无权操作此用户"}
+            )
+            
+        # 获取代理商信息
+        agent = db.query(User).filter(User.id == data.get("agentId")).first()
+        if not agent or not agent.is_agent:
+            logger.error(f"[Business Activation] 代理商不存在或无效: agent_id={data.get('agentId')}")
             raise HTTPException(
                 status_code=400,
-                detail={
-                    "code": 400,
-                    "msg": f"代理商余额不足，需要 {total_cost} 元，当前余额 {agent.balance} 元"
-                }
+                detail={"code": 400, "message": "无效的代理商"}
             )
+            
+        # 调用产品库存服务
+        ipipv_api = IPIPVBaseAPI()  # 创建 API 实例
+        product_service = StaticOrderService(db, ipipv_api)  # 传入 API 实例
+        activation_result = await product_service.activate_business(
+            user_id=user_id,
+            username=user.username,
+            agent_id=agent.id,
+            agent_username=agent.username,
+            proxy_type=data.get("proxyType"),
+            pool_type=data.get("poolType"),
+            traffic=data.get("traffic"),
+            region=data.get("region"),
+            country=data.get("country"),
+            city=data.get("city"),
+            static_type=data.get("staticType"),
+            ip_range=data.get("ipRange"),
+            duration=data.get("duration"),
+            quantity=data.get("quantity"),
+            remark=data.get("remark"),
+            total_cost=float(data.get("total_cost", 0))
+        )
         
-        # 生成订单号
-        order_no = generate_order_no()
+        if not activation_result or activation_result.get("code") != 0:
+            error_msg = activation_result.get("msg") if activation_result else "业务激活失败"
+            logger.error(f"[Business Activation] 激活失败: {error_msg}")
+            raise HTTPException(
+                status_code=400,
+                detail={"code": 400, "message": error_msg}
+            )
+            
+        # 更新代理商统计信息
+        agent_stats = db.query(AgentStatistics).filter(
+            AgentStatistics.agent_id == agent.id
+        ).first()
         
-        # 调用代理服务API
-        api_response = await call_proxy_service_api(data)
-        if not api_response.get("success"):
+        if agent_stats:
+            agent_stats.total_users += 1
+            agent_stats.active_users += 1
+            db.add(agent_stats)
+            
+        try:
+            db.commit()
+            logger.info("[Business Activation] 数据库更新成功")
+        except Exception as e:
+            db.rollback()
+            logger.error(f"[Business Activation] 数据库更新失败: {str(e)}")
             raise HTTPException(
                 status_code=500,
-                detail={"code": 500, "msg": api_response.get("message", "激活业务失败")}
+                detail={"code": 500, "message": "数据库更新失败"}
             )
-        
-        # 创建交易记录
-        transaction = Transaction(
-            transaction_no=f"TR{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}",
-            order_no=order_no,
-            user_id=user.id,
-            agent_id=agent.id,
-            amount=total_cost,
-            balance=agent.balance - total_cost,  # 添加交易后余额
-            type="consume",  # 修改为正确的交易类型
-            status="success",  # 修改为正确的状态
-            remark=f"业务激活: {data.get('remark', '')}"
-        )
-        db.add(transaction)
-        
-        # 更新代理商余额和统计信息
-        agent.balance -= total_cost
-        
-        # 获取或创建代理商统计信息
-        stats = db.query(AgentStatistics).filter(AgentStatistics.agent_id == agent.id).first()
-        if not stats:
-            stats = AgentStatistics(agent_id=agent.id)
-            db.add(stats)
-        
-        # 更新统计信息
-        stats.update_consumption(total_cost)
-        if data["proxyType"] == "dynamic":
-            stats.update_resource_count(is_dynamic=True, count=int(data["traffic"]))
-        else:
-            stats.update_resource_count(is_dynamic=False, count=int(data["quantity"]))
-        
-        # 创建业务订单
-        if data["proxyType"] == "dynamic":
-            order = DynamicOrder(
-                order_no=order_no,
-                user_id=user.id,
-                agent_id=agent.id,
-                pool_type=data["poolType"],
-                traffic=int(data["traffic"]),
-                status="active",
-                remark=data.get("remark"),
-                proxy_info=api_response.get("data", {})
-            )
-        else:
-            order = StaticOrder(
-                order_no=order_no,
-                app_order_no=order_no,  # 使用相同的订单号作为 app_order_no
-                user_id=user.id,
-                agent_id=user.agent_id,  # 添加 agent_id
-                region_code=data["region"],
-                country_code=data["country"],
-                city_code=data["city"],
-                static_type=data["staticType"],
-                ip_count=int(data["quantity"]),
-                duration=int(data["duration"]),
-                unit=1,  # 默认单位为天
-                amount=total_cost,
-                status="active",
-                remark=data.get("remark"),
-                proxy_type=103,  # 静态代理类型
-                product_no=data.get("product_no", "")
-            )
-        
-        db.add(order)
-        db.commit()
-        db.refresh(agent)
-        db.refresh(stats)
-        db.refresh(order)
-        
+            
         return {
             "code": 0,
-            "msg": "业务激活成功",
+            "msg": "success",
             "data": {
-                "order": order.to_dict(),
-                "agent": agent.to_dict(),
-                "statistics": stats.to_dict()
+                "order": activation_result.get("data", {}),
+                "agent": {
+                    "id": agent.id,
+                    "username": agent.username,
+                    "balance": float(agent.balance)
+                },
+                "statistics": agent_stats.to_dict() if agent_stats else {}
             }
         }
+        
     except HTTPException:
-        db.rollback()
         raise
     except Exception as e:
-        db.rollback()
-        logger.error(f"激活业务失败: {str(e)}")
+        logger.error(f"[Business Activation] 处理失败: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(
-            status_code=500, 
-            detail={
-                "code": 500,
-                "msg": str(e)
-            }
+            status_code=500,
+            detail={"code": 500, "message": f"业务激活失败: {str(e)}"}
         )
 
 @router.post("/user/{user_id}/renew")

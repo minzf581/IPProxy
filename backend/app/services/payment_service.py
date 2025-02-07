@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 import uuid
 from decimal import Decimal
+import logging
 
 from app.models.user import User
 from app.models.transaction import Transaction
@@ -38,19 +39,27 @@ class PaymentService:
         Returns:
             Dict: 支付结果
         """
+        logger = logging.getLogger(__name__)
+        logger.info(f"[PaymentService] 开始处理订单支付: order_no={order_no}, amount={amount}")
+        
         try:
             # 获取用户信息
             user = self.db.query(User).filter(User.id == user_id).first()
             if not user:
+                logger.error(f"[PaymentService] 用户不存在: user_id={user_id}")
                 raise HTTPException(status_code=404, detail="用户不存在")
                 
             # 检查余额
+            logger.info(f"[PaymentService] 用户当前余额: {user.balance}, 需支付金额: {amount}")
             if user.balance < amount:
+                logger.error(f"[PaymentService] 用户余额不足: balance={user.balance}, amount={amount}")
                 raise HTTPException(status_code=400, detail="余额不足")
                 
             # 扣减余额
+            original_balance = user.balance
             user.balance -= amount
             self.db.add(user)
+            logger.info(f"[PaymentService] 扣减余额: {original_balance} -> {user.balance}")
             
             # 创建交易记录
             transaction = Transaction(
@@ -65,6 +74,7 @@ class PaymentService:
                 remark=f"购买{'静态' if order_type == 'static' else '动态'}代理"
             )
             self.db.add(transaction)
+            logger.info(f"[PaymentService] 创建交易记录: transaction_no={transaction.transaction_no}")
             
             # 如果是静态代理订单，更新订单状态
             if order_type == "static":
@@ -74,24 +84,36 @@ class PaymentService:
                 if order:
                     order.status = "paid"
                     self.db.add(order)
+                    logger.info(f"[PaymentService] 更新订单状态为已支付: order_no={order_no}")
+                else:
+                    logger.warning(f"[PaymentService] 未找到静态代理订单: order_no={order_no}")
             
-            # 提交事务
-            self.db.commit()
-            
-            return {
-                "code": 0,
-                "msg": "支付成功",
-                "data": {
-                    "transaction_no": transaction.transaction_no,
-                    "amount": float(transaction.amount),
-                    "balance": float(transaction.balance)
+            try:
+                # 提交事务
+                self.db.commit()
+                logger.info("[PaymentService] 数据库事务提交成功")
+                
+                return {
+                    "code": 0,
+                    "msg": "支付成功",
+                    "data": {
+                        "transaction_no": transaction.transaction_no,
+                        "amount": float(transaction.amount),
+                        "balance": float(transaction.balance)
+                    }
                 }
-            }
+            except Exception as e:
+                logger.error(f"[PaymentService] 数据库事务提交失败: {str(e)}")
+                self.db.rollback()
+                raise
             
         except HTTPException as e:
+            logger.error(f"[PaymentService] 支付处理失败(HTTP异常): {str(e)}")
             self.db.rollback()
             raise e
         except Exception as e:
+            logger.error(f"[PaymentService] 支付处理失败(未知异常): {str(e)}")
+            logger.exception(e)
             self.db.rollback()
             raise HTTPException(status_code=500, detail=f"支付失败: {str(e)}")
             

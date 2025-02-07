@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.services.product_inventory_service import ProductInventoryService
+from app.services.static_order_service import StaticOrderService
 from app.services.ipipv_base_api import IPIPVBaseAPI
 from app.utils.auth import get_current_user
 import logging
@@ -15,7 +15,7 @@ router = APIRouter()
 async def sync_product_inventory(db: Session = Depends(get_db)):
     """同步产品库存"""
     try:
-        service = ProductInventoryService(db, IPIPVBaseAPI())
+        service = StaticOrderService(db, IPIPVBaseAPI())
         success = await service.sync_product_inventory()
         if not success:
             raise HTTPException(status_code=500, detail="同步产品库存失败")
@@ -32,7 +32,7 @@ async def get_product_inventory(
     db: Session = Depends(get_db)
 ):
     """获取产品库存信息"""
-    service = ProductInventoryService(db, IPIPVBaseAPI())
+    service = StaticOrderService(db, IPIPVBaseAPI())
     return service.get_product_inventory(
         area_code=area_code,
         country_code=country_code,
@@ -53,7 +53,7 @@ async def activate_business(
         if not current_user.is_agent and current_user.id != user_id:
             raise HTTPException(status_code=403, detail="没有权限执行此操作")
 
-        service = ProductInventoryService(db, IPIPVBaseAPI())
+        service = StaticOrderService(db, IPIPVBaseAPI())
         result = await service.activate_business(
             user_id=user_id,
             username=order_data["username"],
@@ -91,7 +91,7 @@ async def deactivate_business(
         if not current_user.is_agent and current_user.id != user_id:
             raise HTTPException(status_code=403, detail="没有权限执行此操作")
 
-        service = ProductInventoryService(db, IPIPVBaseAPI())
+        service = StaticOrderService(db, IPIPVBaseAPI())
         result = await service.deactivate_business(
             user_id=user_id,
             order_no=order_data["orderNo"],
@@ -125,7 +125,7 @@ async def query_products(
     try:
         logger.info(f"[产品查询] 收到请求参数: {params}")
         
-        service = ProductInventoryService(db, IPIPVBaseAPI())
+        service = StaticOrderService(db, IPIPVBaseAPI())
         logger.info("[产品查询] 开始调用服务层查询产品")
         
         result = await service.query_products(params)

@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.endpoints import product, static_order
+from app.api.endpoints import product
 from app.routers import callback
 
 api_router = APIRouter()
@@ -8,12 +8,6 @@ api_router = APIRouter()
 api_router.include_router(
     product.router,
     tags=["product"]
-)
-
-# 注册静态代理订单路由
-api_router.include_router(
-    static_order.router,
-    tags=["static_order"]
 )
 
 # 注册回调路由

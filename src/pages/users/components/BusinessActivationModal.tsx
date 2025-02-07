@@ -16,7 +16,18 @@ const { Option } = Select;
 
 export interface BusinessActivationModalProps {
   visible: boolean;
-  user: User;
+  user: {
+    id: number;
+    username: string;
+    agent_id?: number;
+    agent_username?: string;
+    status: string;
+    balance: number;
+    email?: string;
+    is_agent: boolean;
+    created_at: string;
+    updated_at: string;
+  };
   onCancel: () => void;
   onSuccess: () => void;
 }
@@ -52,6 +63,12 @@ interface FormValues {
   duration?: number;
   quantity?: string;
   remark?: string;
+}
+
+interface ApiResponse<T = any> {
+  code: number;
+  msg: string;
+  data: T;
 }
 
 // 预设的静态类型
@@ -370,70 +387,46 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
   const handleSubmit = async (values: FormValues) => {
     try {
       setLoading(true);
-      
-      if (!prices) {
-        message.error('价格配置获取失败，请刷新重试');
-        return;
-      }
+      console.log('[handleSubmit] 开始处理表单提交:', values);
 
-      // 使用动态价格计算总费用
-      const total_cost = proxyType === 'dynamic'
-        ? parseInt(values.traffic || '0') * prices.dynamic_proxy_price
-        : parseInt(values.quantity || '0') * parseInt(values.duration?.toString() || '0') * prices.static_proxy_price;
-
+      // 构建订单数据
       const orderData: OrderData = {
         userId: user.id.toString(),
         username: user.username,
+        agentId: user.agent_id?.toString() || '',
+        agentUsername: user.agent_username || '',
         proxyType: values.proxyType,
-        poolType: values.poolType,
-        traffic: values.traffic,
         region: values.region,
         country: values.country,
         city: values.city,
         staticType: values.staticType,
-        ipRange: values.ipRange,
         duration: values.duration,
         quantity: values.quantity,
         remark: values.remark,
-        agentId: currentUser?.id.toString() || '',
-        agentUsername: currentUser?.username || '',
-        total_cost: total_cost
+        total_cost: totalCost
       };
 
-      console.log('=== 业务开通请求信息 ===');
-      console.log('代理商ID:', currentUser?.id);
-      console.log('代理商用户名:', currentUser?.username);
-      console.log('用户ID:', user.id);
-      console.log('用户名:', user.username);
-      console.log('请求数据:', orderData);
+      console.log('[handleSubmit] 构建的订单数据:', orderData);
 
-      const activateUrl = API_ROUTES.USER.ACTIVATE_BUSINESS.replace('{id}', user.id.toString());
-      console.log('激活业务URL:', activateUrl);
-      
-      const response = await api.post(activateUrl, orderData);
-      console.log('业务激活响应:', response);
-      
+      // 构建API URL
+      const url = `user/${user.id}/activate-business`;
+      console.log('[handleSubmit] 激活业务URL:', url);
+
+      // 发送请求
+      const response = await api.post(url, orderData);
+      console.log('[handleSubmit] 业务激活响应:', response.data);
+
       if (response.data?.code === 0) {
-        console.log('业务激活成功，准备调用回调函数');
-        message.success(response.data.msg || '业务激活成功');
-        console.log('调用onSuccess回调');
+        message.success('业务激活成功');
         onSuccess();
-        console.log('调用onCancel回调');
         onCancel();
-        console.log('回调函数调用完成');
       } else {
-        console.error('业务激活失败:', response.data);
+        console.error('[handleSubmit] 业务激活失败:', response.data?.msg);
         message.error(response.data?.msg || '业务激活失败');
       }
     } catch (error: any) {
-      console.error('业务激活失败:', error);
-      if (error.response?.status === 403) {
-        message.error('没有权限执行此操作');
-      } else if (error.response?.status === 400) {
-        message.error(error.response.data?.msg || '请求参数错误');
-      } else {
-        message.error(error.response?.data?.msg || '业务激活失败，请稍后重试');
-      }
+      console.error('[handleSubmit] 业务激活出错:', error);
+      message.error(error.response?.data?.msg || error.message || '业务激活失败');
     } finally {
       console.log('设置loading状态为false');
       setLoading(false);
@@ -627,9 +620,21 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
   return (
     <Modal
       title="业务开通"
-      visible={visible}
+      open={visible}
       onCancel={onCancel}
-      footer={null}
+      footer={[
+        <Button key="cancel" onClick={onCancel}>
+          取消
+        </Button>,
+        <Button
+          key="submit"
+          type="primary"
+          loading={loading}
+          onClick={() => form.submit()}
+        >
+          支付
+        </Button>
+      ]}
       width={800}
     >
       <Form
@@ -798,24 +803,6 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
         <Row gutter={24}>
           <Col span={24}>
             {renderPriceInfo()}
-          </Col>
-        </Row>
-
-        <Row justify="end" style={{ marginTop: 24 }}>
-          <Col>
-            <Space>
-              <Button onClick={onCancel}>
-                取消
-              </Button>
-              <Button 
-                type="primary" 
-                htmlType="submit" 
-                loading={loading} 
-                disabled={!hasInput || (proxyType === 'static' && totalCost > (currentUser?.balance || 0))}
-              >
-                支付
-              </Button>
-            </Space>
           </Col>
         </Row>
       </Form>

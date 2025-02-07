@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="token",
+    tokenUrl="auth/login",  # 修改为实际的登录接口路径
     auto_error=False  # 允许自定义错误消息
 )
 
@@ -39,10 +39,14 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         return None
 
 def verify_token(token: str):
+    """验证令牌"""
     try:
+        logger.info(f"[Auth Service] Verifying token: {token[:10]}...")
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        logger.info(f"[Auth Service] Token decoded successfully: {payload}")
         return payload
-    except PyJWTError:
+    except PyJWTError as e:
+        logger.error(f"[Auth Service] Token verification failed: {str(e)}")
         return None
 
 async def authenticate_user(username: str, password: str, db: Session) -> Optional[User]:
@@ -78,13 +82,16 @@ async def get_current_user(
     x_app_key: str = Header(None, alias="X-App-Key"),
     x_app_secret: str = Header(None, alias="X-App-Secret"),
     db: Session = Depends(get_db)
-) -> User:
+) -> Optional[User]:
     """获取当前用户"""
+    logger.info("[Auth Service] Getting current user")
+    
     # 如果有X-App-Key和X-App-Secret，优先使用这些进行认证
     if x_app_key and x_app_secret:
+        logger.info("[Auth Service] Using API key authentication")
         if x_app_key == os.getenv('APP_ID', "AK20241120145620") and \
            x_app_secret == os.getenv('APP_SECRET', "bf3ffghlt0hpc4omnvc2583jt0fag6a4"):
-            # 返回一个系统用户
+            logger.info("[Auth Service] API key authentication successful")
             return User(
                 id=0,
                 username="system",
@@ -95,14 +102,12 @@ async def get_current_user(
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow()
             )
+        else:
+            logger.warning("[Auth Service] Invalid API key or secret")
     
-    # 否则使用JWT令牌认证
     if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": 401, "message": "未授权"},
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        logger.error("[Auth Service] No token provided")
+        return None
         
     try:
         logger.debug("开始验证访问令牌")
@@ -114,43 +119,21 @@ async def get_current_user(
             logger.debug(f"令牌解码结果: {payload}")
             if user_id is None:
                 logger.error("令牌中没有用户ID")
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail={"code": 401, "message": "未授权"},
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
+                return None
         except PyJWTError:
             logger.error("令牌解码失败")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": 401, "message": "未授权"},
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            return None
             
         try:
             user_id_int = int(user_id)
             user = db.query(User).filter(User.id == user_id_int).first()
             if user is None:
                 logger.error(f"找不到用户ID: {user_id_int}")
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail={"code": 401, "message": "未授权"},
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
+                return None
             return user
         except ValueError:
             logger.error(f"无效的用户ID格式: {user_id}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={"code": 401, "message": "未授权"},
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-    except HTTPException:
-        raise
+            return None
     except Exception as e:
         logger.error(f"验证访问令牌时发生错误: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": 401, "message": "未授权"},
-            headers={"WWW-Authenticate": "Bearer"},
-        ) 
+        return None 

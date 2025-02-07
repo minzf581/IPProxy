@@ -6,9 +6,18 @@ import axios, {
 } from 'axios';
 import { API_BASE } from '@/shared/routes';
 
+// 公开路径列表
+const PUBLIC_PATHS = [
+  '/auth/login',
+  '/open/app/area/v2',
+  '/open/app/city/list/v2',
+  '/open/app/order/v2',
+  '/open/app/location/options/v2'
+];
+
 // 创建 axios 实例
 export const api: AxiosInstance = axios.create({
-  baseURL: API_BASE,
+  baseURL: '/api',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json'
@@ -18,76 +27,51 @@ export const api: AxiosInstance = axios.create({
 // 请求拦截器
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // 从 localStorage 获取 token
     const token = localStorage.getItem('token');
+    const url = config.url || '';
+    const isPublicPath = PUBLIC_PATHS.some(path => url.includes(path));
+    
+    console.log('[Request Debug] URL:', url);
+    console.log('[Request Debug] Is Public Path:', isPublicPath);
+    console.log('[Request Debug] Token:', token ? 'exists' : 'not found');
+    
+    // 添加token（如果存在）
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    // 调试日志
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Request:', {
-        url: config.url,
-        method: config.method,
-        data: config.data,
-        params: config.params
-      });
     }
     
     return config;
   },
   (error) => {
+    console.error('[Request Error]', error);
     return Promise.reject(error);
   }
 );
 
 // 响应拦截器
 api.interceptors.response.use(
-  (response: AxiosResponse) => {
-    // 调试日志
-    if (process.env.NODE_ENV === 'development') {
-      console.log('Response:', {
-        url: response.config.url,
-        status: response.status,
-        data: response.data
-      });
+  (response) => {
+    const data = response.data;
+    
+    // 如果返回的code不是0，说明有错误
+    if (data && data.code !== 0) {
+      // 如果是401，说明token无效或过期
+      if (data.code === 401) {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+        return Promise.reject(new Error(data.msg || '未授权，请重新登录'));
+      }
+      // 其他错误直接reject
+      return Promise.reject(new Error(data.msg || '请求失败'));
     }
     
-    // 如果响应数据是标准格式（包含 code、msg、data），直接返回
-    if (response.data && 'code' in response.data) {
-      return response.data;
-    }
-    
-    // 否则，将响应数据包装成标准格式
-    return {
-      code: 0,
-      msg: 'success',
-      data: response.data
-    };
+    return data;
   },
   (error) => {
-    if (error.response) {
-      switch (error.response.status) {
-        case 401:
-          // 未授权，清除 token 并跳转到登录页
-          localStorage.removeItem('token');
-          window.location.href = '/login';
-          break;
-        case 403:
-          // 权限不足
-          console.error('权限不足');
-          break;
-        case 404:
-          // 请求的资源不存在
-          console.error('请求的资源不存在');
-          break;
-        case 500:
-          // 服务器错误
-          console.error('服务器错误');
-          break;
-        default:
-          console.error('请求失败');
-      }
+    console.error('[Response Error]', error);
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
     }
     return Promise.reject(error);
   }

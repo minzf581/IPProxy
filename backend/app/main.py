@@ -48,8 +48,8 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from app.models.base import Base
 from app.database import engine, init_db, init_test_data, get_db
-from app.routers import user, agent, dashboard, auth, transaction, order, proxy, instance, area, settings
-from app.services.product_inventory_service import ProductInventoryService
+from app.routers import user, agent, dashboard, auth, transaction, order, proxy, instance, area, settings, callback
+from app.services.static_order_service import StaticOrderService
 from app.services.ipipv_base_api import IPIPVBaseAPI
 import uvicorn
 import logging
@@ -61,6 +61,8 @@ from app.core.security import get_password_hash
 from app.api.endpoints import product
 from app.core.config import settings as app_settings
 import logging.config
+from fastapi.security import OAuth2PasswordBearer
+from app.services.auth import verify_token, get_current_user
 
 # 配置日志
 LOGGING_CONFIG = {
@@ -151,6 +153,7 @@ app.include_router(dashboard.router, prefix=prefix, tags=["仪表盘"])
 app.include_router(settings.router, prefix=prefix, tags=["设置"])
 app.include_router(area.router, prefix=prefix, tags=["区域"])
 app.include_router(product.router, prefix=prefix, tags=["产品"])
+app.include_router(callback.router, prefix=prefix, tags=["回调"])
 
 async def ensure_default_users():
     """确保默认用户存在"""
@@ -299,6 +302,73 @@ async def db_session_middleware(request: Request, call_next):
     finally:
         request.state.db.close()
     return response
+
+# 添加认证中间件
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """认证中间件，处理请求的认证"""
+    logger.info(f"[Auth Middleware] Processing request: {request.url.path}")
+    
+    # 不需要认证的路径
+    public_paths = [
+        "/api/auth/login",
+        "/api/open/app/area/v2",
+        "/api/open/app/city/list/v2",
+        "/api/open/app/order/v2",
+        "/api/open/app/location/options/v2",
+        "/docs",
+        "/redoc",
+        "/openapi.json"
+    ]
+    
+    # 如果是公开路径，直接放行
+    if any(request.url.path.startswith(path) for path in public_paths):
+        logger.info(f"[Auth Middleware] Public path: {request.url.path}, skipping auth")
+        return await call_next(request)
+    
+    # 获取认证头
+    auth_header = request.headers.get("Authorization")
+    logger.info(f"[Auth Middleware] Authorization header: {auth_header}")
+    
+    if not auth_header:
+        logger.warning("[Auth Middleware] No Authorization header found")
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "message": "未授权"}
+        )
+    
+    # 验证 Bearer token
+    try:
+        scheme, token = auth_header.split()
+        if scheme.lower() != "bearer":
+            logger.warning(f"[Auth Middleware] Invalid auth scheme: {scheme}")
+            return JSONResponse(
+                status_code=401,
+                content={"code": 401, "message": "无效的认证方案"}
+            )
+            
+        # 验证 token
+        user_id = verify_token(token)
+        if not user_id:
+            logger.warning("[Auth Middleware] Invalid token")
+            return JSONResponse(
+                status_code=401,
+                content={"code": 401, "message": "无效的令牌"}
+            )
+            
+        logger.info(f"[Auth Middleware] Token verified, user_id: {user_id}")
+        # 将用户信息添加到请求状态中
+        request.state.user_id = user_id
+        
+        # 继续处理请求
+        return await call_next(request)
+        
+    except Exception as e:
+        logger.error(f"[Auth Middleware] Auth failed: {str(e)}")
+        return JSONResponse(
+            status_code=401,
+            content={"code": 401, "message": "认证失败"}
+        )
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True) 

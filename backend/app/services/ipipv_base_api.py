@@ -75,9 +75,12 @@ class IPIPVBaseAPI:
     def __init__(self):
         """初始化基础服务"""
         logger.info("[IPIPVBaseAPI] 初始化服务")
-        self.base_url = os.getenv('IPPROXY_API_URL', 'https://sandbox.ipipv.com')
-        self.app_key = os.getenv('IPPROXY_APP_KEY', 'AK20241120145620')
-        self.app_secret = os.getenv('IPPROXY_APP_SECRET', 'bf3ffghlt0hpc4omnvc2583jt0fag6a4')
+        self.base_url = settings.IPPROXY_API_URL
+        self.app_key = settings.IPPROXY_APP_KEY
+        self.app_secret = settings.IPPROXY_APP_SECRET
+        self.api_version = settings.IPPROXY_API_VERSION
+        self.api_encrypt = settings.IPPROXY_API_ENCRYPT
+        self.app_username = settings.IPPROXY_APP_USERNAME
         self.mock_api = None
         
         # 测试模式配置
@@ -85,6 +88,14 @@ class IPIPVBaseAPI:
             from app.tests.mocks.ipproxy_api import MockIPIPVAPI
             self.mock_api = MockIPIPVAPI()
             logger.info("[IPIPVBaseAPI] 使用测试模式")
+            
+        logger.info(f"[IPIPVBaseAPI] 配置信息:")
+        logger.info(f"  - API URL: {self.base_url}")
+        logger.info(f"  - APP Key: {self.app_key}")
+        logger.info(f"  - API Version: {self.api_version}")
+        logger.info(f"  - API Encrypt: {self.api_encrypt}")
+        logger.info(f"  - APP Username: {self.app_username}")
+        logger.info(f"  - Testing Mode: {settings.TESTING}")
     
     def set_mock_api(self, mock_api):
         """
@@ -134,12 +145,13 @@ class IPIPVBaseAPI:
             
             # 构建请求参数
             request_params = {
-                'version': params.get('version', 'v2'),
-                'encrypt': params.get('encrypt', 'AES'),
+                'version': self.api_version,
+                'encrypt': self.api_encrypt,
                 'appKey': self.app_key,
                 'reqId': req_id,
                 'timestamp': timestamp,
-                'params': encrypted_params
+                'params': encrypted_params,
+                'appUsername': self.app_username
             }
             
             # 生成签名
@@ -159,7 +171,10 @@ class IPIPVBaseAPI:
                     json=request_params,
                     headers={
                         'Content-Type': 'application/json',
-                        'Accept': 'application/json'
+                        'Accept': 'application/json',
+                        'X-App-Key': self.app_key,
+                        'X-App-Username': self.app_username,
+                        'X-Api-Version': self.api_version
                     }
                 )
                 
@@ -176,14 +191,16 @@ class IPIPVBaseAPI:
                     data = response.json()
                     logger.info(f"[IPIPV] 解析后的响应: {json.dumps(data, ensure_ascii=False)}")
                     
-                    if data.get('code') != 0 and data.get('msg') != "OK":
+                    # 修改成功响应的判断条件
+                    if data.get('code') not in [0, 200] and data.get('msg') not in ["OK", "success"]:
                         logger.error(f"[IPIPV] API错误: {data.get('msg')}")
                         return None
                         
+                    # 获取加密数据，支持多种返回格式
                     encrypted_data = data.get('data')
-                    if not encrypted_data:
-                        logger.error("[IPIPV] 响应中没有加密数据")
-                        return None
+                    if encrypted_data is None:
+                        logger.info("[IPIPV] 响应中没有加密数据，直接返回 data")
+                        return data.get('data')
                         
                     try:
                         decrypted_data = self._decrypt_response(encrypted_data)
