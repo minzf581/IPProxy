@@ -30,40 +30,35 @@ export const login = async (username: string, password: string): Promise<ApiResp
       timestamp: new Date().toISOString()
     });
     
-    const response = await api.post<LoginResponse>('/auth/login', { username, password });
+    const response = await api.post<ApiResponse<LoginResponse>>('/auth/login', { username, password });
     const responseData = response.data;
     debug.log('收到原始响应:', responseData);
     
-    // 检查响应是否包含必要的字段
-    if (!responseData || !responseData.token || !responseData.user) {
+    // 检查响应格式
+    if (!responseData || typeof responseData !== 'object') {
+      throw new Error('无效的响应格式');
+    }
+
+    // 检查响应状态
+    if (responseData.code !== 0) {
+      throw new Error(responseData.msg || '登录失败');
+    }
+
+    // 检查响应数据
+    if (!responseData.data || !responseData.data.token || !responseData.data.user) {
       debug.error('响应数据不完整:', {
-        hasToken: !!responseData?.token,
-        hasUser: !!responseData?.user,
+        hasData: !!responseData.data,
+        hasToken: !!responseData.data?.token,
+        hasUser: !!responseData.data?.user,
         timestamp: new Date().toISOString()
       });
       throw new Error('登录响应数据不完整');
     }
 
-    // 将响应转换为标准格式
-    const standardResponse: ApiResponse<LoginResponse> = {
-      code: 0,
-      msg: 'success',
-      data: {
-        token: responseData.token,
-        user: responseData.user
-      }
-    };
-
-    debug.log('登录成功:', {
-      tokenLength: responseData.token.length,
-      userFields: Object.keys(responseData.user),
-      timestamp: new Date().toISOString()
-    });
-    
     // 保存 token 到 localStorage
-    localStorage.setItem('token', responseData.token);
+    localStorage.setItem('token', responseData.data.token);
     
-    return standardResponse;
+    return responseData;
   } catch (error: any) {
     debug.error('登录过程出错:', {
       errorType: error.constructor.name,
@@ -81,16 +76,29 @@ export const login = async (username: string, password: string): Promise<ApiResp
 export const getCurrentUser = async (): Promise<ApiResponse<User | null>> => {
   try {
     debug.log('获取当前用户信息');
-    const response = await api.get<User>('/auth/current-user');
-    const userData = response.data;
-    debug.log('当前用户响应:', userData);
+    const response = await api.get<ApiResponse<User>>('/auth/current-user');
+    debug.log('当前用户响应:', response.data);
     
-    // 将响应转换为标准格式
-    return {
-      code: 0,
-      msg: 'success',
-      data: userData
-    };
+    // 检查响应格式
+    if (!response.data || typeof response.data !== 'object') {
+      throw new Error('无效的响应格式');
+    }
+
+    // 检查响应状态
+    if (response.data.code !== 0) {
+      throw new Error(response.data.msg || '获取用户信息失败');
+    }
+
+    // 检查响应数据
+    if (!response.data.data) {
+      debug.error('响应数据不完整:', {
+        hasData: !!response.data.data,
+        timestamp: new Date().toISOString()
+      });
+      throw new Error('用户信息响应数据不完整');
+    }
+
+    return response.data;
   } catch (error: any) {
     debug.error('获取用户信息出错:', {
       error,

@@ -16,6 +16,10 @@
 
 from passlib.context import CryptContext
 import logging
+from datetime import datetime, timedelta
+from typing import Optional, Dict, Any
+from jose import JWTError, jwt
+from app.core.config import settings
 
 # 配置日志
 logging.basicConfig(level=logging.DEBUG)
@@ -48,4 +52,42 @@ def get_password_hash(password: str) -> str:
         return hashed
     except Exception as e:
         logger.error(f"密码哈希失败: {str(e)}")
+        return None
+
+def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+    """
+    创建访问令牌
+    
+    Args:
+        data: 要编码到令牌中的数据
+        expires_delta: 可选的过期时间增量
+        
+    Returns:
+        str: 生成的JWT令牌
+    """
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
+
+def verify_token(token: str) -> Optional[Dict[str, Any]]:
+    """
+    验证JWT令牌
+    
+    Args:
+        token: JWT令牌字符串
+        
+    Returns:
+        Optional[Dict[str, Any]]: 如果令牌有效，返回完整的payload；否则返回None
+    """
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("sub") is None:
+            return None
+        return payload
+    except JWTError:
         return None 

@@ -502,6 +502,7 @@ async def activate_business(
     try:
         logger.info(f"[Business Activation] 开始处理业务激活请求: user_id={user_id}")
         logger.info(f"[Business Activation] 请求数据: {json.dumps(data, ensure_ascii=False)}")
+        logger.info(f"[Business Activation] 当前用户信息: id={current_user.id}, username={current_user.username}, is_admin={current_user.is_admin}, is_agent={current_user.is_agent}")
         
         # 验证用户存在
         user = db.query(User).filter(User.id == user_id).first()
@@ -512,22 +513,47 @@ async def activate_business(
                 detail={"code": 404, "message": "用户不存在"}
             )
             
+        logger.info(f"[Business Activation] 目标用户信息: id={user.id}, username={user.username}, agent_id={user.agent_id}")
+            
         # 验证权限
-        if not current_user.is_admin and current_user.id != user_id:
-            logger.error(f"[Business Activation] 权限不足: current_user={current_user.id}, target_user={user_id}")
+        has_permission = (
+            current_user.is_admin or  # 管理员可以操作任何用户
+            current_user.id == user_id or  # 用户可以操作自己
+            (current_user.is_agent and current_user.id == user.agent_id)  # 代理商可以操作其下属用户
+        )
+        
+        if not has_permission:
+            logger.error(
+                f"[Business Activation] 权限不足: "
+                f"current_user_id={current_user.id}, "
+                f"target_user_id={user_id}, "
+                f"is_admin={current_user.is_admin}, "
+                f"is_agent={current_user.is_agent}, "
+                f"user_agent_id={user.agent_id}"
+            )
             raise HTTPException(
                 status_code=403,
                 detail={"code": 403, "message": "无权操作此用户"}
             )
             
         # 获取代理商信息
-        agent = db.query(User).filter(User.id == data.get("agentId")).first()
+        agent_id = data.get("agentId")
+        if not agent_id:
+            logger.error(f"[Business Activation] 未提供代理商ID")
+            raise HTTPException(
+                status_code=400,
+                detail={"code": 400, "message": "未提供代理商信息"}
+            )
+            
+        agent = db.query(User).filter(User.id == agent_id).first()
         if not agent or not agent.is_agent:
-            logger.error(f"[Business Activation] 代理商不存在或无效: agent_id={data.get('agentId')}")
+            logger.error(f"[Business Activation] 代理商不存在或无效: agent_id={agent_id}")
             raise HTTPException(
                 status_code=400,
                 detail={"code": 400, "message": "无效的代理商"}
             )
+            
+        logger.info(f"[Business Activation] 代理商信息: id={agent.id}, username={agent.username}")
             
         # 调用产品库存服务
         ipipv_api = IPIPVBaseAPI()  # 创建 API 实例

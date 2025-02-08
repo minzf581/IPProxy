@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     # API配置
     API_V1_STR: str = "/api"
     API_VERSION: str = "v2"
+    SERVER_HOST: str = os.getenv("SERVER_HOST", "api.example.com")
     
     # 安全配置
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-please-change-in-production")
@@ -42,6 +43,9 @@ class Settings(BaseSettings):
     IPPROXY_API_URL: str = os.getenv("IPPROXY_API_URL", "https://sandbox.ipipv.com")
     IPPROXY_APP_KEY: str = os.getenv("IPPROXY_APP_KEY", "AK20241120145620")
     IPPROXY_APP_SECRET: str = os.getenv("IPPROXY_APP_SECRET", "bf3ffghlt0hpc4omnvc2583jt0fag6a4")
+    IPPROXY_CHANNEL_ID: str = os.getenv("IPPROXY_CHANNEL_ID", "CH20241120145620")
+    IPPROXY_API_VERSION: str = os.getenv("IPPROXY_API_VERSION", "v2")
+    IPPROXY_APP_USERNAME: str = os.getenv("IPPROXY_APP_USERNAME", "test_user")
     
     # 默认用户配置
     DEFAULT_ADMIN_USERNAME: str = "admin"

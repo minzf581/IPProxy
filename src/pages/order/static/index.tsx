@@ -17,11 +17,10 @@ interface StaticOrderData {
   status: string;
   resourceType: string;
   traffic: number;
+  duration: number;
+  quantity: number;
   expireTime: string;
   createTime: string;
-  continent: string;
-  country: string;
-  province: string;
   city: string;
   proxyInfo?: {
     ip: string;
@@ -42,6 +41,30 @@ interface SearchParams {
   endTime?: string;
 }
 
+// 修改状态渲染函数
+const renderStatus = (status: string) => {
+  const statusMap: Record<string, { text: string; color: string }> = {
+    '1': { text: '使用中', color: 'green' },
+    '2': { text: '已过期', color: 'red' },
+    'active': { text: '使用中', color: 'green' },
+    'expired': { text: '已过期', color: 'red' }
+  };
+  return <span style={{ color: statusMap[status]?.color }}>{statusMap[status]?.text || status}</span>;
+};
+
+// 修改资源类型渲染函数
+const renderResourceType = (type: string) => {
+  const typeMap: Record<string, string> = {
+    '1': '纯净静态1',
+    '2': '纯净静态2',
+    '3': '纯净静态3',
+    '4': '纯净静态4',
+    '5': '纯净静态5',
+    '7': '纯净静态7'
+  };
+  return typeMap[type] || type;
+};
+
 const StaticOrderPage: React.FC = () => {
   const [data, setData] = useState<StaticOrderData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -56,12 +79,12 @@ const StaticOrderPage: React.FC = () => {
 
   // 资源类型选项
   const resourceTypeOptions = [
-    { label: '静态资源1', value: 'static1' },
-    { label: '静态资源2', value: 'static2' },
-    { label: '静态资源3', value: 'static3' },
-    { label: '静态资源4', value: 'static4' },
-    { label: '静态资源5', value: 'static5' },
-    { label: '静态资源7', value: 'static7' },
+    { label: '纯净静态1', value: '1' },
+    { label: '纯净静态2', value: '2' },
+    { label: '纯净静态3', value: '3' },
+    { label: '纯净静态4', value: '4' },
+    { label: '纯净静态5', value: '5' },
+    { label: '纯净静态7', value: '7' }
   ];
 
   const columns: ColumnsType<StaticOrderData> = [
@@ -87,18 +110,17 @@ const StaticOrderPage: React.FC = () => {
     {
       title: '位置信息',
       key: 'location',
-      width: 200,
-      render: (_, record) => (
-        <>
-          {record.continent} / {record.country} / {record.province} / {record.city}
-        </>
-      ),
+      width: 120,
+      render: (_, record) => {
+        return record.city || '-';
+      }
     },
     {
       title: '资源类型',
       dataIndex: 'resourceType',
       key: 'resourceType',
       width: 120,
+      render: renderResourceType
     },
     {
       title: '金额',
@@ -112,20 +134,28 @@ const StaticOrderPage: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       width: 100,
-      render: (status: string) => {
-        const statusMap: Record<string, { text: string; color: string }> = {
-          '1': { text: '使用中', color: 'green' },
-          '2': { text: '已过期', color: 'red' },
-        };
-        return <span style={{ color: statusMap[status]?.color }}>{statusMap[status]?.text}</span>;
-      },
+      render: renderStatus
+    },
+    {
+      title: '代理时长',
+      dataIndex: 'duration',
+      key: 'duration',
+      width: 100,
+      render: (duration: number) => `${duration}个月`
+    },
+    {
+      title: '代理数量',
+      dataIndex: 'quantity',
+      key: 'quantity',
+      width: 100,
+      render: (quantity: number) => quantity
     },
     {
       title: '过期时间',
       dataIndex: 'expireTime',
       key: 'expireTime',
       width: 180,
-      render: (time: string) => dayjs(time).format('YYYY-MM-DD HH:mm:ss'),
+      render: (time: string) => time ? dayjs(time).format('YYYY-MM-DD HH:mm:ss') : '-'
     },
     {
       title: '创建时间',
@@ -151,99 +181,180 @@ const StaticOrderPage: React.FC = () => {
     },
   ];
 
-  const fetchData = async (page = currentPage, size = pageSize, search = {}) => {
+  const fetchData = async (page: number, size: number, search: any) => {
     setLoading(true);
     try {
-      console.log('[Order List Debug] Fetching data with params:', { page, size, search });
-      const response = await request.post('/open/app/order/v2', search, {
-        params: {
-          page,
-          size
-        }
-      });
+      console.log('[Static Order List Debug] 开始获取静态订单列表数据');
+      console.log('[Static Order List Debug] 请求参数:', { page, size, ...search });
       
-      console.log('[Order List Debug] Response:', response);
+      const params = {
+        page,
+        size,
+        orderType: 'static',
+        ...search
+      };
       
-      if (response.code === 0) {
-        const orderList = response.data.list || [];
-        const totalCount = response.data.total || 0;
+      console.log('[Static Order List Debug] 发送请求参数:', params);
+      
+      const response = await request.post('/open/app/order/v2', params);
+      
+      console.log('[Static Order List Debug] API完整响应:', response);
+      console.log('[Static Order List Debug] 响应数据:', response.data);
+      
+      if (response.data && response.data.code === 0) {
+        const responseData = response.data.data || {};
+        console.log('[Static Order List Debug] 响应数据内容:', responseData);
+        console.log('[Static Order List Debug] 第一条数据示例:', responseData.list?.[0]);
         
-        // 确保数据格式正确
-        const formattedData = orderList.map((order: any) => ({
-          id: order.id || 0,
-          orderNo: order.order_no || '',
-          userId: order.user_id || 0,
-          agentAccount: order.agent_username || '',
-          amount: order.amount || 0,
-          status: order.status || '',
-          resourceType: order.resource_type || '',
-          traffic: order.traffic || 0,
-          expireTime: order.expire_time || '',
-          createTime: order.created_at || '',
-          continent: order.continent || '',
-          country: order.country || '',
-          province: order.province || '',
-          city: order.city || '',
-          proxyInfo: order.proxy_info || null
-        }));
+        const list = Array.isArray(responseData.list) ? responseData.list : [];
+        const total = typeof responseData.total === 'number' ? responseData.total : 0;
         
-        console.log('[Order List Debug] Formatted data:', formattedData);
+        const formattedList = list.map((item: any) => {
+          console.log('[Static Order List Debug] 处理前的订单数据:', JSON.stringify(item, null, 2));
+          
+          // 获取代理商账号
+          const agentAccount = item.agent_username || item.agent_account || '';
+          
+          // 获取位置信息，只保留城市
+          const location = {
+            city: item.city_name || item.city || ''
+          };
+          
+          // 获取代理信息
+          const proxyInfo = item.proxy_info || {
+            ip: item.ip || '',
+            port: item.port || 0,
+            username: item.username || '',
+            password: item.password || ''
+          };
+
+          // 计算过期时间
+          const createTime = item.create_time || item.created_at || '';
+          const duration = Number(item.duration || 0); // 代理时长（月）
+          let expireTime = '';
+          
+          if (createTime && duration > 0) {
+            expireTime = dayjs(createTime).add(duration, 'month').format('YYYY-MM-DD HH:mm:ss');
+          }
+          
+          const formatted = {
+            id: item.id || 0,
+            orderNo: item.order_no || item.app_order_no || '',
+            userId: item.user_id || 0,
+            agentAccount,
+            amount: Number(item.amount || item.order_amount || 0),
+            status: String(item.status || item.order_status || ''),
+            resourceType: item.static_type || item.resource_type || item.type || '',
+            traffic: Number(item.traffic || 0),
+            duration: duration,
+            quantity: Number(item.quantity || 0),
+            expireTime: expireTime,
+            createTime: createTime,
+            ...location,
+            proxyInfo
+          };
+          
+          console.log('[Static Order List Debug] 处理后的订单数据:', formatted);
+          return formatted;
+        });
         
-        setData(formattedData);
-        setTotal(totalCount);
+        console.log('[Static Order List Debug] 格式化后的完整数据:', formattedList);
+        setData(formattedList);
+        setTotal(total);
       } else {
-        message.error(response.msg || '获取订单列表失败');
+        console.error('[Static Order List Debug] 响应错误:', {
+          code: response.data?.code,
+          msg: response.data?.msg,
+          data: response.data?.data
+        });
+        message.error(response.data?.msg || '获取数据失败');
+        setData([]);
+        setTotal(0);
       }
     } catch (error: any) {
-      console.error('[Order List Error]', error);
-      message.error(error.message || '获取订单列表失败');
+      console.error('[Static Order List Debug] 获取数据失败:', error);
+      console.error('[Static Order List Debug] 错误详情:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        config: error.config
+      });
+      message.error(error.message || '获取数据失败');
+      setData([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
   };
 
+  // 转换地区数据为级联选择器格式
+  const convertLocationData = (data: any) => {
+    if (!data || !data.regions || !data.countries || !data.cities) {
+      console.warn('[Location Options Debug] 无效的地区数据格式:', data);
+      return [];
+    }
+
+    return data.regions.map((region: any) => ({
+      value: region.code,
+      label: region.name,
+      children: data.countries
+        .filter((country: any) => country.region === region.code)
+        .map((country: any) => ({
+          value: country.code,
+          label: country.name,
+          children: data.cities
+            .filter((city: any) => city.country === country.code)
+            .map((city: any) => ({
+              value: city.code,
+              label: city.name
+            }))
+        }))
+    }));
+  };
+
   // 加载地理位置选项
   const loadLocationOptions = async () => {
     try {
-      console.log('[Location Options Debug] Loading location options');
+      console.log('[Location Options Debug] 开始加载地区选项');
       const response = await request.get('/open/app/location/options/v2');
       
-      if (response.code === 0) {
-        const options = response.data || {};
-        const formattedOptions = [
-          {
-            value: 'all',
-            label: '全部',
-            children: Object.entries(options.regions || {}).map(([code, name]) => ({
-              value: code,
-              label: name,
-              children: Object.entries(options.countries || {})
-                .filter(([_, country]) => country.region === code)
-                .map(([countryCode, country]) => ({
-                  value: countryCode,
-                  label: country.name,
-                  children: Object.entries(options.cities || {})
-                    .filter(([_, city]) => city.country === countryCode)
-                    .map(([cityCode, city]) => ({
-                      value: cityCode,
-                      label: city.name
-                    }))
-                }))
-            }))
-          }
-        ];
+      console.log('[Location Options Debug] API完整响应:', response);
+      console.log('[Location Options Debug] 响应数据:', response.data);
+      
+      // 检查响应数据结构
+      if (response.data && response.data.code === 0) {
+        const locationData = response.data.data || {};
+        console.log('[Location Options Debug] 原始地区选项数据:', locationData);
         
-        console.log('[Location Options Debug] Formatted options:', formattedOptions);
+        // 转换数据格式
+        const formattedOptions = convertLocationData(locationData);
+        console.log('[Location Options Debug] 转换后的地区选项:', formattedOptions);
+        
         setLocationOptions(formattedOptions);
+      } else {
+        console.error('[Location Options Debug] 响应错误:', {
+          code: response.data?.code,
+          msg: response.data?.msg,
+          data: response.data?.data
+        });
+        message.error(response.data?.msg || '加载地区选项失败');
+        setLocationOptions([]);
       }
     } catch (error: any) {
-      console.error('[Location Options Error]', error);
-      message.error('加载位置选项失败');
+      console.error('[Location Options Debug] 加载失败:', error);
+      console.error('[Location Options Debug] 错误详情:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+        config: error.config
+      });
+      message.error('加载地区选项失败');
+      setLocationOptions([]);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    fetchData(currentPage, pageSize, {});
     loadLocationOptions();
   }, []);
 
@@ -417,11 +528,13 @@ const StaticOrderPage: React.FC = () => {
               <p><strong>订单号：</strong>{currentOrder.orderNo}</p>
               <p><strong>用户账号：</strong>{currentOrder.userId}</p>
               <p><strong>代理商账号：</strong>{currentOrder.agentAccount}</p>
-              <p><strong>位置信息：</strong>{currentOrder.continent} / {currentOrder.country} / {currentOrder.province} / {currentOrder.city}</p>
-              <p><strong>资源类型：</strong>{currentOrder.resourceType}</p>
+              <p><strong>位置信息：</strong>{currentOrder.city || '-'}</p>
+              <p><strong>资源类型：</strong>{renderResourceType(currentOrder.resourceType)}</p>
+              <p><strong>代理时长：</strong>{currentOrder.duration}个月</p>
+              <p><strong>代理数量：</strong>{currentOrder.quantity}</p>
               <p><strong>金额：</strong>¥{currentOrder.amount.toFixed(2)}</p>
-              <p><strong>状态：</strong>{currentOrder.status === '1' ? '使用中' : '已过期'}</p>
-              <p><strong>过期时间：</strong>{dayjs(currentOrder.expireTime).format('YYYY-MM-DD HH:mm:ss')}</p>
+              <p><strong>状态：</strong>{renderStatus(currentOrder.status)}</p>
+              <p><strong>过期时间：</strong>{currentOrder.expireTime ? dayjs(currentOrder.expireTime).format('YYYY-MM-DD HH:mm:ss') : '-'}</p>
               <p><strong>创建时间：</strong>{dayjs(currentOrder.createTime).format('YYYY-MM-DD HH:mm:ss')}</p>
               {currentOrder.proxyInfo && (
                 <>

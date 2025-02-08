@@ -53,6 +53,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!token) {
         debug.log('No token found, skipping auth check');
         setUser(null);
+        setLoading(false);
+        setInitialized(true);
         return;
       }
 
@@ -63,14 +65,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(response.data);
         debug.log('User authenticated:', response.data);
       } else {
+        debug.log('Authentication failed, clearing token and user');
         setUser(null);
         localStorage.removeItem('token');
-        debug.log('No authenticated user found');
       }
-    } catch (error) {
+    } catch (error: any) {
       debug.error('Error checking authentication:', error);
-      setUser(null);
-      localStorage.removeItem('token');
+      // 如果是401错误，清除token和用户信息
+      if (error.response?.status === 401) {
+        debug.log('Unauthorized, clearing token and user');
+        localStorage.removeItem('token');
+        setUser(null);
+      }
     } finally {
       setLoading(false);
       setInitialized(true);
@@ -97,7 +103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw new Error('登录响应数据不完整');
         }
         
-        debug.log('Login successful, setting token');
+        debug.log('Login successful, setting token and user');
         localStorage.setItem('token', token);
         setUser(user);
         debug.log('User state updated:', user);

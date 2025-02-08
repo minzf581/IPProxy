@@ -63,6 +63,7 @@ from app.core.config import settings as app_settings
 import logging.config
 from fastapi.security import OAuth2PasswordBearer
 from app.services.auth import verify_token, get_current_user
+from contextlib import asynccontextmanager
 
 # 配置日志
 LOGGING_CONFIG = {
@@ -123,20 +124,45 @@ logging.config.dictConfig(LOGGING_CONFIG)
 # 获取应用的日志记录器
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan handler"""
+    # Startup
+    try:
+        # 初始化数据库
+        init_db()
+        logger.info("数据库初始化完成")
+
+        # 确保默认用户存在
+        await ensure_default_users()
+        logger.info("默认用户检查完成")
+
+        logger.info("应用启动成功")
+    except Exception as e:
+        logger.error(f"启动失败: {str(e)}")
+        raise
+    
+    yield
+    
+    # Shutdown
+    logger.info("应用正在关闭...")
+
 app = FastAPI(
     title="IP代理管理系统",
     description="IP代理管理系统API文档",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
-# 配置 CORS
+# 添加 CORS 中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许所有源，生产环境中应该设置具体的域名
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # 允许的前端域名
     allow_credentials=True,
-    allow_methods=["*"],  # 允许所有方法
-    allow_headers=["*"],  # 允许所有头部
-    expose_headers=["*"]  # 暴露所有头部
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],  # 允许的HTTP方法
+    allow_headers=["*"],  # 允许的headers
+    expose_headers=["*"],  # 暴露的headers
+    max_age=3600,  # 预检请求的缓存时间
 )
 
 # 设置路由前缀
@@ -154,6 +180,26 @@ app.include_router(settings.router, prefix=prefix, tags=["设置"])
 app.include_router(area.router, prefix=prefix, tags=["区域"])
 app.include_router(product.router, prefix=prefix, tags=["产品"])
 app.include_router(callback.router, prefix=prefix, tags=["回调"])
+
+# 导入并注册静态订单路由
+from app.api.endpoints import static_order
+app.include_router(static_order.router, prefix=prefix, tags=["静态订单"])
+
+# 不需要认证的路径
+public_paths = [
+    "/api/auth/login",
+    "/api/open/app/area/v2",
+    "/api/open/app/city/list/v2",
+    "/api/open/app/order/v2",
+    "/api/open/app/location/options/v2",
+    "/api/open/app/product/query/v2",
+    "/api/open/app/instance/calculate/v2",
+    "/api/open/app/proxy/price/calculate/v2",  # 添加动态代理价格计算接口
+    "/api/order/callback/{order_id}",  # 添加回调接口路径
+    "/docs",
+    "/redoc",
+    "/openapi.json"
+]
 
 async def ensure_default_users():
     """确保默认用户存在"""
@@ -263,29 +309,6 @@ async def general_exception_handler(request: Request, exc: Exception):
         }
     )
 
-# 初始化数据库
-@app.on_event("startup")
-async def startup_event():
-    """应用启动时的初始化操作"""
-    try:
-        # 初始化数据库
-        init_db()
-        logger.info("数据库初始化完成")
-
-        # 确保默认用户存在
-        await ensure_default_users()
-        logger.info("默认用户检查完成")
-
-        logger.info("应用启动成功")
-    except Exception as e:
-        logger.error(f"启动失败: {str(e)}")
-        raise
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """应用关闭时的清理操作"""
-    logger.info("应用正在关闭...")
-
 @app.get("/")
 async def root():
     """健康检查接口"""
@@ -309,21 +332,26 @@ async def auth_middleware(request: Request, call_next):
     """认证中间件，处理请求的认证"""
     logger.info(f"[Auth Middleware] Processing request: {request.url.path}")
     
-    # 不需要认证的路径
-    public_paths = [
-        "/api/auth/login",
-        "/api/open/app/area/v2",
-        "/api/open/app/city/list/v2",
-        "/api/open/app/order/v2",
-        "/api/open/app/location/options/v2",
-        "/docs",
-        "/redoc",
-        "/openapi.json"
-    ]
+    # 检查是否是公开路径
+    current_path = request.url.path
+    is_public = False
     
-    # 如果是公开路径，直接放行
-    if any(request.url.path.startswith(path) for path in public_paths):
-        logger.info(f"[Auth Middleware] Public path: {request.url.path}, skipping auth")
+    for public_path in public_paths:
+        # 如果公开路径包含花括号（路径参数），则进行模式匹配
+        if "{" in public_path:
+            # 将路径参数模式转换为正则表达式
+            pattern = public_path.replace("{", "(?P<").replace("}", ">[^/]+)")
+            import re
+            if re.match(f"^{pattern}$", current_path):
+                is_public = True
+                break
+        # 否则进行精确匹配
+        elif current_path == public_path:
+            is_public = True
+            break
+    
+    if is_public:
+        logger.info(f"[Auth Middleware] Public path: {current_path}, skipping auth")
         return await call_next(request)
     
     # 获取认证头
@@ -348,20 +376,36 @@ async def auth_middleware(request: Request, call_next):
             )
             
         # 验证 token
-        user_id = verify_token(token)
-        if not user_id:
+        payload = verify_token(token)
+        if not payload:
             logger.warning("[Auth Middleware] Invalid token")
             return JSONResponse(
                 status_code=401,
                 content={"code": 401, "message": "无效的令牌"}
             )
             
-        logger.info(f"[Auth Middleware] Token verified, user_id: {user_id}")
+        logger.info(f"[Auth Middleware] Token verified, payload: {payload}")
+        
+        # 从数据库获取用户信息
+        db = request.state.db
+        user_id = int(payload.get("sub"))  # 从payload中获取user_id
+        user = db.query(User).filter(User.id == user_id).first()
+        
+        if not user:
+            logger.warning(f"[Auth Middleware] User not found: {user_id}")
+            return JSONResponse(
+                status_code=401,
+                content={"code": 401, "message": "用户不存在"}
+            )
+            
         # 将用户信息添加到请求状态中
-        request.state.user_id = user_id
+        request.state.user = user
+        request.state.user_id = user.id
         
         # 继续处理请求
-        return await call_next(request)
+        response = await call_next(request)
+        logger.info(f"[Auth Middleware] Response status code: {response.status_code}")
+        return response
         
     except Exception as e:
         logger.error(f"[Auth Middleware] Auth failed: {str(e)}")

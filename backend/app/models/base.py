@@ -1,14 +1,15 @@
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import Column, DateTime
 from datetime import datetime
 
-# 创建 Base 类
-Base = declarative_base()
+class Base(DeclarativeBase):
+    """Base class for all models"""
+    pass
 
 class TimestampMixin:
-    """时间戳混入类"""
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    """Mixin for created_at and updated_at columns"""
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 # 导出 Base 类
 __all__ = ['Base', 'TimestampMixin'] 

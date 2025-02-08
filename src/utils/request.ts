@@ -51,7 +51,7 @@ api.interceptors.request.use(
 // 响应拦截器
 api.interceptors.response.use(
   (response) => {
-    const data = response.data;
+    const { data } = response;
     
     // 如果返回的code不是0，说明有错误
     if (data && data.code !== 0) {
@@ -65,7 +65,7 @@ api.interceptors.response.use(
       return Promise.reject(new Error(data.msg || '请求失败'));
     }
     
-    return data;
+    return response;
   },
   (error) => {
     console.error('[Response Error]', error);

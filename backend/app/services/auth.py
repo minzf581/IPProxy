@@ -9,7 +9,7 @@ from ..database import SessionLocal
 import logging
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.config import SECRET_KEY, ALGORITHM
+from app.core.config import settings
 from app.core.security import verify_password, get_password_hash
 import os
 
@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="auth/login",  # 修改为实际的登录接口路径
+    tokenUrl="/api/auth/login",  # 修改为实际的登录接口路径
     auto_error=False  # 允许自定义错误消息
 )
 
@@ -31,7 +31,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         else:
             expire = datetime.utcnow() + timedelta(days=180)  # 默认180天过期
         to_encode.update({"exp": expire})
-        encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+        encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
         logger.debug(f"Created access token for user: {data.get('sub')}")
         return encoded_jwt
     except Exception as e:
@@ -42,7 +42,7 @@ def verify_token(token: str):
     """验证令牌"""
     try:
         logger.info(f"[Auth Service] Verifying token: {token[:10]}...")
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         logger.info(f"[Auth Service] Token decoded successfully: {payload}")
         return payload
     except PyJWTError as e:
@@ -104,36 +104,67 @@ async def get_current_user(
             )
         else:
             logger.warning("[Auth Service] Invalid API key or secret")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="无效的API密钥",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     
     if not token:
         logger.error("[Auth Service] No token provided")
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="未提供认证令牌",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
         
     try:
         logger.debug("开始验证访问令牌")
         
         try:
             logger.debug(f"开始解码令牌: {token}")
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
             user_id: str = payload.get("sub")
             logger.debug(f"令牌解码结果: {payload}")
             if user_id is None:
                 logger.error("令牌中没有用户ID")
-                return None
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="无效的认证令牌",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
         except PyJWTError:
             logger.error("令牌解码失败")
-            return None
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="无效的认证令牌",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
             
         try:
             user_id_int = int(user_id)
             user = db.query(User).filter(User.id == user_id_int).first()
             if user is None:
                 logger.error(f"找不到用户ID: {user_id_int}")
-                return None
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="用户不存在",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
             return user
         except ValueError:
             logger.error(f"无效的用户ID格式: {user_id}")
-            return None
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="无效的用户ID",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"验证访问令牌时发生错误: {str(e)}")
-        return None 
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="认证失败",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) 

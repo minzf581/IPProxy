@@ -126,6 +126,8 @@ export interface IpRange {
   countryCode: string;
   cityCode: string;
   regionCode: string;
+  price: number;
+  status: number;
 }
 
 export interface IpRangeParams {

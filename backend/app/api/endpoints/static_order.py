@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Request
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -95,4 +95,40 @@ async def update_static_order_status(
         raise e
     except Exception as e:
         logger.error(f"更新静态代理订单状态失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/static-order/list")
+async def list_static_orders(
+    request: Request,
+    page: int = 1,
+    page_size: int = 10,
+    user_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取静态代理订单列表"""
+    try:
+        # 权限检查：
+        # 1. 如果用户是代理商，可以查看所有订单
+        # 2. 如果用户不是代理商，只能查看自己的订单
+        target_user_id = user_id if user_id else current_user.id
+        
+        if not current_user.is_agent and target_user_id != current_user.id:
+            logger.warning(f"[StaticOrder] 非代理商用户 {current_user.id} 尝试查看用户 {target_user_id} 的订单列表")
+            raise HTTPException(status_code=403, detail="没有权限查看其他用户的订单")
+            
+        logger.info(f"[StaticOrder] 查询用户 {target_user_id} 的订单列表")
+        
+        service = StaticOrderService(db, IPIPVBaseAPI())
+        result = await service.list_orders(
+            user_id=target_user_id,
+            page=page,
+            page_size=page_size
+        )
+        return result
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"获取静态代理订单列表失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e)) 

@@ -74,27 +74,57 @@ const UserManagementPage: React.FC = () => {
         const { list = [], total = 0 } = response.data;
         console.log('[User List Debug] Parsed data:', { list, total });
         
-        setData(list);
+        // 确保数据类型正确
+        const formattedList = list.map(user => {
+          const formattedUser: User = {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            agent_id: user.agent_id,
+            status: user.status || 'disabled',
+            balance: user.balance || 0,
+            is_admin: !!user.is_admin,
+            is_agent: !!user.is_agent,
+            remark: user.remark,
+            created_at: user.created_at || new Date().toISOString(),
+            updated_at: user.updated_at
+          };
+          return formattedUser;
+        });
+        
+        setData(formattedList);
         setPagination(prev => ({
           ...prev,
           current: params.page || prev.current,
-          total: total
+          total
         }));
         
         console.log('[User List Debug] Updated state:', {
-          dataLength: list.length,
+          dataLength: formattedList.length,
           pagination: {
             current: params.page || pagination.current,
-            total: total
+            total
           }
         });
       } else {
         console.error('[User List Debug] Invalid response:', response);
         message.error(response.msg || '获取用户列表失败');
+        // 清空数据
+        setData([]);
+        setPagination(prev => ({
+          ...prev,
+          total: 0
+        }));
       }
     } catch (error: any) {
       console.error('[User List Debug] Error:', error);
       message.error(error.message || '获取用户列表失败');
+      // 清空数据
+      setData([]);
+      setPagination(prev => ({
+        ...prev,
+        total: 0
+      }));
     } finally {
       setLoading(false);
     }

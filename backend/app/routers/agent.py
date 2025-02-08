@@ -87,7 +87,7 @@ class CreateAgentRequest(BaseModel):
     password: Optional[str] = None
     email: Optional[str] = None
     remark: Optional[str] = None
-    status: str = "active"  # 默认状态为启用
+    status: str = "active"  # 默认状态为active
     balance: float = 1000.0  # 默认额度1000元
 
 class UpdateAgentRequest(BaseModel):
@@ -114,7 +114,7 @@ async def create_agent(
             "password": request.password,
             "email": request.email,
             "authType": 2,  # 代理商类型
-            "status": request.status,
+            "status": "active",  # 强制设置为active
             "remark": request.remark
         }
         
@@ -131,7 +131,7 @@ async def create_agent(
             agent = MainUser(
                 username=request.username,
                 email=request.email,
-                status=request.status,
+                status="active",  # 强制设置为active
                 balance=request.balance,
                 remark=request.remark,
                 transaction_no=transaction_no
@@ -646,3 +646,55 @@ async def get_area_list(
             "message": str(e),
             "data": []
         }
+
+@router.get("/settings/agent/{agent_id}/prices")
+async def get_agent_prices(
+    agent_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """获取代理商价格设置"""
+    try:
+        # 检查权限：只有管理员或者代理商本人可以查看
+        if not current_user.is_admin and current_user.id != agent_id:
+            raise HTTPException(
+                status_code=403,
+                detail="没有权限查看价格设置"
+            )
+            
+        # 获取代理商
+        agent = db.query(User).filter(
+            User.id == agent_id,
+            User.is_agent == True
+        ).first()
+        
+        if not agent:
+            raise HTTPException(
+                status_code=404,
+                detail="代理商不存在"
+            )
+            
+        # 返回价格配置
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "dynamic": {
+                    "pool1": 100,  # 动态代理池1价格
+                    "pool2": 200   # 动态代理池2价格
+                },
+                "static": {
+                    "residential": 300,  # 静态住宅代理价格
+                    "datacenter": 400    # 静态数据中心代理价格
+                }
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取代理商价格设置失败: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )

@@ -11,7 +11,7 @@ export interface User {
   id: number;
   username: string;
   email?: string;
-  agent_id: number | null;  // null表示管理员
+  agent_id?: number;  // 改为可选字段，不使用 null
   status: 'active' | 'disabled';
   balance: number;
   is_admin: boolean;

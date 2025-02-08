@@ -48,22 +48,32 @@ export async function getUserList(params: UserListParams): Promise<ApiResponse<U
   
   try {
     console.log('[User Service Debug] Sending request with params:', requestParams);
-    const response = await api.get<UserListResponse>(API_ROUTES.USER.LIST, {
+    const response = await api.get<ApiResponse<UserListResponse>>(API_ROUTES.USER.LIST, {
       params: requestParams
     });
     
     console.log('[User Service Debug] Response data:', response);
 
-    // 直接使用响应数据
+    // 检查响应格式
+    if (!response.data || typeof response.data !== 'object') {
+      throw new Error('无效的响应格式');
+    }
+
     const responseData = response.data;
-    
-    // 确保响应数据包含必要的字段
-    if (!responseData || !Array.isArray(responseData.list)) {
-      throw new Error('Invalid response format');
+
+    // 检查响应状态
+    if (responseData.code !== 0) {
+      throw new Error(responseData.msg || '获取用户列表失败');
+    }
+
+    // 检查响应数据
+    if (!responseData.data || !Array.isArray(responseData.data.list)) {
+      console.error('[User Service Debug] Invalid response data:', responseData);
+      throw new Error('响应数据格式不正确');
     }
 
     // 处理用户列表数据
-    const userList = responseData.list.map(user => ({
+    const userList = responseData.data.list.map(user => ({
       ...user,
       status: String(user.status).toLowerCase() === 'active' || String(user.status) === '1' 
         ? 'active' as const 
@@ -76,7 +86,7 @@ export async function getUserList(params: UserListParams): Promise<ApiResponse<U
       msg: 'success',
       data: {
         list: userList,
-        total: responseData.total || 0
+        total: responseData.data.total || 0
       }
     };
     
@@ -183,11 +193,14 @@ export async function createUser(params: CreateUserParams): Promise<ApiResponse<
  * 获取当前用户信息
  * 
  * 依赖说明：
- * - API路径: /api/user/profile
+ * - API路径: /auth/current-user
  * - 后端函数: get_user_profile (user.py)
  */
 export async function getCurrentUser(): Promise<User> {
-  const response = await api.get<ApiResponse<User>>('/auth/profile');
+  const response = await api.get<ApiResponse<User>>('/auth/current-user');
+  if (!response.data || response.data.code !== 0) {
+    throw new Error(response.data?.msg || '获取用户信息失败');
+  }
   return response.data.data;
 }
 

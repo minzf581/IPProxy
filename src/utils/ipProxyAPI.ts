@@ -158,7 +158,7 @@ export const API_ROUTES = {
     DRAW: '/open/app/proxy/draw/api/v2',
     DYNAMIC: {
       OPEN: '/open/app/instance/open/v2',
-      CALCULATE_PRICE: '/open/app/instance/calculate/v2',
+      CALCULATE_PRICE: '/open/app/proxy/price/calculate/v2',
       REFRESH: '/open/app/instance/refresh/v2',
       LIST: '/open/app/instance/list/v2',
       POOLS: '/open/app/pool/list/v2'
@@ -178,6 +178,12 @@ export const API_ROUTES = {
     STATUS: '/open/app/user/status'
   }
 };
+
+interface CidrBlock {
+  startIp: string;
+  endIp: string;
+  count: number;
+}
 
 export class IPProxyAPI {
   private baseURL: string;
@@ -934,50 +940,114 @@ export class IPProxyAPI {
 
   // 获取IP段列表
   async getIpRanges(params: {
-    proxyType: number;  // 代理类型 (101=静态云平台, 102=静态国内家庭, 103=静态国外家庭)
-    regionCode?: string;  // 区域代码
-    countryCode?: string;  // 国家代码
-    cityCode?: string;  // 城市代码
-    staticType?: string;  // 静态代理类型
-    version?: string;  // API版本
+    proxyType: number;
+    regionCode?: string;
+    countryCode?: string;
+    cityCode?: string;
+    staticType?: string;
+    version?: string;
   }): Promise<IpRange[]> {
-    const methodName = 'getIpRanges';
     try {
-      logDebug(methodName, '开始请求IP段列表');
-      logDebug(methodName, '请求参数:', params);
-      
-      // 添加默认参数
-      const requestParams = {
-        ...params,
-        version: params.version || 'v2'
-      };
-      
-      logDebug(methodName, '发送请求到:', API_ROUTES.AREA.IP_RANGES);
-      logDebug(methodName, '完整请求参数:', requestParams);
-      
-      const response = await this.request<IpRange[]>(API_ROUTES.AREA.IP_RANGES, requestParams);
-      logDebug(methodName, '收到响应:', response);
+      const response = await this.request<any[]>('/open/app/product/query/v2', params);
       
       if (!response || !Array.isArray(response)) {
-        logDebug(methodName, '响应格式不正确:', response);
+        console.warn('[IPProxyAPI] 无效的响应数据:', response);
         return [];
       }
       
-      return response;
+      // 转换和验证数据
+      const ipRanges = response.flatMap(item => {
+        // 如果产品没有启用或库存为0，跳过
+        if (!item.enable || item.inventory <= 0) {
+          console.warn('[IPProxyAPI] 跳过无效的产品:', item);
+          return [];
+        }
+
+        // 如果有cidrBlocks，使用cidrBlocks中的IP段信息
+        if (item.cidrBlocks && Array.isArray(item.cidrBlocks)) {
+          return item.cidrBlocks.map((block: CidrBlock) => ({
+            ipStart: block.startIp,
+            ipEnd: block.endIp,
+            ipCount: block.count || 0,
+            stock: item.inventory || 0,
+            staticType: item.staticType || '',
+            countryCode: item.countryCode || '',
+            cityCode: item.cityCode || '',
+            regionCode: item.areaCode || '',
+            price: item.costPrice || 0,
+            status: item.enable || 0
+          }));
+        }
+        
+        // 如果没有cidrBlocks但有其他必要信息，创建单个IP段
+        if (item.inventory > 0) {
+          return [{
+            ipStart: '',  // 这些产品可能不暴露具体IP
+            ipEnd: '',
+            ipCount: item.ipCount || item.inventory || 0,
+            stock: item.inventory || 0,
+            staticType: item.staticType || '',
+            countryCode: item.countryCode || '',
+            cityCode: item.cityCode || '',
+            regionCode: item.areaCode || '',
+            price: item.costPrice || 0,
+            status: item.enable || 0
+          }];
+        }
+
+        return [];
+      });
+
+      console.log('[IPProxyAPI] 处理后的IP段列表:', ipRanges);
+      return ipRanges;
     } catch (error) {
-      logError(methodName, `请求失败: ${error}`);
-      return [];
+      console.error('[IPProxyAPI] 查询IP段失败:', error);
+      throw new Error('查询IP段失败: ' + (error instanceof Error ? error.message : String(error)));
     }
   }
 
   // 计算动态代理价格
   async calculateDynamicProxyPrice(params: { poolId: string; trafficAmount: number }): Promise<APIResponse<{ price: number }>> {
     try {
-      const response = await this.axiosInstance.post(API_ROUTES.PROXY.DYNAMIC.CALCULATE_PRICE, params);
-      return response.data;
+      console.log('[calculateDynamicProxyPrice] 开始计算价格, 参数:', {
+        poolId: params.poolId,
+        trafficAmount: params.trafficAmount,
+        trafficAmountType: typeof params.trafficAmount
+      });
+
+      // 参数验证
+      if (!params.poolId) {
+        throw new Error('代理池ID不能为空');
+      }
+      if (!params.trafficAmount || params.trafficAmount <= 0) {
+        throw new Error('流量值必须大于0');
+      }
+
+      // 直接调用本地价格计算API
+      const response = await this.axiosInstance.post('/api/proxy/price/calculate', {
+        poolId: params.poolId,
+        trafficAmount: Number(params.trafficAmount)
+      });
+
+      console.log('[calculateDynamicProxyPrice] 价格计算响应:', response.data);
+
+      if (response.data.code === 0) {
+        return {
+          code: 0,
+          msg: 'success',
+          reqId: response.data.reqId || this.generateReqId(),
+          data: { price: response.data.data.price }
+        };
+      }
+
+      throw new Error(response.data.msg || '价格计算失败');
     } catch (error) {
-      console.error('计算动态代理价格失败:', error);
-      throw error;
+      console.error('[calculateDynamicProxyPrice] 计算价格失败:', error);
+      if (error instanceof Error) {
+        throw new Error(`计算动态代理价格失败: ${error.message}`);
+      } else {
+        throw new Error('计算动态代理价格失败');
+      }
     }
   }
 
@@ -1005,6 +1075,24 @@ export class IPProxyAPI {
       return response.data;
     } catch (error) {
       logError(methodName, error);
+      throw error;
+    }
+  }
+
+  // 同步库存
+  async syncInventory(): Promise<void> {
+    try {
+      logDebug('syncInventory', '开始同步库存');
+      const response = await this.axiosInstance.post('/api/proxy/inventory/sync');
+      
+      if (response.data.code === 0) {
+        logDebug('syncInventory', '库存同步成功');
+      } else {
+        logError('syncInventory', new Error(response.data.msg || '同步库存失败'));
+        throw new Error(response.data.msg || '同步库存失败');
+      }
+    } catch (error) {
+      logError('syncInventory', error);
       throw error;
     }
   }

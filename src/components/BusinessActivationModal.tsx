@@ -153,11 +153,60 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
 
   const handleOk = async () => {
     try {
+      setLoading(true);
       const values = await form.validateFields();
+      
+      // 同步库存
+      try {
+        console.log('[BusinessActivationModal] 开始同步库存');
+        await ipProxyAPI.syncInventory();
+        console.log('[BusinessActivationModal] 库存同步成功');
+      } catch (error: any) {
+        console.error('[BusinessActivationModal] 库存同步失败:', error);
+        
+        if (error.response) {
+          const status = error.response.status;
+          const errorMsg = error.response.data?.msg || error.message;
+          
+          switch (status) {
+            case 401:
+              message.error('登录已过期，请重新登录');
+              return;
+            case 403:
+              message.error('没有权限执行此操作');
+              return;
+            case 500:
+              message.error(`服务器错误: ${errorMsg}`);
+              return;
+            default:
+              message.error(`同步库存失败: ${errorMsg}`);
+              return;
+          }
+        } else if (error.request) {
+          message.error('网络请求失败，请检查网络连接');
+          return;
+        } else {
+          message.error('同步库存失败，请稍后重试');
+          return;
+        }
+      }
+
       // 处理业务开通逻辑
-      onSuccess();
+      try {
+        // TODO: 实现业务开通逻辑
+        console.log('[BusinessActivationModal] 开始处理业务开通，表单数据:', values);
+        
+        // 调用成功回调
+        onSuccess();
+        message.success('业务开通成功');
+      } catch (error: any) {
+        console.error('[BusinessActivationModal] 业务开通失败:', error);
+        message.error('业务开通失败，请重试');
+      }
     } catch (error) {
-      console.error('业务开通表单验证失败:', error);
+      console.error('[BusinessActivationModal] 表单验证失败:', error);
+    } finally {
+      setLoading(false);
     }
   };
 

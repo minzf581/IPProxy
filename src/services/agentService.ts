@@ -42,7 +42,7 @@ export async function createAgent(params: CreateAgentForm): Promise<AgentInfo> {
     balance: params.balance,
     contact: params.contact,
     remark: params.remark,
-    status: params.status ? 1 : 2,
+    status: 'active',
     limitFlow: 1000
   });
   debugAgent.info('Create agent response:', response.data);

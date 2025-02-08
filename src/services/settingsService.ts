@@ -1,65 +1,83 @@
 import { api } from '@/utils/request';
 import { message } from 'antd';
+import type { ApiResponse } from '@/types/api';
 
-export interface ResourcePrices {
-  dynamic_proxy_price: number;  // 动态代理价格
-  static_proxy_price: number;   // 静态代理价格
+// Debug 工具
+const debug = {
+  log: (...args: any[]) => {
+    console.log('[Settings Service]', ...args);
+  },
+  error: (...args: any[]) => {
+    console.error('[Settings Service]', ...args);
+  },
+  warn: (...args: any[]) => {
+    console.warn('[Settings Service]', ...args);
+  }
+};
+
+// 价格配置类型定义
+export interface PriceSettings {
+  dynamic: {
+    [key: string]: number;
+    pool1: number;
+    pool2: number;
+  };
+  static: {
+    [key: string]: number;
+    residential: number;
+    datacenter: number;
+  };
 }
 
 // 默认价格配置
-const DEFAULT_PRICES: ResourcePrices = {
-  dynamic_proxy_price: 5.0,  // 动态代理默认价格：5元/GB
-  static_proxy_price: 10.0   // 静态代理默认价格：10元/IP
+export const DEFAULT_PRICES: PriceSettings = {
+  dynamic: {
+    pool1: 100,
+    pool2: 200
+  },
+  static: {
+    residential: 300,
+    datacenter: 400
+  }
 };
 
 // 获取资源价格设置
-export const getResourcePrices = async (agentId: string): Promise<ResourcePrices> => {
+export async function getResourcePrices(agentId: number): Promise<PriceSettings> {
   try {
-    const { data: responseData } = await api.get(`/settings/agent/${agentId}/prices`);
+    debug.log(`开始获取代理商 ${agentId} 的价格设置`);
+    const response = await api.get<ApiResponse<PriceSettings>>(`/settings/agent/${agentId}/prices`);
     
-    // 检查响应格式
-    if (responseData && responseData.code === 0 && responseData.data) {
-      const priceData = responseData.data;
-      return {
-        dynamic_proxy_price: priceData.dynamic?.pool1 || DEFAULT_PRICES.dynamic_proxy_price,
-        static_proxy_price: priceData.static?.residential || DEFAULT_PRICES.static_proxy_price
-      };
+    if (!response.data || response.data.code !== 0) {
+      throw new Error(response.data?.msg || '获取价格设置失败');
     }
     
-    console.warn('获取价格设置返回异常:', responseData);
-    message.warning('获取价格设置失败，使用默认价格');
-    return DEFAULT_PRICES;
+    debug.log('成功获取价格设置:', response.data.data);
+    return response.data.data;
   } catch (error: any) {
-    console.error('获取价格设置失败:', error);
-    if (error.response?.status === 404) {
-      message.warning('代理商不存在或未设置价格，使用默认价格');
-    } else if (error.response?.status === 403) {
-      message.error('没有权限查看价格设置');
-    } else {
-      message.error('获取价格设置失败，请检查网络连接');
+    debug.error('获取价格设置失败:', error);
+    
+    if (error.response?.status === 403) {
+      debug.warn('没有权限查看价格设置，使用默认价格');
+      return DEFAULT_PRICES;
     }
-    return DEFAULT_PRICES;
+    
+    throw error;
   }
-};
+}
 
 // 更新资源价格设置
-export const updateResourcePrices = async (agentId: string, prices: ResourcePrices): Promise<boolean> => {
+export async function updateResourcePrices(agentId: number, prices: PriceSettings): Promise<void> {
   try {
-    const response = await api.post(`/settings/agent/${agentId}/prices`, prices);
-    if (response.code === 0) {
-      message.success('价格设置更新成功');
-      return true;
+    debug.log(`开始更新代理商 ${agentId} 的价格设置:`, prices);
+    const response = await api.put<ApiResponse<void>>(`/settings/agent/${agentId}/prices`, prices);
+    
+    if (!response.data || response.data.code !== 0) {
+      throw new Error(response.data?.msg || '更新价格设置失败');
     }
-    throw new Error('更新价格设置失败');
+    
+    debug.log('成功更新价格设置');
   } catch (error: any) {
-    console.error('更新价格设置失败:', error);
-    if (error.response?.status === 404) {
-      message.error('代理商不存在');
-    } else if (error.response?.status === 403) {
-      message.error('没有权限更新价格设置');
-    } else {
-      message.error('更新价格设置失败，请检查网络连接');
-    }
-    return false;
+    debug.error('更新价格设置失败:', error);
+    throw error;
   }
-}; 
+} 

@@ -7,8 +7,11 @@ from httpx import AsyncClient
 import pytest_asyncio
 import uuid
 from datetime import datetime, timedelta
-
+import asyncio
+from typing import Generator
 from app.database import Base, get_db
+from app.core.config import settings
+from app.services.ipipv_service import IPIPVService
 from app.main import app
 from app.utils.auth import create_access_token, get_password_hash
 from app.models.user import User
@@ -16,17 +19,23 @@ from app.models.dashboard import ProxyInfo
 from app.models.resource_usage import ResourceUsageStatistics
 from app.models.static_order import StaticOrder
 from app.models.transaction import Transaction
-from tests.mocks.ipproxy_api import MockIPIPVAPI
 
 # 使用SQLite内存数据库进行测试
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
+# 创建测试引擎
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# 创建测试会话
+TestingSessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine
+)
 
 # 创建测试数据库表
 Base.metadata.create_all(bind=engine)
@@ -45,10 +54,6 @@ app.dependency_overrides[get_db] = override_get_db
 @pytest.fixture(scope="session")
 def test_db():
     """创建测试数据库会话"""
-    SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-    engine = create_engine(SQLALCHEMY_DATABASE_URL)
-    TestingSessionLocal = sessionmaker(bind=engine)
-    
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
     yield db
@@ -308,14 +313,7 @@ def test_env():
     del os.environ["SECRET_KEY"]
     del os.environ["TESTING"]
 
-@pytest_asyncio.fixture
-async def client():
-    """创建测试客户端"""
-    async with AsyncClient(app=app, base_url="http://test") as ac:
-        yield ac
-        await ac.aclose()
-
-@pytest.fixture(scope="function")
+@pytest.fixture
 def db_session():
     """创建数据库会话"""
     Base.metadata.drop_all(bind=engine)  # 先删除所有表
@@ -323,94 +321,19 @@ def db_session():
     
     session = TestingSessionLocal()
     try:
-        # 初始化测试数据
-        # 1. 创建管理员用户
-        admin = User(
-            id=100,
-            username="admin",
-            password=get_password_hash("admin123"),
-            email="admin@example.com",
-            is_admin=True,
-            status="active",
-            balance=10000.0
-        )
-        session.add(admin)
-        session.commit()
-        session.refresh(admin)
-        
-        # 2. 创建测试代理商
-        agent1 = User(
-            id=101,
-            username="agent1",
-            password=get_password_hash("agent123"),
-            email="agent1@example.com",
-            is_agent=True,
-            status="active",
-            balance=5000.0,
-            remark="测试代理商1"
-        )
-        agent2 = User(
-            id=102,
-            username="agent2",
-            password=get_password_hash("agent123"),
-            email="agent2@example.com",
-            is_agent=True,
-            status="disabled",
-            balance=3000.0,
-            remark="测试代理商2"
-        )
-        session.add_all([agent1, agent2])
-        session.commit()
-        session.refresh(agent1)
-        session.refresh(agent2)
-        
-        # 3. 创建普通用户
-        user1 = User(
-            id=103,
-            username="user1",
-            password=get_password_hash("user123"),
-            email="user1@example.com",
-            is_agent=False,
-            status="active",
-            balance=1000.0,
-            agent_id=agent1.id
-        )
-        user2 = User(
-            id=104,
-            username="user2",
-            password=get_password_hash("user123"),
-            email="user2@example.com",
-            is_agent=False,
-            status="active",
-            balance=500.0,
-            agent_id=agent1.id
-        )
-        user3 = User(
-            id=105,
-            username="user3",
-            password=get_password_hash("user123"),
-            email="user3@example.com",
-            is_agent=False,
-            status="disabled",
-            balance=0.0,
-            agent_id=agent2.id
-        )
-        session.add_all([user1, user2, user3])
-        session.commit()
-        session.refresh(user1)
-        session.refresh(user2)
-        session.refresh(user3)
-        
         yield session
-    except Exception as e:
-        session.rollback()
-        raise e
     finally:
         session.close()
-        Base.metadata.drop_all(bind=engine)  # 测试结束后清理 
+        Base.metadata.drop_all(bind=engine)  # 测试结束后清理
 
-@pytest.fixture
-def mock_ipproxy_api():
-    """创建并设置Mock API"""
-    mock_api = MockIPIPVAPI()
-    return mock_api 
+@pytest.fixture(scope="session")
+def ipipv_service() -> IPIPVService:
+    """提供IPIPV服务实例"""
+    return IPIPVService()
+
+@pytest_asyncio.fixture
+async def client():
+    """创建测试客户端"""
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        yield ac
+        await ac.aclose() 

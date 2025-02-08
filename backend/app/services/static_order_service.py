@@ -12,6 +12,8 @@ from fastapi import HTTPException
 import uuid
 from sqlalchemy.exc import SQLAlchemyError
 import json
+from app.models.product_inventory import ProductInventory
+from app.models.dynamic_order import DynamicOrder
 
 logger = logging.getLogger(__name__)
 
@@ -33,30 +35,30 @@ class StaticOrderService:
         agent_username: str,
         order_data: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """创建静态代理订单"""
+        """创建代理订单"""
         logger = logging.getLogger(__name__)
-        logger.info(f"[StaticOrderService] 开始创建静态代理订单: user_id={user_id}, agent_id={agent_id}")
-        logger.debug(f"[StaticOrderService] 订单数据: {order_data}")
+        logger.info(f"[OrderService] 开始创建代理订单: user_id={user_id}, agent_id={agent_id}")
+        logger.debug(f"[OrderService] 订单数据: {order_data}")
         
         try:
             # 生成订单号
             order_no = self.generate_order_no()
-            logger.info(f"[StaticOrderService] 生成订单号: {order_no}")
+            logger.info(f"[OrderService] 生成订单号: {order_no}")
             
             # 检查用户余额
             user = self.db.query(User).filter(User.id == user_id).first()
             if not user:
-                logger.error(f"[StaticOrderService] 用户不存在: {user_id}")
+                logger.error(f"[OrderService] 用户不存在: {user_id}")
                 raise HTTPException(status_code=404, detail="用户不存在")
                 
-            logger.info(f"[StaticOrderService] 用户当前余额: {user.balance}")
+            logger.info(f"[OrderService] 用户当前余额: {user.balance}")
             amount = order_data.get('total_cost', 0)
             if user.balance < amount:
-                logger.error(f"[StaticOrderService] 用户余额不足: balance={user.balance}, amount={amount}")
+                logger.error(f"[OrderService] 用户余额不足: balance={user.balance}, amount={amount}")
                 raise HTTPException(status_code=400, detail="余额不足")
             
             # 调用支付服务处理支付
-            logger.info(f"[StaticOrderService] 开始处理支付，金额: {amount}")
+            logger.info(f"[OrderService] 开始处理支付，金额: {amount}")
             payment_service = PaymentService(self.db)
             payment_result = await payment_service.process_order_payment(
                 user_id=user_id,
@@ -64,136 +66,98 @@ class StaticOrderService:
                 order_no=order_no,
                 amount=amount
             )
-            logger.info(f"[StaticOrderService] 支付处理结果: {payment_result}")
+            logger.info(f"[OrderService] 支付处理结果: {payment_result}")
             
             if payment_result.get('code') != 0:
-                logger.error(f"[StaticOrderService] 支付失败: {payment_result}")
+                logger.error(f"[OrderService] 支付失败: {payment_result}")
                 raise HTTPException(status_code=500, detail=payment_result.get('msg', '支付失败'))
             
             try:
-                # 先查询产品信息
-                logger.info("[StaticOrderService] 开始查询产品信息")
-                product_result = await self.ipipv_api._make_request(
-                    "/api/open/app/product/query/v2",
-                    {
-                        "proxyType": [103]
-                    }
-                )
-                logger.info(f"[StaticOrderService] 产品信息查询结果: {product_result}")
-
-                if not product_result or product_result == "null":
-                    logger.error(f"[StaticOrderService] 产品信息查询失败，产品编号: {order_data.get('product_no')}")
-                    # 发起退款
-                    await payment_service.refund_order(
+                if order_data.get('proxyType') == 'dynamic':
+                    # 处理动态代理订单
+                    logger.info("[OrderService] 处理动态代理订单")
+                    if not order_data.get('poolType') or not order_data.get('traffic'):
+                        logger.error("[OrderService] 动态代理缺少必要参数")
+                        raise HTTPException(status_code=400, detail="动态代理需要填写IP池和流量信息")
+                        
+                    # 创建动态代理订单记录
+                    dynamic_order = DynamicOrder(
+                        order_no=order_no,
+                        app_order_no=order_data.get('app_order_no', order_no),
                         user_id=user_id,
                         agent_id=agent_id,
-                        order_no=order_no,
+                        pool_type=order_data.get('poolType'),
+                        traffic=order_data.get('traffic'),
                         amount=amount,
-                        remark=f"产品信息查询失败，产品编号 {order_data.get('product_no')} 不存在"
+                        status='processing'
                     )
-                    raise HTTPException(status_code=500, detail=f"产品信息查询失败，产品编号 {order_data.get('product_no')} 不存在")
-
-                # 解析产品信息
-                try:
-                    if isinstance(product_result, str):
-                        product_result = json.loads(product_result)
-                except json.JSONDecodeError:
-                    logger.error(f"[StaticOrderService] 解析产品信息失败: {product_result}")
-                    await payment_service.refund_order(
-                        user_id=user_id,
-                        agent_id=agent_id,
-                        order_no=order_no,
-                        amount=amount,
-                        remark="解析产品信息失败"
-                    )
-                    raise HTTPException(status_code=500, detail="解析产品信息失败")
-
-                # 检查产品是否存在
-                product_no = order_data.get('product_no')
-                product_found = False
-                if isinstance(product_result, list):
-                    for product in product_result:
-                        if product.get('productNo') == product_no:
-                            product_found = True
-                            break
-
-                if not product_found:
-                    logger.error(f"[StaticOrderService] 产品不存在: {product_no}")
-                    await payment_service.refund_order(
-                        user_id=user_id,
-                        agent_id=agent_id,
-                        order_no=order_no,
-                        amount=amount,
-                        remark=f"产品不存在: {product_no}"
-                    )
-                    raise HTTPException(status_code=500, detail=f"产品不存在: {product_no}")
-
-                # 调用 IPIPV API 创建订单
-                logger.info("[StaticOrderService] 开始调用 IPIPV API 创建订单")
-                api_params = {
-                    "appOrderNo": order_data.get('app_order_no', order_no),
-                    "params": [{
-                        "orderNo": order_no,
-                        "productNo": order_data.get('product_no'),
-                        "quantity": order_data.get('ip_count'),
-                        "duration": order_data.get('duration'),
-                        "username": username,
-                        "regionCode": order_data.get('region_code'),
-                        "countryCode": order_data.get('country_code'),
-                        "cityCode": order_data.get('city_code'),
-                        "staticType": order_data.get('static_type')
-                    }]
-                }
-                logger.info(f"[StaticOrderService] IPIPV API 请求参数: {api_params}")
-                api_result = await self.ipipv_api._make_request(
-                    "/api/open/app/instance/open/v2",
-                    api_params
-                )
-                logger.info(f"[StaticOrderService] IPIPV API 响应: {api_result}")
-                
-                if not api_result:
-                    logger.error("[StaticOrderService] IPIPV API 调用失败")
-                    # 发起退款
-                    await payment_service.refund_order(
-                        user_id=user_id,
-                        agent_id=agent_id,
-                        order_no=order_no,
-                        amount=amount,
-                        remark="API调用失败，自动退款"
-                    )
-                    raise HTTPException(status_code=500, detail="订单创建失败")
                     
-                # 创建订单记录
-                static_order = StaticOrder(
-                    order_no=order_no,
-                    app_order_no=order_data.get('app_order_no', order_no),
-                    user_id=user_id,
-                    agent_id=agent_id,
-                    product_no=order_data.get('product_no'),
-                    proxy_type=order_data.get('proxy_type'),
-                    region_code=order_data.get('region_code'),
-                    country_code=order_data.get('country_code'),
-                    city_code=order_data.get('city_code'),
-                    static_type=order_data.get('static_type'),
-                    ip_count=order_data.get('ip_count'),
-                    duration=order_data.get('duration'),
-                    unit=order_data.get('unit', 1),
-                    amount=amount,
-                    status='processing'
-                )
-                
-                self.db.add(static_order)
-                self.db.commit()
-                logger.info(f"[StaticOrderService] 订单创建成功: {order_no}")
-                
-                return {
-                    "code": 0,
-                    "msg": "success",
-                    "data": static_order.to_dict()
-                }
-                
+                    self.db.add(dynamic_order)
+                    self.db.commit()
+                    logger.info(f"[OrderService] 动态代理订单创建成功: {order_no}")
+                    
+                    return {
+                        "code": 0,
+                        "msg": "success",
+                        "data": dynamic_order.to_dict()
+                    }
+                    
+                else:
+                    # 处理静态代理订单
+                    logger.info("[OrderService] 处理静态代理订单")
+                    # 验证必要参数
+                    required_fields = ['product_no', 'region', 'country', 'city', 'staticType', 'duration', 'quantity']
+                    missing_fields = [field for field in required_fields if not order_data.get(field)]
+                    if missing_fields:
+                        logger.error(f"[OrderService] 静态代理缺少必要参数: {missing_fields}")
+                        raise HTTPException(status_code=400, detail=f"缺少必要参数: {', '.join(missing_fields)}")
+                    
+                    # 先查询产品信息
+                    logger.info("[OrderService] 开始查询产品信息")
+                    product_result = await self.ipipv_api._make_request(
+                        "api/open/app/product/query/v2",
+                        {
+                            "proxyType": [103],
+                            "appOrderNo": order_data.get('app_order_no', order_no)
+                        }
+                    )
+                    logger.info(f"[OrderService] 产品信息查询结果: {product_result}")
+
+                    if not product_result or product_result == "null":
+                        logger.error(f"[OrderService] 产品信息查询失败")
+                        raise HTTPException(status_code=500, detail="产品信息查询失败")
+
+                    # 创建静态代理订单记录
+                    static_order = StaticOrder(
+                        order_no=order_no,
+                        app_order_no=order_data.get('app_order_no', order_no),
+                        user_id=user_id,
+                        agent_id=agent_id,
+                        product_no=order_data.get('product_no'),
+                        proxy_type=103,  # 静态国外家庭代理
+                        region_code=order_data.get('region'),
+                        country_code=order_data.get('country'),
+                        city_code=order_data.get('city'),
+                        static_type=order_data.get('staticType'),
+                        ip_count=int(order_data.get('quantity', 0)),
+                        duration=int(order_data.get('duration', 0)),
+                        unit=1,  # 默认单位为天
+                        amount=amount,
+                        status='processing'
+                    )
+                    
+                    self.db.add(static_order)
+                    self.db.commit()
+                    logger.info(f"[OrderService] 静态代理订单创建成功: {order_no}")
+                    
+                    return {
+                        "code": 0,
+                        "msg": "success",
+                        "data": static_order.to_dict()
+                    }
+                    
             except Exception as e:
-                logger.error(f"[StaticOrderService] 创建订单失败: {str(e)}")
+                logger.error(f"[OrderService] 创建订单失败: {str(e)}")
                 logger.exception(e)
                 # 发起退款
                 await payment_service.refund_order(
@@ -208,7 +172,7 @@ class StaticOrderService:
         except HTTPException as e:
             raise e
         except Exception as e:
-            logger.error(f"[StaticOrderService] 处理订单时发生错误: {str(e)}")
+            logger.error(f"[OrderService] 处理订单时发生错误: {str(e)}")
             logger.exception(e)
             raise HTTPException(status_code=500, detail=str(e))
             
@@ -414,4 +378,159 @@ class StaticOrderService:
         except Exception as e:
             logger.error(f"[StaticOrderService] 处理回调请求时发生未知错误: {str(e)}")
             logger.exception(e)
-            return {'code': 'failed', 'msg': str(e)} 
+            return {'code': 'failed', 'msg': str(e)}
+
+    async def query_products(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """查询产品信息"""
+        try:
+            logger.info("[StaticOrderService] 开始查询产品信息")
+            logger.debug(f"[StaticOrderService] 查询参数: {params}")
+            
+            # 调用 IPIPV API 查询产品信息
+            result = await self.ipipv_api._make_request(
+                "/api/open/app/product/query/v2",
+                params
+            )
+            
+            logger.info(f"[StaticOrderService] 产品查询结果: {result}")
+            
+            if not result:
+                logger.error("[StaticOrderService] 产品查询失败: 未收到响应数据")
+                raise HTTPException(status_code=500, detail="产品查询失败")
+                
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": result
+            }
+            
+        except Exception as e:
+            logger.error(f"[StaticOrderService] 查询产品信息失败: {str(e)}")
+            logger.exception(e)
+            raise HTTPException(status_code=500, detail=f"查询产品信息失败: {str(e)}")
+
+    async def sync_product_inventory(self) -> bool:
+        """同步产品库存"""
+        try:
+            logger.info("[StaticOrderService] 开始同步产品库存")
+            
+            # 调用IPIPV API获取产品列表
+            result = await self.ipipv_api._make_request(
+                "/api/open/app/product/query/v2",
+                {
+                    "proxyType": [103]  # 静态国外家庭代理
+                }
+            )
+            
+            if not result:
+                logger.error("[StaticOrderService] 获取产品列表失败")
+                return False
+                
+            # 更新本地数据库
+            for product in result:
+                existing = self.db.query(ProductInventory).filter_by(
+                    product_no=product.get('productNo')
+                ).first()
+                
+                product_data = {
+                    'product_no': product.get('productNo'),
+                    'product_name': product.get('productName'),
+                    'proxy_type': product.get('proxyType'),
+                    'use_type': product.get('useType'),
+                    'protocol': product.get('protocol'),
+                    'use_limit': product.get('useLimit'),
+                    'sell_limit': product.get('sellLimit'),
+                    'area_code': product.get('areaCode'),
+                    'country_code': product.get('countryCode'),
+                    'state_code': product.get('stateCode'),
+                    'city_code': product.get('cityCode'),
+                    'detail': product.get('detail'),
+                    'cost_price': product.get('costPrice'),
+                    'inventory': product.get('inventory', 0),
+                    'ip_type': product.get('ipType'),
+                    'isp_type': product.get('ispType'),
+                    'net_type': product.get('netType'),
+                    'duration': product.get('duration'),
+                    'unit': product.get('unit'),
+                    'band_width': product.get('bandWidth'),
+                    'band_width_price': product.get('bandWidthPrice'),
+                    'max_band_width': product.get('maxBandWidth'),
+                    'flow': product.get('flow'),
+                    'cpu': product.get('cpu'),
+                    'memory': product.get('memory'),
+                    'enable': product.get('enable', 1),
+                    'supplier_code': product.get('supplierCode'),
+                    'ip_count': product.get('ipCount'),
+                    'ip_duration': product.get('ipDuration'),
+                    'assign_ip': product.get('assignIp', -1),
+                    'cidr_status': product.get('cidrStatus', -1),
+                    'static_type': product.get('staticType'),
+                    'last_sync_time': datetime.now(),
+                    'ip_start': product.get('ipStart'),
+                    'ip_end': product.get('ipEnd')
+                }
+                
+                if existing:
+                    # 更新现有记录
+                    for key, value in product_data.items():
+                        setattr(existing, key, value)
+                else:
+                    # 创建新记录
+                    new_product = ProductInventory(**product_data)
+                    self.db.add(new_product)
+            
+            try:
+                self.db.commit()
+                logger.info("[StaticOrderService] 产品库存同步成功")
+                return True
+            except SQLAlchemyError as e:
+                self.db.rollback()
+                logger.error(f"[StaticOrderService] 数据库操作失败: {str(e)}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"[StaticOrderService] 同步产品库存失败: {str(e)}")
+            logger.exception(e)
+            return False
+
+    async def list_orders(
+        self,
+        user_id: int,
+        page: int = 1,
+        page_size: int = 10
+    ) -> Dict[str, Any]:
+        """获取订单列表"""
+        try:
+            # 计算分页
+            offset = (page - 1) * page_size
+
+            # 查询总数
+            total = self.db.query(StaticOrder).filter(
+                StaticOrder.user_id == user_id
+            ).count()
+
+            # 查询订单列表
+            orders = self.db.query(StaticOrder).filter(
+                StaticOrder.user_id == user_id
+            ).order_by(
+                StaticOrder.created_at.desc()
+            ).offset(offset).limit(page_size).all()
+
+            # 转换为字典格式
+            order_list = [order.to_dict() for order in orders]
+
+            return {
+                'code': 0,
+                'msg': 'success',
+                'data': {
+                    'total': total,
+                    'list': order_list,
+                    'page': page,
+                    'page_size': page_size
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"获取订单列表失败: {str(e)}")
+            logger.exception(e)
+            raise HTTPException(status_code=500, detail="获取订单列表失败") 

@@ -81,6 +81,7 @@ import json
 from datetime import datetime, timedelta
 import logging
 from sqlalchemy import func
+import traceback
 
 from app.database import get_db
 from app.models.dashboard import ProxyInfo, ResourceUsage
@@ -248,7 +249,7 @@ def sync_resource_usage(db: Session, main_user: MainUser):
         logger.error(f"同步资源使用信息失败: {str(e)}")
         # 同步失败不抛出异常，继续使用数据库中的数据
 
-@router.get("/dashboard/info/v2")
+@router.get("/open/app/dashboard/info/v2")
 async def get_dashboard_info(
     current_user: User = Depends(get_current_user),
     proxy_service: ProxyService = Depends(get_proxy_service),
@@ -257,30 +258,49 @@ async def get_dashboard_info(
 ):
     """获取仪表盘信息"""
     try:
-        # 获取代理信息
-        proxy_info = await proxy_service.get_proxy_info()
-        if not proxy_info:
-            raise HTTPException(status_code=500, detail="获取代理信息失败")
-            
-        # 获取用户统计信息
-        user_stats = await user_service.get_statistics()
-        if not user_stats:
-            raise HTTPException(status_code=500, detail="获取用户统计信息失败")
-            
-        return {
-            "code": 0,
-            "message": "success",
-            "data": {
-                "proxy_info": proxy_info,
-                "statistics": user_stats
-            }
+        logger.info(f"[Dashboard Service] 开始获取仪表盘数据, 当前用户: {current_user.username}")
+        
+        # 获取用户统计数据并确保数据类型为数字
+        total_recharge = float(get_total_recharge(db, current_user.id) or 0)
+        total_consumption = float(get_total_consumption(db, current_user.id) or 0)
+        month_recharge = float(get_month_recharge(db, current_user.id) or 0)
+        month_consumption = float(get_month_consumption(db, current_user.id) or 0)
+        last_month_consumption = float(get_last_month_consumption(db, current_user.id) or 0)
+        
+        # 获取资源使用情况
+        dynamic_resources = get_dynamic_resources_usage(db, current_user.id)
+        static_resources = get_static_resources_usage(db, current_user.id)
+        
+        # 构建响应数据
+        response_data = {
+            "statistics": {
+                "totalRecharge": total_recharge,
+                "totalConsumption": total_consumption,
+                "monthRecharge": month_recharge,
+                "monthConsumption": month_consumption,
+                "lastMonthConsumption": last_month_consumption,
+                "balance": float(current_user.balance or 0)
+            },
+            "dynamicResources": dynamic_resources,
+            "staticResources": static_resources
         }
         
-    except HTTPException:
-        raise
+        logger.info("[Dashboard Service] 仪表盘数据获取成功")
+        logger.info(f"[Dashboard Service] 响应数据: {json.dumps(response_data)}")
+        
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": response_data
+        }
+        
     except Exception as e:
-        logger.error(f"获取仪表盘信息失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[Dashboard Service] 获取仪表盘数据失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail={"code": 500, "message": f"获取仪表盘数据失败: {str(e)}"}
+        )
 
 def get_total_recharge(db: Session, user_id: int) -> float:
     """获取累计充值金额"""
@@ -340,77 +360,79 @@ def get_last_month_consumption(db: Session, user_id: int) -> float:
 
 def get_dynamic_resources_usage(db: Session, user_id: int) -> list:
     """获取动态资源使用情况"""
-    # 这里需要根据实际的数据结构来实现
-    # 示例数据
-    return [
-        {
-            "id": "1",
-            "name": "动态资源1",
-            "usageRate": 75,
-            "total": 1000,
-            "monthly": 300,
-            "today": 50,
-            "lastMonth": 800
-        },
-        {
-            "id": "2",
-            "name": "动态资源2",
-            "usageRate": 60,
-            "total": 2000,
-            "monthly": 500,
-            "today": 80,
-            "lastMonth": 1500
-        }
-    ]
+    try:
+        # 获取动态资源使用情况
+        resources = []
+        
+        # 获取动态订单统计
+        dynamic_orders = db.query(DynamicOrder).filter(
+            DynamicOrder.user_id == user_id
+        ).all()
+        
+        if dynamic_orders:
+            total_usage = sum(order.total_traffic for order in dynamic_orders)
+            monthly_usage = sum(order.monthly_traffic for order in dynamic_orders)
+            today_usage = sum(order.today_traffic for order in dynamic_orders)
+            last_month_usage = sum(order.last_month_traffic for order in dynamic_orders)
+            
+            resources.append({
+                "id": "1",
+                "name": "动态代理",
+                "usageRate": float(monthly_usage / total_usage * 100 if total_usage else 0),
+                "total": float(total_usage),
+                "monthly": float(monthly_usage),
+                "today": float(today_usage),
+                "lastMonth": float(last_month_usage)
+            })
+        
+        return resources
+        
+    except Exception as e:
+        logger.error(f"获取动态资源使用情况失败: {str(e)}")
+        return []
 
 def get_static_resources_usage(db: Session, user_id: int) -> list:
     """获取静态资源使用情况"""
-    # 这里需要根据实际的数据结构来实现
-    # 示例数据
-    return [
-        {
-            "name": "静态资源1",
-            "total": 100,
-            "available": 80,
-            "used": 20,
-            "expired": 0
-        },
-        {
-            "name": "静态资源2",
-            "total": 200,
-            "available": 150,
-            "used": 40,
-            "expired": 10
-        },
-        {
-            "name": "静态资源3",
-            "total": 300,
-            "available": 200,
-            "used": 80,
-            "expired": 20
-        },
-        {
-            "name": "静态资源4",
-            "total": 400,
-            "available": 300,
-            "used": 90,
-            "expired": 10
-        },
-        {
-            "name": "静态资源5",
-            "total": 500,
-            "available": 400,
-            "used": 80,
-            "expired": 20
-        },
-        {
-            "name": "静态资源7",
-            "total": 700,
-            "available": 600,
-            "used": 80,
-            "expired": 20
-        }
-    ]
+    try:
+        # 获取静态资源使用情况
+        resources = []
+        
+        # 获取静态订单统计
+        static_orders = db.query(StaticOrder).filter(
+            StaticOrder.user_id == user_id
+        ).all()
+        
+        if static_orders:
+            total = len(static_orders)
+            available = sum(1 for order in static_orders if order.status == 'active')
+            expired = sum(1 for order in static_orders if order.status == 'expired')
+            
+            # 获取本月和上月的开通数量
+            now = datetime.now()
+            start_of_month = datetime(now.year, now.month, 1)
+            start_of_last_month = start_of_month - timedelta(days=start_of_month.day)
+            
+            monthly = sum(1 for order in static_orders 
+                         if order.created_at >= start_of_month)
+            last_month = sum(1 for order in static_orders 
+                            if start_of_last_month <= order.created_at < start_of_month)
+            
+            resources.append({
+                "id": "1",
+                "name": "静态代理",
+                "usageRate": float(available / total * 100 if total else 0),
+                "total": float(total),
+                "available": float(available),
+                "monthly": float(monthly),
+                "lastMonth": float(last_month),
+                "expired": float(expired)
+            })
+        
+        return resources
+        
+    except Exception as e:
+        logger.error(f"获取静态资源使用情况失败: {str(e)}")
+        return []
 
 @router.get("/resource-statistics")
 async def get_resource_statistics(db: Session = Depends(get_db)):

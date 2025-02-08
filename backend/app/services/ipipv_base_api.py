@@ -46,7 +46,7 @@ from Crypto.Util.Padding import pad, unpad
 import httpx
 import logging
 import traceback
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 from datetime import datetime
 from app.config import settings
 from app.utils.logging_utils import truncate_response
@@ -106,29 +106,22 @@ class IPIPVBaseAPI:
         """
         self.mock_api = mock_api
     
-    async def _make_request(
-        self, 
-        endpoint: str, 
-        params: Optional[Dict[str, Any]] = None
-    ) -> Union[Dict[str, Any], None]:
+    async def _make_request(self, endpoint: str, params: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
         """
-        发送API请求的核心方法
+        发送请求到IPIPV API
         
         Args:
             endpoint (str): API端点
             params (dict, optional): 请求参数
             
         Returns:
-            dict: 解密后的响应数据
+            dict: 响应数据
             None: 请求失败
             
         Raises:
             Exception: 请求过程中的任何异常
         """
         try:
-            # 确保 endpoint 格式正确
-            endpoint = endpoint.lstrip('/')  # 移除开头的斜杠
-            
             # 确保 params 不为 None
             if params is None:
                 params = {}
@@ -138,10 +131,28 @@ class IPIPVBaseAPI:
             logger.info(f"[IPIPV] 使用的 base_url: {self.base_url}")
             logger.info(f"[IPIPV] 使用的 app_key: {self.app_key}")
             
+            # 确保必要的参数存在并且格式正确
+            app_order_no = params.get('appOrderNo')
+            if not app_order_no:
+                logger.error("[IPIPV] 缺少必要参数: appOrderNo")
+                raise ValueError("缺少必要参数: appOrderNo")
+            
+            # 确保appOrderNo是字符串且不为空
+            app_order_no = str(app_order_no).strip()
+            if not app_order_no:
+                logger.error("[IPIPV] appOrderNo不能为空")
+                raise ValueError("appOrderNo不能为空")
+            
+            # 复制参数用于加密
+            params_to_encrypt = params.copy()
+            
+            # 记录处理后的参数
+            logger.info(f"[IPIPV] 处理后的appOrderNo: {app_order_no}")
+            
             # 加密业务参数
-            encrypted_params = self._encrypt_params(params)
+            encrypted_params = self._encrypt_params(params_to_encrypt)
             req_id = hashlib.md5(f"{time.time()}".encode()).hexdigest()
-            timestamp = str(int(time.time()))  # 使用当前时间戳
+            timestamp = str(int(time.time()))
             
             # 构建请求参数
             request_params = {
@@ -151,7 +162,8 @@ class IPIPVBaseAPI:
                 'reqId': req_id,
                 'timestamp': timestamp,
                 'params': encrypted_params,
-                'appUsername': self.app_username
+                'appUsername': self.app_username,
+                'appOrderNo': app_order_no
             }
             
             # 生成签名
@@ -174,7 +186,10 @@ class IPIPVBaseAPI:
                         'Accept': 'application/json',
                         'X-App-Key': self.app_key,
                         'X-App-Username': self.app_username,
-                        'X-Api-Version': self.api_version
+                        'X-Api-Version': self.api_version,
+                        'X-App-Order-No': app_order_no,
+                        'X-Timestamp': timestamp,
+                        'X-Sign': request_params['sign']
                     }
                 )
                 
@@ -191,32 +206,31 @@ class IPIPVBaseAPI:
                     data = response.json()
                     logger.info(f"[IPIPV] 解析后的响应: {json.dumps(data, ensure_ascii=False)}")
                     
-                    # 修改成功响应的判断条件
-                    if data.get('code') not in [0, 200] and data.get('msg') not in ["OK", "success"]:
+                    # 如果响应中包含错误信息，直接返回
+                    if data.get('code') not in [0, 200]:
                         logger.error(f"[IPIPV] API错误: {data.get('msg')}")
-                        return None
-                        
-                    # 获取加密数据，支持多种返回格式
+                        return data
+                    
+                    # 获取加密数据
                     encrypted_data = data.get('data')
-                    if encrypted_data is None:
-                        logger.info("[IPIPV] 响应中没有加密数据，直接返回 data")
-                        return data.get('data')
-                        
-                    try:
-                        decrypted_data = self._decrypt_response(encrypted_data)
-                        if decrypted_data is None:
-                            logger.error("[IPIPV] 解密数据为空")
-                            return None
-                            
-                        logger.info(f"[IPIPV] 解密后数据类型: {type(decrypted_data)}")
-                        logger.info(f"[IPIPV] 完整解密后数据: {json.dumps(decrypted_data, ensure_ascii=False)}")
-                        return decrypted_data
-                        
-                    except Exception as e:
-                        logger.error(f"[IPIPV] 解密失败: {str(e)}")
-                        logger.error(f"[IPIPV] 错误堆栈: {traceback.format_exc()}")
-                        return None
-                        
+                    if not encrypted_data:
+                        logger.info("[IPIPV] 响应中没有加密数据，直接返回原始响应")
+                        return data
+                    
+                    # 尝试解密数据
+                    if isinstance(encrypted_data, str):
+                        try:
+                            decrypted_data = self._decrypt_response(encrypted_data)
+                            if decrypted_data:
+                                logger.info(f"[IPIPV] 成功解密数据: {json.dumps(decrypted_data, ensure_ascii=False)}")
+                                # 将解密后的数据放入原始响应中
+                                data['decrypted_data'] = decrypted_data
+                        except Exception as e:
+                            logger.error(f"[IPIPV] 解密失败: {str(e)}")
+                    
+                    # 返回完整响应
+                    return data
+                    
                 except json.JSONDecodeError as e:
                     logger.error(f"[IPIPV] JSON解析错误: {str(e)}")
                     logger.error(f"[IPIPV] 响应内容: {response.text}")
@@ -242,21 +256,21 @@ class IPIPVBaseAPI:
         """
         try:
             # 确保有参数字典
-            if params is None:
-                params = {}
+            if not params:
+                raise ValueError("购买参数列表为空")
             
-            # 移除不需要加密的参数
+            # 复制参数字典
             params_to_encrypt = params.copy()
-            for key in ['version', 'encrypt', 'appKey', 'reqId', 'timestamp', 'sign']:
-                params_to_encrypt.pop(key, None)
             
-            logger.info(f"[加密] 待加密参数: {json.dumps(params_to_encrypt, ensure_ascii=False)}")
+            # 记录原始参数
+            logger.info(f"[加密] 原始参数: {json.dumps(params_to_encrypt, ensure_ascii=False)}")
             
             # 转换为JSON字符串
             json_params = json.dumps(
-                params_to_encrypt, 
-                separators=(',', ':'), 
-                ensure_ascii=False
+                params_to_encrypt,
+                separators=(',', ':'),
+                ensure_ascii=False,
+                sort_keys=True  # 确保参数按照键名排序
             )
             
             logger.info(f"[加密] JSON字符串: {json_params}")
@@ -266,8 +280,6 @@ class IPIPVBaseAPI:
             key = self.app_secret.encode('utf-8')[:32]
             iv = self.app_secret.encode('utf-8')[:16]
             
-            logger.info(f"[加密] 密钥长度: {len(key)}, IV长度: {len(iv)}")
-            
             # 执行加密
             cipher = AES.new(key, AES.MODE_CBC, iv)
             padded_data = pad(
@@ -276,14 +288,10 @@ class IPIPVBaseAPI:
                 style='pkcs7'
             )
             
-            logger.info(f"[加密] 填充后数据长度: {len(padded_data)}")
-            
             encrypted = cipher.encrypt(padded_data)
-            logger.info(f"[加密] 加密后数据长度: {len(encrypted)}")
             
             # Base64编码
             encoded = base64.b64encode(encrypted).decode('ascii')
-            logger.info(f"[加密] Base64编码后长度: {len(encoded)}")
             logger.info(f"[加密] Base64编码结果前100字符: {encoded[:100]}...")
             
             return encoded

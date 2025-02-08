@@ -204,9 +204,9 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
     const { statistics } = dashboardData;
     
     return (
-      <Row gutter={[16, 16]} className={styles.statisticsRow}>
-        <Col xs={24} sm={12} md={8} lg={6}>
-          <Card>
+      <Row gutter={[12, 12]} className={styles.statisticsRow}>
+        <Col xs={12} sm={12} md={6} lg={6}>
+          <Card bodyStyle={{ padding: '12px' }}>
             <Statistic
               title="账户余额"
               value={statistics.balance}
@@ -215,8 +215,8 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={8} lg={6}>
-          <Card>
+        <Col xs={12} sm={12} md={6} lg={6}>
+          <Card bodyStyle={{ padding: '12px' }}>
             <Statistic
               title="总充值"
               value={statistics.totalRecharge}
@@ -225,8 +225,8 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={8} lg={6}>
-          <Card>
+        <Col xs={12} sm={12} md={6} lg={6}>
+          <Card bodyStyle={{ padding: '12px' }}>
             <Statistic
               title="总消费"
               value={statistics.totalConsumption}
@@ -235,8 +235,8 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={8} lg={6}>
-          <Card>
+        <Col xs={12} sm={12} md={6} lg={6}>
+          <Card bodyStyle={{ padding: '12px' }}>
             <Statistic
               title="本月消费"
               value={statistics.monthConsumption}
@@ -251,11 +251,16 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
 
   const renderDynamicResources = (resources: DynamicResource[]) => {
     return resources.map((resource) => (
-      <Col span={8} key={resource.id}>
-        <Card>
-          <Statistic title={resource.name} value={resource.total} suffix="Gb" />
-          <Progress percent={resource.usageRate} status="active" />
-          <Row gutter={16}>
+      <Col xs={24} sm={12} md={8} key={resource.id}>
+        <Card bodyStyle={{ padding: '12px' }}>
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '14px', color: 'rgba(0, 0, 0, 0.85)' }}>{resource.name}</span>
+              <span style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>{resource.usageRate}%</span>
+            </div>
+            <Progress percent={resource.usageRate} size="small" showInfo={false} />
+          </div>
+          <Row gutter={[8, 8]}>
             <Col span={8}>
               <Statistic title="本月" value={resource.monthly} suffix="Gb" />
             </Col>
@@ -273,19 +278,24 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
 
   const renderStaticResources = (resources: StaticResource[]) => {
     return resources.map((resource) => (
-      <Col span={8} key={resource.id}>
-        <Card>
-          <Statistic title={resource.name} value={resource.total} />
-          <Progress percent={resource.usageRate} status="active" />
-          <Row gutter={16}>
-            <Col span={8}>
+      <Col xs={24} sm={12} md={8} key={resource.id}>
+        <Card bodyStyle={{ padding: '12px' }}>
+          <div style={{ marginBottom: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '14px', color: 'rgba(0, 0, 0, 0.85)' }}>{resource.name}</span>
+              <span style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}>{resource.usageRate}%</span>
+            </div>
+            <Progress percent={resource.usageRate} size="small" showInfo={false} />
+          </div>
+          <Row gutter={[8, 8]}>
+            <Col span={12}>
               <Statistic title="本月" value={resource.monthly} />
             </Col>
-            <Col span={8}>
+            <Col span={12}>
               <Statistic title="上月" value={resource.lastMonth} />
             </Col>
           </Row>
-          <Row gutter={16} style={{ marginTop: '16px' }}>
+          <Row gutter={[8, 8]} style={{ marginTop: '8px' }}>
             <Col span={12}>
               <Statistic title="可用" value={resource.available} />
             </Col>
@@ -323,13 +333,13 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
         {renderStatisticsCards()}
         <div className={styles.resourceSection}>
           <h2>动态资源</h2>
-          <Row gutter={[16, 16]}>
+          <Row gutter={[12, 12]}>
             {dashboardData?.dynamicResources ? renderDynamicResources(dashboardData.dynamicResources) : null}
           </Row>
         </div>
         <div className={styles.resourceSection}>
           <h2>静态资源</h2>
-          <Row gutter={[16, 16]}>
+          <Row gutter={[12, 12]}>
             {dashboardData?.staticResources ? renderStaticResources(dashboardData.staticResources) : null}
           </Row>
         </div>

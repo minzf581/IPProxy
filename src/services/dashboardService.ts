@@ -47,7 +47,6 @@ export interface DashboardData {
 export async function getDashboardData(agentId?: string | number): Promise<DashboardDataType> {
   try {
     console.log('[Dashboard Service] Getting dashboard data for agent:', agentId);
-    console.log('[Dashboard Service] Agent ID type:', typeof agentId);
     
     const url = '/open/app/dashboard/info/v2';
     const params = agentId ? { agent_id: agentId } : undefined;
@@ -56,23 +55,166 @@ export async function getDashboardData(agentId?: string | number): Promise<Dashb
     console.log('[Dashboard Service] Request params:', params);
     
     const response = await api.get<ApiResponse<DashboardDataType>>(url, { params });
-    console.log('[Dashboard Service] Dashboard data full response:', response);
-    
-    if (response.data.code !== 0) {
-      throw new Error(response.data.msg || '获取仪表盘数据失败');
+    const { data } = response.data;
+    console.log('[Dashboard Service] Dashboard data:', JSON.stringify(data, null, 2));
+
+    // 如果数据为空，返回默认值
+    if (!data) {
+      console.warn('[Dashboard Service] No data received, returning default values');
+      return {
+        statistics: {
+          totalRecharge: 0,
+          totalConsumption: 0,
+          balance: 0,
+          monthRecharge: 0,
+          monthConsumption: 0,
+          lastMonthConsumption: 0
+        },
+        dynamicResources: [],
+        staticResources: []
+      };
     }
-    
-    return response.data.data;
-  } catch (error) {
-    const axiosError = error as AxiosError;
-    console.error('[Dashboard Service] Error getting dashboard data:', axiosError);
-    console.error('[Dashboard Service] Error details:', {
-      message: axiosError.message,
-      status: axiosError.response?.status,
-      statusText: axiosError.response?.statusText,
-      responseData: axiosError.response?.data
+
+    // 确保统计数据存在
+    if (!data.statistics) {
+      console.warn('[Dashboard Service] No statistics data, using default values');
+      data.statistics = {
+        totalRecharge: 0,
+        totalConsumption: 0,
+        balance: 0,
+        monthRecharge: 0,
+        monthConsumption: 0,
+        lastMonthConsumption: 0
+      };
+    }
+
+    // 固定的动态资源列表
+    const defaultDynamicResources = [
+      {
+        id: 'pool1',
+        name: '动态IP池1',
+        usageRate: 0,
+        total: 0,
+        monthly: 0,
+        today: 0,
+        lastMonth: 0
+      },
+      {
+        id: 'pool2',
+        name: '动态IP池2',
+        usageRate: 0,
+        total: 0,
+        monthly: 0,
+        today: 0,
+        lastMonth: 0
+      },
+      {
+        id: 'pool3',
+        name: '动态IP池3',
+        usageRate: 0,
+        total: 0,
+        monthly: 0,
+        today: 0,
+        lastMonth: 0
+      }
+    ];
+
+    // 固定的静态资源列表
+    const defaultStaticResources = [
+      {
+        id: 'static1',
+        name: '纯净静态1',
+        usageRate: 0,
+        total: 0,
+        monthly: 0,
+        lastMonth: 0,
+        available: 0,
+        expired: 0
+      },
+      {
+        id: 'static2',
+        name: '纯净静态2',
+        usageRate: 0,
+        total: 0,
+        monthly: 0,
+        lastMonth: 0,
+        available: 0,
+        expired: 0
+      },
+      {
+        id: 'static3',
+        name: '纯净静态3',
+        usageRate: 0,
+        total: 0,
+        monthly: 0,
+        lastMonth: 0,
+        available: 0,
+        expired: 0
+      },
+      {
+        id: 'static4',
+        name: '纯净静态4',
+        usageRate: 0,
+        total: 0,
+        monthly: 0,
+        lastMonth: 0,
+        available: 0,
+        expired: 0
+      },
+      {
+        id: 'static5',
+        name: '纯净静态5',
+        usageRate: 0,
+        total: 0,
+        monthly: 0,
+        lastMonth: 0,
+        available: 0,
+        expired: 0
+      },
+      {
+        id: 'static7',
+        name: '纯净静态7',
+        usageRate: 0,
+        total: 0,
+        monthly: 0,
+        lastMonth: 0,
+        available: 0,
+        expired: 0
+      }
+    ];
+
+    // 将后端返回的数据与默认数据合并
+    const mergedDynamicResources = defaultDynamicResources.map(defaultResource => {
+      const backendResource = (data.dynamicResources || []).find(r => r.id === defaultResource.id);
+      return backendResource ? {
+        ...defaultResource,
+        ...backendResource,
+        name: defaultResource.name // 保持固定的名称
+      } : defaultResource;
     });
-    throw error;
+
+    const mergedStaticResources = defaultStaticResources.map(defaultResource => {
+      const backendResource = (data.staticResources || []).find(r => r.id === defaultResource.id);
+      return backendResource ? {
+        ...defaultResource,
+        ...backendResource,
+        name: defaultResource.name // 保持固定的名称
+      } : defaultResource;
+    });
+
+    // 更新数据
+    data.dynamicResources = mergedDynamicResources;
+    data.staticResources = mergedStaticResources;
+
+    console.log('[Dashboard Service] Final processed data:', JSON.stringify(data, null, 2));
+    return data;
+  } catch (error) {
+    console.error('[Dashboard Service] Error getting dashboard data:', error);
+    if (error instanceof Error) {
+      throw new Error(error.message || '获取仪表盘数据失败');
+    } else {
+      throw new Error('获取仪表盘数据失败');
+    }
   }
 }
 

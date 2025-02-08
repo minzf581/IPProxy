@@ -57,18 +57,18 @@ export interface DashboardData {
   statistics: Statistics;
   dynamicResources: DynamicResource[];
   staticResources: StaticResource[];
-  recentOrders: Array<{
+  recentOrders?: Array<{
     id: number;
     userId: number;
     amount: number;
     status: string;
     createdAt: string;
   }>;
-  userGrowth: Array<{
+  userGrowth?: Array<{
     date: string;
     count: number;
   }>;
-  revenueStats: Array<{
+  revenueStats?: Array<{
     date: string;
     amount: number;
   }>;
