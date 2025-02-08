@@ -9,8 +9,8 @@
 // API 版本
 export const API_VERSION = 'v2';
 
-// API 基础路径
-export const API_BASE = '/api';
+// API 基础路径 - 移除，因为已经在axios配置中设置
+export const API_BASE = '';
 
 // API 模块前缀
 export const API_PREFIX = {
@@ -20,6 +20,11 @@ export const API_PREFIX = {
   ADMIN: 'admin',
   PROXY: 'proxy'
 } as const;
+
+// 打印路由配置信息
+console.log('[Routes Config] API_VERSION:', API_VERSION);
+console.log('[Routes Config] API_BASE:', API_BASE);
+console.log('[Routes Config] API_PREFIX:', API_PREFIX);
 
 /**
  * API 路由配置
@@ -37,13 +42,20 @@ export const API_ROUTES = {
   },
 
   USER: {
-    CREATE: `${API_PREFIX.OPEN}/user/create`,
+    CREATE: `${API_PREFIX.OPEN}/user/create/v2`,
     LIST: `${API_PREFIX.USER}/list`,
     UPDATE: `${API_PREFIX.USER}/{id}`,
     DELETE: `${API_PREFIX.USER}/{id}`,
     CHANGE_PASSWORD: `${API_PREFIX.USER}/{id}/password`,
     ACTIVATE_BUSINESS: `${API_PREFIX.USER}/{id}/activate-business`,
     DEACTIVATE_BUSINESS: `${API_PREFIX.USER}/{id}/deactivate-business`
+  },
+
+  ORDER: {
+    CREATE: `${API_PREFIX.OPEN}/order/create/v2`,
+    LIST: `${API_PREFIX.OPEN}/order/list/v2`,
+    DETAIL: `${API_PREFIX.OPEN}/order/detail/v2`,
+    CANCEL: `${API_PREFIX.OPEN}/order/cancel/v2`
   },
 
   PROXY: {
@@ -60,6 +72,15 @@ export const API_ROUTES = {
     IP_RANGES: `${API_PREFIX.OPEN}/product/query/${API_VERSION}`
   }
 } as const;
+
+// 打印生成的路由
+console.log('[Routes Config] Generated Routes:', {
+  AUTH: API_ROUTES.AUTH,
+  USER: API_ROUTES.USER,
+  ORDER: API_ROUTES.ORDER,
+  PROXY: API_ROUTES.PROXY,
+  AREA: API_ROUTES.AREA
+});
 
 // 为了方便 Python 使用，导出一个常量字符串版本
 export const ROUTES_PY = `
@@ -84,13 +105,19 @@ API_ROUTES = {
         "PROFILE": f"{API_PREFIX['AUTH']}/profile"
     },
     "USER": {
-        "CREATE": f"{API_PREFIX['OPEN']}/user/create",
+        "CREATE": f"{API_PREFIX['OPEN']}/user/create/v2",
         "LIST": f"{API_PREFIX['USER']}/list",
         "UPDATE": f"{API_PREFIX['USER']}/{{id}}",
         "DELETE": f"{API_PREFIX['USER']}/{{id}}",
         "CHANGE_PASSWORD": f"{API_PREFIX['USER']}/{{id}}/password",
         "ACTIVATE_BUSINESS": f"{API_PREFIX['USER']}/{{id}}/activate-business",
         "DEACTIVATE_BUSINESS": f"{API_PREFIX['USER']}/{{id}}/deactivate-business"
+    },
+    "ORDER": {
+        "CREATE": f"{API_PREFIX['OPEN']}/order/create/v2",
+        "LIST": f"{API_PREFIX['OPEN']}/order/list/v2",
+        "DETAIL": f"{API_PREFIX['OPEN']}/order/detail/v2",
+        "CANCEL": f"{API_PREFIX['OPEN']}/order/cancel/v2"
     },
     "PROXY": {
         "QUERY": f"{API_PREFIX['OPEN']}/product/query/{API_VERSION}",

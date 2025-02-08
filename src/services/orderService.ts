@@ -1,5 +1,7 @@
 import type { DynamicOrder, StaticOrder, OrderStatistics } from '@/types/order';
 import { api } from '@/utils/request';
+import type { ApiResponse } from '@/types/api';
+import { API_ROUTES } from '@/shared/routes';
 
 export async function getDynamicOrderList(params: {
   page: number;
@@ -7,8 +9,17 @@ export async function getDynamicOrderList(params: {
   userId?: number;
   agentId?: number;
   status?: string;
-}): Promise<{ list: DynamicOrder[]; total: number }> {
-  const response = await api.get<{ code: number; message: string; data: { list: DynamicOrder[]; total: number } }>('/api/orders/dynamic', { params });
+}): Promise<{ list: DynamicOrder[]; total: number; page: number; page_size: number }> {
+  const response = await api.get<{ 
+    code: number; 
+    message: string; 
+    data: { 
+      list: DynamicOrder[]; 
+      total: number;
+      page: number;
+      page_size: number;
+    } 
+  }>('/api/dynamic', { params });
   return response.data.data;
 }
 
@@ -87,4 +98,25 @@ export async function cancelDynamicOrder(orderId: number): Promise<void> {
 
 export async function cancelStaticOrder(orderId: number): Promise<void> {
   await api.post<{ code: number; message: string }>(`/api/orders/static/${orderId}/cancel`);
+}
+
+export async function createOrder(params: {
+  orderType: 'dynamic_proxy' | 'static_proxy';
+  poolId: string;
+  trafficAmount?: number;
+  unitPrice: number;
+  totalAmount: number;
+  remark?: string;
+}): Promise<ApiResponse<any>> {
+  try {
+    console.log('[Order Service] Creating order with params:', params);
+    
+    const response = await api.post<ApiResponse<any>>(API_ROUTES.ORDER.CREATE, params);
+    
+    console.log('[Order Service] Create order response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('[Order Service] Error creating order:', error);
+    throw error;
+  }
 }

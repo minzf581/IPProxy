@@ -131,23 +131,8 @@ class IPIPVBaseAPI:
             logger.info(f"[IPIPV] 使用的 base_url: {self.base_url}")
             logger.info(f"[IPIPV] 使用的 app_key: {self.app_key}")
             
-            # 确保必要的参数存在并且格式正确
-            app_order_no = params.get('appOrderNo')
-            if not app_order_no:
-                logger.error("[IPIPV] 缺少必要参数: appOrderNo")
-                raise ValueError("缺少必要参数: appOrderNo")
-            
-            # 确保appOrderNo是字符串且不为空
-            app_order_no = str(app_order_no).strip()
-            if not app_order_no:
-                logger.error("[IPIPV] appOrderNo不能为空")
-                raise ValueError("appOrderNo不能为空")
-            
             # 复制参数用于加密
             params_to_encrypt = params.copy()
-            
-            # 记录处理后的参数
-            logger.info(f"[IPIPV] 处理后的appOrderNo: {app_order_no}")
             
             # 加密业务参数
             encrypted_params = self._encrypt_params(params_to_encrypt)
@@ -162,9 +147,13 @@ class IPIPVBaseAPI:
                 'reqId': req_id,
                 'timestamp': timestamp,
                 'params': encrypted_params,
-                'appUsername': self.app_username,
-                'appOrderNo': app_order_no
+                'appUsername': self.app_username
             }
+            
+            # 只有在提供了appOrderNo时才添加到请求参数中
+            app_order_no = params.get('appOrderNo')
+            if app_order_no:
+                request_params['appOrderNo'] = str(app_order_no).strip()
             
             # 生成签名
             sign_str = f"appKey={self.app_key}&params={encrypted_params}&timestamp={timestamp}&key={self.app_secret}"
@@ -176,21 +165,27 @@ class IPIPVBaseAPI:
             logger.info(f"[IPIPV] 签名字符串: {sign_str}")
             logger.info(f"[IPIPV] 计算的签名: {request_params['sign']}")
             
+            # 准备请求头
+            headers = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-App-Key': self.app_key,
+                'X-App-Username': self.app_username,
+                'X-Api-Version': self.api_version,
+                'X-Timestamp': timestamp,
+                'X-Sign': request_params['sign']
+            }
+            
+            # 只有在有appOrderNo时才添加到请求头
+            if app_order_no:
+                headers['X-App-Order-No'] = str(app_order_no)
+            
             # 发送请求
             async with httpx.AsyncClient(verify=False) as client:
                 response = await client.post(
                     url,
                     json=request_params,
-                    headers={
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-App-Key': self.app_key,
-                        'X-App-Username': self.app_username,
-                        'X-Api-Version': self.api_version,
-                        'X-App-Order-No': app_order_no,
-                        'X-Timestamp': timestamp,
-                        'X-Sign': request_params['sign']
-                    }
+                    headers=headers
                 )
                 
                 logger.info(f"[IPIPV] 响应状态码: {response.status_code}")

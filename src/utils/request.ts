@@ -2,97 +2,124 @@ import axios, {
   AxiosInstance, 
   InternalAxiosRequestConfig,
   AxiosResponse,
-  AxiosRequestConfig
+  CreateAxiosDefaults
 } from 'axios';
-import { API_BASE } from '@/shared/routes';
+import { message } from 'antd';
+import { API_ROUTES } from '@/shared/routes';
 
-// 公开路径列表
-const PUBLIC_PATHS = [
-  '/auth/login',
-  '/open/app/area/v2',
-  '/open/app/city/list/v2',
-  '/open/app/order/v2',
-  '/open/app/location/options/v2'
-];
+// 创建axios实例的工厂函数
+const createAxiosInstance = (config: CreateAxiosDefaults = {}): AxiosInstance => {
+  const instance = axios.create({
+    timeout: 10000,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    ...config
+  });
 
-// 创建 axios 实例
-export const api: AxiosInstance = axios.create({
-  baseURL: '/api',
-  timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json'
-  }
-});
-
-// 请求拦截器
-api.interceptors.request.use(
-  (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('token');
-    const url = config.url || '';
-    const isPublicPath = PUBLIC_PATHS.some(path => url.includes(path));
-    
-    console.log('[Request Debug] URL:', url);
-    console.log('[Request Debug] Is Public Path:', isPublicPath);
-    console.log('[Request Debug] Token:', token ? 'exists' : 'not found');
-    
-    // 添加token（如果存在）
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    return config;
-  },
-  (error) => {
-    console.error('[Request Error]', error);
-    return Promise.reject(error);
-  }
-);
-
-// 响应拦截器
-api.interceptors.response.use(
-  (response) => {
-    const { data } = response;
-    
-    // 如果返回的code不是0，说明有错误
-    if (data && data.code !== 0) {
-      // 如果是401，说明token无效或过期
-      if (data.code === 401) {
-        localStorage.removeItem('token');
-        window.location.href = '/login';
-        return Promise.reject(new Error(data.msg || '未授权，请重新登录'));
+  // 请求拦截器
+  instance.interceptors.request.use(
+    (config: InternalAxiosRequestConfig) => {
+      // 打印原始URL
+      console.log('[Request Debug] Original URL:', config.url);
+      
+      // 确保URL以/开头
+      if (config.url && !config.url.startsWith('/')) {
+        config.url = `/${config.url}`;
       }
-      // 其他错误直接reject
-      return Promise.reject(new Error(data.msg || '请求失败'));
+      
+      console.log('[Request Debug] Processed URL:', config.url);
+      console.log('[Request Debug] Final URL will be:', `${config.baseURL || ''}${config.url}`);
+      
+      // 获取token
+      const token = localStorage.getItem('token');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        console.log('[Request Debug] Token added to headers');
+      } else {
+        console.log('[Request Debug] No token found');
+      }
+      
+      return config;
+    },
+    (error) => {
+      console.error('[Request Error]', error);
+      return Promise.reject(error);
     }
-    
-    return response;
-  },
-  (error) => {
-    console.error('[Response Error]', error);
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
-);
+  );
 
-// 导出请求方法
-export const request = {
-  get: <T = any>(url: string, config?: AxiosRequestConfig) => 
-    api.get<T, T>(url, config),
-    
-  post: <T = any>(url: string, data?: any, config?: AxiosRequestConfig) => 
-    api.post<T, T>(url, data, config),
-    
-  put: <T = any>(url: string, data?: any, config?: AxiosRequestConfig) => 
-    api.put<T, T>(url, data, config),
-    
-  delete: <T = any>(url: string, config?: AxiosRequestConfig) => 
-    api.delete<T, T>(url, config),
-    
-  patch: <T = any>(url: string, data?: any, config?: AxiosRequestConfig) => 
-    api.patch<T, T>(url, data, config)
+  // 响应拦截器
+  instance.interceptors.response.use(
+    (response: AxiosResponse) => {
+      const { data } = response;
+      
+      // 如果响应成功但业务状态码不为0
+      if (data.code !== 0 && data.code !== 200) {
+        if (data.code === 401) {
+          message.error('登录已过期，请重新登录');
+          localStorage.removeItem('token');
+          window.location.href = '/login';
+          return Promise.reject(new Error('登录已过期'));
+        }
+        message.error(data.msg || '请求失败');
+        return Promise.reject(new Error(data.msg || '请求失败'));
+      }
+      
+      return response;
+    },
+    (error) => {
+      console.error('[Response Error]', error);
+      
+      if (error.response) {
+        const { status, data } = error.response;
+        
+        switch (status) {
+          case 401:
+            message.error('登录已过期，请重新登录');
+            localStorage.removeItem('token');
+            window.location.href = '/login';
+            break;
+          case 403:
+            message.error('没有权限访问');
+            break;
+          case 404:
+            message.error('请求的资源不存在');
+            break;
+          case 500:
+            message.error('服务器错误');
+            break;
+          default:
+            message.error(data?.msg || error.message || '请求失败');
+        }
+      } else {
+        message.error('网络错误，请检查网络连接');
+      }
+      
+      return Promise.reject(error);
+    }
+  );
+
+  return instance;
 };
 
+// 创建带有 /api 前缀的实例
+const api = createAxiosInstance({ baseURL: '/api' });
+
+// 创建不带前缀的实例
+const client = createAxiosInstance();
+
+// 创建请求方法工厂函数
+const createRequestMethods = (instance: AxiosInstance) => ({
+  get: <T = any>(url: string, config?: any) => instance.get<T>(url, config),
+  post: <T = any>(url: string, data?: any, config?: any) => instance.post<T>(url, data, config),
+  put: <T = any>(url: string, data?: any, config?: any) => instance.put<T>(url, data, config),
+  delete: <T = any>(url: string, config?: any) => instance.delete<T>(url, config),
+  patch: <T = any>(url: string, data?: any, config?: any) => instance.patch<T>(url, data, config)
+});
+
+// 导出请求方法
+const request = createRequestMethods(client);
+const apiRequest = createRequestMethods(api);
+
+export { api, client, apiRequest };
 export default request; 

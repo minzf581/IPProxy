@@ -426,7 +426,7 @@ const UserManagementPage: React.FC = () => {
               { pattern: /^[a-zA-Z0-9]+$/, message: '用户名只能包含大小写字母和数字' }
             ]}
           >
-            <Input placeholder="请输入用户名" autoComplete="username" />
+            <Input placeholder="请输入用户名" id="create-form-username" autoComplete="username" />
           </Form.Item>
           <Form.Item
             name="password"
@@ -436,17 +436,17 @@ const UserManagementPage: React.FC = () => {
               { min: 6, message: '密码长度不能小于6位' }
             ]}
           >
-            <Input.Password placeholder="请输入密码" autoComplete="new-password" />
+            <Input.Password placeholder="请输入密码" id="create-form-password" autoComplete="new-password" />
           </Form.Item>
           <Form.Item
             name="email"
             label="邮箱"
             rules={[{ type: 'email', message: '请输入有效的邮箱地址' }]}
           >
-            <Input placeholder="请输入邮箱" autoComplete="email" />
+            <Input placeholder="请输入邮箱" id="create-form-email" autoComplete="email" />
           </Form.Item>
           <Form.Item name="remark" label="备注">
-            <TextArea rows={4} placeholder="请输入备注信息" />
+            <TextArea rows={4} placeholder="请输入备注信息" id="create-form-remark" />
           </Form.Item>
         </Form>
       </Modal>

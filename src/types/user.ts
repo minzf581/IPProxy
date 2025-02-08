@@ -18,7 +18,7 @@ export interface User {
   is_agent: boolean;
   remark?: string;
   created_at: string;
-  updated_at?: string;
+  updated_at: string;  // 改为必需字段，因为后端总是会返回这个字段
 }
 
 export interface UserProfile extends User {

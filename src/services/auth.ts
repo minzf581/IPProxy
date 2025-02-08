@@ -1,6 +1,7 @@
-import { api } from '@/utils/request';
+import { apiRequest } from '@/utils/request';
 import { User } from '@/types/user';
 import type { ApiResponse } from '@/types/api';
+import { API_ROUTES } from '@/shared/routes';
 
 // Debug 函数
 const debug = {
@@ -25,12 +26,12 @@ export const login = async (username: string, password: string): Promise<ApiResp
     debug.log('开始登录请求:', { username, timestamp: new Date().toISOString() });
     
     debug.log('发送登录请求到 API:', { 
-      endpoint: '/auth/login',
+      endpoint: API_ROUTES.AUTH.LOGIN,
       requestData: { username, password: '***' },
       timestamp: new Date().toISOString()
     });
     
-    const response = await api.post<ApiResponse<LoginResponse>>('/auth/login', { username, password });
+    const response = await apiRequest.post<ApiResponse<LoginResponse>>(API_ROUTES.AUTH.LOGIN, { username, password });
     const responseData = response.data;
     debug.log('收到原始响应:', responseData);
     
@@ -76,7 +77,7 @@ export const login = async (username: string, password: string): Promise<ApiResp
 export const getCurrentUser = async (): Promise<ApiResponse<User | null>> => {
   try {
     debug.log('获取当前用户信息');
-    const response = await api.get<ApiResponse<User>>('/auth/current-user');
+    const response = await apiRequest.get<ApiResponse<User>>(API_ROUTES.AUTH.PROFILE);
     debug.log('当前用户响应:', response.data);
     
     // 检查响应格式
@@ -122,7 +123,7 @@ export const logout = () => {
 export const updatePassword = async (data: { oldPassword: string; newPassword: string }): Promise<ApiResponse<void>> => {
   try {
     debug.log('更新密码');
-    const response = await api.post<void>('/auth/password', data);
+    const response = await apiRequest.post<void>(API_ROUTES.AUTH.PROFILE, data);
     const result = response.data;
     debug.log('更新密码响应:', result);
     

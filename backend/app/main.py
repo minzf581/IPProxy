@@ -194,9 +194,9 @@ public_paths = [
     "/api/open/app/location/options/v2",
     "/api/open/app/product/query/v2",
     "/api/open/app/instance/calculate/v2",
-    "/api/open/app/proxy/price/calculate/v2",  # 添加动态代理价格计算接口
-    "/api/order/callback/{order_id}",  # 添加回调接口路径
-    "/api/static-order/list",  # 添加静态订单列表路径到公开路径
+    "/api/open/app/proxy/price/calculate/v2",
+    "/api/order/callback/{order_id}",
+    "/api/static-order/list",
     "/docs",
     "/redoc",
     "/openapi.json"
@@ -315,18 +315,6 @@ async def root():
     """健康检查接口"""
     return {"message": "IP代理管理系统API服务正常运行"}
 
-# 添加全局依赖
-@app.middleware("http")
-async def db_session_middleware(request: Request, call_next):
-    """为每个请求创建数据库会话"""
-    response = Response("Internal server error", status_code=500)
-    try:
-        request.state.db = next(get_db())
-        response = await call_next(request)
-    finally:
-        request.state.db.close()
-    return response
-
 # 添加认证中间件
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
@@ -417,6 +405,18 @@ async def auth_middleware(request: Request, call_next):
             status_code=401,
             content={"code": 401, "message": "认证失败"}
         )
+
+# 添加数据库中间件（注意：这个中间件必须在认证中间件之后注册，这样它会先执行）
+@app.middleware("http")
+async def db_session_middleware(request: Request, call_next):
+    """为每个请求创建数据库会话"""
+    db = next(get_db())
+    request.state.db = db
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        db.close()
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True) 

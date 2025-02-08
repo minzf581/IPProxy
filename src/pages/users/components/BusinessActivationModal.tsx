@@ -10,6 +10,7 @@ import { getResourcePrices, PriceSettings } from '@/services/settingsService';
 import { ipProxyAPI } from '@/utils/ipProxyAPI';
 import type { Area, Country, City, IpRange, StaticType } from '@/types/api';
 import type { AreaResponse } from '@/utils/ipProxyAPI';
+import { createOrder } from '@/services/orderService';
 
 const { TextArea } = Input;
 const { Option } = Select;
@@ -119,6 +120,17 @@ interface PriceConfig {
     residential: number;
     datacenter: number;
   };
+}
+
+// 在文件顶部添加类型定义
+interface CreateOrderParams {
+  orderType: 'dynamic_proxy' | 'static_proxy';
+  poolId: string;
+  trafficAmount?: number;
+  unitPrice: number;
+  totalAmount: number;
+  remark?: string;
+  userId: number;
 }
 
 const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
@@ -454,84 +466,45 @@ const BusinessActivationModal: React.FC<BusinessActivationModalProps> = ({
     form.resetFields(['poolType', 'traffic', 'region', 'country', 'city', 'staticType', 'ipRange', 'duration', 'quantity', 'remark']);
   };
 
+  // 修改handleSubmit函数
   const handleSubmit = async (values: FormValues) => {
     try {
-      debug.log('[handleSubmit] 开始处理表单提交:', values);
+      debug.log('[BusinessActivationModal] 开始处理表单提交:', values);
       
-      if (values.proxyType === 'dynamic') {
-        // 1. 参数验证
-        if (!values.poolType || !values.traffic) {
-          message.error('请填写完整的表单信息');
-          return;
-        }
+      // 计算总成本
+      const totalCost = await calculateTotalCost(values);
+      
+      // 准备订单数据
+      const orderData: CreateOrderParams = {
+        orderType: values.proxyType === 'dynamic' ? 'dynamic_proxy' : 'static_proxy',
+        poolId: values.poolType || 'pool1',
+        trafficAmount: values.proxyType === 'dynamic' ? Number(values.traffic) : undefined,
+        unitPrice: prices?.dynamic[values.poolType || ''] || 0,
+        totalAmount: totalCost,
+        remark: values.remark,
+        userId: user.id  // 添加用户ID
+      };
 
-        // 2. 获取价格信息
-        const unitPrice = prices?.dynamic?.[values.poolType] || 0;
-        if (unitPrice <= 0) {
-          message.error('获取价格信息失败');
-          return;
-        }
-
-        // 3. 计算总价
-        const trafficAmount = Number(values.traffic);
-        const totalAmount = unitPrice * trafficAmount;
-
-        // 4. 验证用户余额
-        if ((currentUser?.balance || 0) < totalAmount) {
-          message.error('账户余额不足');
-          return;
-        }
-
-        // 5. 提交订单
-        const orderData = {
-          orderType: 'dynamic_proxy',
-          poolId: values.poolType,
-          trafficAmount,
-          unitPrice,
-          totalAmount,
-          remark: values.remark
-        };
-
-        debug.log('[handleSubmit] 提交订单数据:', orderData);
-
-        const response = await api.post<ApiResponse<{
-          orderId: string;
-          status: string;
-          proxyInfo?: {
-            username: string;
-            password: string;
-            server: string;
-            port: number;
-          }
-        }>>('/order/create', orderData);
-
-        if (response.data.code === 0) {
-          message.success('订单创建成功');
-          // 显示代理信息
-          if (response.data.data.proxyInfo) {
-            Modal.success({
-              title: '代理开通成功',
-              content: (
-                <div>
-                  <p>用户名: {response.data.data.proxyInfo.username}</p>
-                  <p>密码: {response.data.data.proxyInfo.password}</p>
-                  <p>服务器: {response.data.data.proxyInfo.server}</p>
-                  <p>端口: {response.data.data.proxyInfo.port}</p>
-                </div>
-              )
-            });
-          }
-          onSuccess?.();
-        } else {
-          message.error(response.data.msg || '订单创建失败');
-        }
+      debug.log('[BusinessActivationModal] 提交订单数据:', orderData);
+      
+      // 创建订单
+      const response = await createOrder(orderData);
+      
+      if (response.code === 0) {
+        message.success('订单创建成功');
+        onSuccess();
       } else {
-        // 静态代理逻辑保持不变
-        // ... existing code ...
+        throw new Error(response.msg || '订单创建失败');
       }
     } catch (error: any) {
-      debug.error('[handleSubmit] 订单提交失败:', error);
-      message.error(error.response?.data?.msg || '订单提交失败');
+      debug.error('[BusinessActivationModal] 订单提交失败:', error);
+      debug.error('[BusinessActivationModal] 错误详情:', {
+        message: error.message,
+        response: error.response,
+        status: error.response?.status,
+        config: error.config
+      });
+      message.error(error.response?.data?.message || error.message || '订单创建失败');
     }
   };
 

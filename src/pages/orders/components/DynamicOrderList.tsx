@@ -39,15 +39,21 @@ interface User {
 interface DynamicOrder {
   id: string;
   orderNo: string;
+  order_no?: string;  // 后端字段
   userId: string;
+  user_id?: string;  // 后端字段
   username: string;
-  user?: User;  // 添加可选的 user 对象
+  agent_username?: string;  // 添加代理商用户名字段
+  user?: User;
   poolType: PoolType;
+  pool_type?: string;  // 后端字段
   traffic: number;
   status?: OrderStatus;
   remark?: string;
   createTime: string;
+  created_at?: string;  // 后端字段
   proxyInfo?: any;
+  proxy_info?: any;  // 后端字段
 }
 
 const DynamicOrderList: React.FC = () => {
@@ -65,7 +71,7 @@ const DynamicOrderList: React.FC = () => {
     try {
       debug.log('Fetching orders with params:', params);
       setLoading(true);
-      const response = await api.get('/api/orders/dynamic', { 
+      const response = await api.get('/dynamic', { 
         params: {
           page: params.current || 1,
           page_size: params.pageSize || 10,
@@ -79,40 +85,50 @@ const DynamicOrderList: React.FC = () => {
       const responseData = response.data;
       debug.log('Response Data:', responseData);
       
-      if (responseData && responseData.list) {
+      if (responseData.code === 0 && responseData.data) {
+        const { list = [], total = 0 } = responseData.data;
         debug.log('Processing response data');
-        debug.log('List:', responseData.list);
-        debug.log('Total:', responseData.total);
+        debug.log('Raw List Data:', JSON.stringify(list, null, 2));
+        debug.log('Total:', total);
         
-        if (Array.isArray(responseData.list)) {
-          debug.log('List is an array with length:', responseData.list.length);
-          if (responseData.list.length > 0) {
-            debug.log('First order:', responseData.list[0]);
-            debug.log('First order keys:', Object.keys(responseData.list[0]));
+        if (Array.isArray(list)) {
+          debug.log('List is an array with length:', list.length);
+          if (list.length > 0) {
+            debug.log('First order raw data:', JSON.stringify(list[0], null, 2));
+            debug.log('First order keys:', Object.keys(list[0]));
           }
           
           // 处理每个订单的数据
-          const ordersWithDefaults = responseData.list.map((order: Partial<DynamicOrder>) => {
-            const username = order.username || order.user?.username || '-';  // 尝试从 user 对象获取用户名
-            return {
-              ...order,
-              username,
-              remark: order.remark || '-',  // 确保备注有默认值
-              status: (order.status as OrderStatus) || 'active'
+          const ordersWithDefaults = list.map((order: Partial<DynamicOrder>) => {
+            debug.log('Processing order:', JSON.stringify(order, null, 2));
+            const processedOrder = {
+              id: order.id || '',
+              orderNo: order.orderNo || order.order_no || '',
+              userId: String(order.userId || order.user_id || ''),  // 转换为字符串
+              username: order.username || `用户${order.user_id}`,  // 如果没有用户名，使用 user_id 作为显示
+              agent_username: order.agent_username || '',
+              poolType: (order.poolType || order.pool_type || 'pool1') as PoolType,
+              traffic: order.traffic || 0,
+              status: (order.status as OrderStatus) || 'active',
+              remark: order.remark || '-',
+              createTime: order.createTime || order.created_at || '-',
+              proxyInfo: order.proxyInfo || order.proxy_info || {}
             };
+            debug.log('Processed order:', JSON.stringify(processedOrder, null, 2));
+            return processedOrder;
           });
           
-          debug.log('Processed orders:', ordersWithDefaults);
+          debug.log('All processed orders:', JSON.stringify(ordersWithDefaults, null, 2));
           setOrders(ordersWithDefaults as DynamicOrder[]);
-          setTotal(responseData.total || 0);
+          setTotal(total);
         } else {
-          debug.log('List is not an array:', responseData.list);
+          debug.log('List is not an array:', list);
           setOrders([]);
           setTotal(0);
         }
       } else {
         debug.log('Invalid response data structure:', responseData);
-        message.error('获取订单列表失败：数据格式错误');
+        message.error(responseData.message || '获取订单列表失败：数据格式错误');
         setOrders([]);
         setTotal(0);
       }

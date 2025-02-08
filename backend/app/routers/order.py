@@ -78,6 +78,7 @@ import logging
 import traceback
 from pydantic import BaseModel
 import json
+import uuid
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -110,6 +111,15 @@ class OrderListResponse(BaseModel):
     msg: str
     data: Dict[str, Any]
 
+class CreateOrderRequest(BaseModel):
+    orderType: str  # 'dynamic_proxy' or 'static_proxy'
+    poolId: str
+    trafficAmount: Optional[int] = None
+    unitPrice: float
+    totalAmount: float
+    remark: Optional[str] = None
+    userId: int  # 添加用户ID字段
+
 router = APIRouter()
 
 @router.get("/dynamic")
@@ -129,7 +139,7 @@ async def get_dynamic_orders(
         logger.debug(f"开始获取动态订单列表: user_id={current_user.id}, is_agent={current_user.is_agent}")
         logger.debug(f"查询参数: page={page}, page_size={page_size}, user_id={user_id}, order_no={order_no}, pool_type={pool_type}")
         
-        # 构建查询条件
+        # 构建基础查询
         query = db.query(DynamicOrder)
         
         # 代理商只能查看自己的订单
@@ -155,14 +165,35 @@ async def get_dynamic_orders(
         total = query.count()
         logger.debug(f"查询到订单总数: {total}")
         
-        # 分页并按创建时间倒序排序
+        # 分页并按创建时间倒序排序，同时获取用户信息
         orders = query.order_by(DynamicOrder.created_at.desc())\
                      .offset((page - 1) * page_size)\
                      .limit(page_size)\
                      .all()
         
-        # 转换订单数据
-        order_list = [order.to_dict() for order in orders]
+        # 获取所有相关的用户ID
+        user_ids = [order.user_id for order in orders]
+        agent_ids = [order.agent_id for order in orders]
+        logger.debug(f"订单用户ID列表: {user_ids}")
+        logger.debug(f"订单代理商ID列表: {agent_ids}")
+        
+        # 批量查询用户信息
+        users = db.query(User).filter(User.id.in_(user_ids)).all()
+        user_map = {user.id: user.username for user in users}
+        logger.debug(f"用户ID-用户名映射: {user_map}")
+        
+        # 转换订单数据，只包含用户信息
+        order_list = []
+        for order in orders:
+            order_dict = order.to_dict()
+            user_name = user_map.get(order.user_id)
+            logger.debug(f"处理订单: order_id={order.id}, user_id={order.user_id}")
+            logger.debug(f"用户名映射: user_name={user_name}")
+            
+            # 只添加用户名
+            order_dict['username'] = user_name or f'用户{order.user_id}'
+            order_list.append(order_dict)
+            
         logger.debug(f"订单列表数据: {order_list}")
         
         result = {
@@ -350,4 +381,102 @@ async def get_location_options(
         
     except Exception as e:
         logger.error(f"获取位置选项失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/open/app/order/create/v2", response_model=OrderListResponse)
+async def create_order(
+    request: CreateOrderRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """创建订单"""
+    try:
+        logger.info(f"[Order Service] 开始创建订单, 当前用户: {current_user.username}, is_admin={current_user.is_admin}, is_agent={current_user.is_agent}")
+        logger.info(f"[Order Service] 订单数据: {request}")
+        
+        # 检查用户余额
+        if current_user.balance < request.totalAmount:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": 400, "message": "余额不足"}
+            )
+            
+        # 验证目标用户是否存在
+        target_user = db.query(User).filter(User.id == request.userId).first()
+        if not target_user:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": 400, "message": "目标用户不存在"}
+            )
+            
+        # 如果是代理商，验证目标用户是否是其下属用户
+        if current_user.is_agent and target_user.agent_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail={"code": 403, "message": "无权为此用户创建订单"}
+            )
+            
+        # 创建订单
+        if request.orderType == "dynamic_proxy":
+            # 生成订单号
+            order_no = f"DYN{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
+            app_order_no = f"APP{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
+            
+            order = DynamicOrder(
+                id=str(uuid.uuid4()),  # 使用UUID作为主键
+                order_no=order_no,
+                app_order_no=app_order_no,
+                user_id=request.userId,  # 使用传入的用户ID
+                agent_id=target_user.agent_id,  # 使用目标用户的代理商ID
+                pool_type=request.poolId,
+                traffic=request.trafficAmount,
+                unit_price=request.unitPrice,
+                total_amount=request.totalAmount,
+                proxy_type="dynamic",
+                status="active",
+                remark=request.remark
+            )
+        else:
+            # 生成订单号
+            order_no = f"STA{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
+            app_order_no = f"APP{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
+            
+            order = StaticOrder(
+                order_no=order_no,
+                app_order_no=app_order_no,
+                user_id=request.userId,  # 使用传入的用户ID
+                agent_id=target_user.agent_id,  # 使用目标用户的代理商ID
+                pool_type=request.poolId,
+                unit_price=request.unitPrice,
+                amount=request.totalAmount,
+                status="active",
+                remark=request.remark
+            )
+            
+        # 扣除用户余额
+        current_user.balance -= request.totalAmount
+        
+        # 保存到数据库
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+        
+        logger.info(f"[Order Service] 订单创建成功: {order.id}")
+        
+        return {
+            "code": 0,
+            "msg": "订单创建成功",
+            "data": order.to_dict()
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[Order Service] 订单创建失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail={"code": 500, "message": f"订单创建失败: {str(e)}"}
+        ) 

@@ -252,7 +252,7 @@ async def get_user_list(
             detail=f"获取用户列表失败: {str(e)}"
         )
 
-@router.post("/open/app/user/create", response_model=UserResponse)
+@router.post("/open/app/user/create/v2", response_model=UserResponse)
 async def create_user(
     request: Request,
     user_data: UserCreate,
