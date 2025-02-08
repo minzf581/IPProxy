@@ -15,6 +15,10 @@ from app.core.security import create_access_token
 from app.services.ipipv_service import IPIPVService
 import json
 import traceback
+from app.database import get_db
+from fastapi import Request
+from app.services.auth import get_current_user, oauth2_scheme
+from app.core.config import settings
 
 # 配置日志 - 只输出CRITICAL级别的日志，实质上禁用大多数日志
 logging.basicConfig(
@@ -40,6 +44,9 @@ class TestStaticOrder:
     @pytest.fixture(autouse=True)
     def setup(self, db_session: Session):
         """初始化测试数据"""
+        # 设置测试环境的SECRET_KEY
+        settings.SECRET_KEY = "test-secret-key-for-testing-only"
+        
         self.db = db_session
         self.ipipv_service = IPIPVService(db_session)  # 使用IPIPVService
         self.service = StaticOrderService(self.db, self.ipipv_service)
@@ -441,54 +448,85 @@ class TestStaticOrder:
             # 3. 查询订单列表
             # 使用代理商的 token
             agent_token = create_access_token({"sub": str(self.agent.id)})
-            headers = {"Authorization": f"Bearer {agent_token}"}
             logger.critical(f"使用代理商token: {agent_token}")
             
+            # 刷新代理商信息
+            self.db.refresh(self.agent)
+            logger.critical(f"代理商状态: id={self.agent.id}, is_agent={self.agent.is_agent}")
+            
+            # 创建测试客户端
             async with AsyncClient(app=app, base_url="http://test") as ac:
+                # 设置依赖覆盖
+                async def get_db_override():
+                    yield self.db
+                    
+                async def get_current_user_override():
+                    logger.critical(f"[Test] get_current_user_override called, returning agent: id={self.agent.id}")
+                    return self.agent
+                    
+                async def oauth2_scheme_override():
+                    logger.critical(f"[Test] oauth2_scheme_override called, returning token: {agent_token}")
+                    return agent_token
+                    
+                # 设置依赖覆盖
+                app.dependency_overrides = {
+                    get_db: get_db_override,
+                    get_current_user: get_current_user_override,
+                    oauth2_scheme: oauth2_scheme_override
+                }
+                
+                # 确保设置了正确的请求头
+                headers = {
+                    "Authorization": f"Bearer {agent_token}",
+                    "Content-Type": "application/json"
+                }
+                
+                # 查询订单列表
                 response = await ac.get(
                     "/api/static-order/list",
                     headers=headers,
                     params={"page": 1, "page_size": 10, "user_id": self.user.id}
                 )
-            
+                
                 logger.critical(f"订单列表响应: status_code={response.status_code}, content={response.content}")
-            
-            assert response.status_code == 200, "获取订单列表失败"
-            data = response.json()
-            assert data["code"] == 0, "获取订单列表接口返回错误"
-            
-            # 4. 查询订单详情
-            async with AsyncClient(app=app, base_url="http://test") as ac:
+                
+                assert response.status_code == 200, "获取订单列表失败"
+                data = response.json()
+                assert data["code"] == 0, "获取订单列表接口返回错误"
+                
+                # 查询订单详情
                 response = await ac.get(
                     f"/api/static-order/{order_no}",
                     headers=headers
                 )
-            
-            assert response.status_code == 200, "获取订单详情失败"
-            data = response.json()
-            assert data["code"] == 0, "获取订单详情接口返回错误"
-            
-            # 5. 等待订单状态更新（最多等待5秒）
-            status = None
-            for _ in range(10):
-                async with AsyncClient(app=app, base_url="http://test") as ac:
+                
+                assert response.status_code == 200, "获取订单详情失败"
+                data = response.json()
+                assert data["code"] == 0, "获取订单详情接口返回错误"
+                
+                # 等待订单状态更新（最多等待5秒）
+                status = None
+                for _ in range(10):
                     response = await ac.get(
                         f"/api/static-order/{order_no}",
                         headers=headers
                     )
-                data = response.json()
-                status = data["data"]["status"]
-                if status != "processing":
-                    break
-                await asyncio.sleep(0.5)
-            
-            assert status in ["active", "processing"], f"订单最终状态异常: {status}"
-            logger.critical(f"订单最终状态: {status}")
-            
+                    data = response.json()
+                    status = data["data"]["status"]
+                    if status != "processing":
+                        break
+                    await asyncio.sleep(0.5)
+                
+                assert status in ["active", "processing"], f"订单最终状态异常: {status}"
+                logger.critical(f"订单最终状态: {status}")
+                
         except AssertionError as e:
             logger.critical(f"测试断言失败: {str(e)}")
             raise
         except Exception as e:
             logger.critical(f"测试过程中发生异常: {str(e)}")
             logger.critical(f"异常堆栈: {traceback.format_exc()}")
-            raise 
+            raise
+        finally:
+            # 清理依赖覆盖
+            app.dependency_overrides.clear() 

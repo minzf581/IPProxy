@@ -168,7 +168,11 @@ app.add_middleware(
 # 设置路由前缀
 prefix = "/api"
 
-# 注册路由
+# 导入并注册静态订单路由
+from app.api.endpoints import static_order
+app.include_router(static_order.router, prefix=prefix + "/static-order", tags=["静态订单"])
+
+# 注册其他路由
 app.include_router(auth.router, prefix=prefix, tags=["认证"])
 app.include_router(user.router, prefix=prefix, tags=["用户"])
 app.include_router(agent.router, prefix=prefix, tags=["代理商"])
@@ -181,10 +185,6 @@ app.include_router(area.router, prefix=prefix, tags=["区域"])
 app.include_router(product.router, prefix=prefix, tags=["产品"])
 app.include_router(callback.router, prefix=prefix, tags=["回调"])
 
-# 导入并注册静态订单路由
-from app.api.endpoints import static_order
-app.include_router(static_order.router, prefix=prefix, tags=["静态订单"])
-
 # 不需要认证的路径
 public_paths = [
     "/api/auth/login",
@@ -196,6 +196,7 @@ public_paths = [
     "/api/open/app/instance/calculate/v2",
     "/api/open/app/proxy/price/calculate/v2",  # 添加动态代理价格计算接口
     "/api/order/callback/{order_id}",  # 添加回调接口路径
+    "/api/static-order/list",  # 添加静态订单列表路径到公开路径
     "/docs",
     "/redoc",
     "/openapi.json"
@@ -376,6 +377,7 @@ async def auth_middleware(request: Request, call_next):
             )
             
         # 验证 token
+        logger.info(f"[Auth Middleware] Verifying token: {token}")
         payload = verify_token(token)
         if not payload:
             logger.warning("[Auth Middleware] Invalid token")
@@ -401,6 +403,7 @@ async def auth_middleware(request: Request, call_next):
         # 将用户信息添加到请求状态中
         request.state.user = user
         request.state.user_id = user.id
+        logger.info(f"[Auth Middleware] User info added to request state: id={user.id}, is_agent={user.is_agent}")
         
         # 继续处理请求
         response = await call_next(request)
@@ -409,6 +412,7 @@ async def auth_middleware(request: Request, call_next):
         
     except Exception as e:
         logger.error(f"[Auth Middleware] Auth failed: {str(e)}")
+        logger.exception("[Auth Middleware] Detailed error:")
         return JSONResponse(
             status_code=401,
             content={"code": 401, "message": "认证失败"}
