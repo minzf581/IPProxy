@@ -190,4 +190,19 @@ export interface ProductQueryResponse {
   code: number;
   msg: string;
   data: Product[];
-} 
+}
+
+export interface AreaResponse {
+  code: string;    // 地域代码
+  name?: string;   // 地域名称
+  cname: string;   // 地域中文名
+  children?: AreaResponse[]; // 下级地域
+  countryList?: Array<{
+    countryCode: string;
+    countryName: string;
+    cityList: Array<{
+      cityCode: string;
+      cityName: string;
+    }>;
+  }>;
+}

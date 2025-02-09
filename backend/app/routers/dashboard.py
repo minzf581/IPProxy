@@ -92,13 +92,13 @@ from app.routers.instance import sync_instances
 from app.models.main_user import MainUser
 from app.models.user import User
 from app.services.auth import get_current_user
-from app.services.dashboard import get_dashboard_data, DashboardService
+from app.services.dashboard import DashboardService
 from app.models.transaction import Transaction
 from app.models.resource_type import ResourceType
 from app.models.resource_usage import ResourceUsageStatistics, ResourceUsageHistory
 from app.models.dynamic_order import DynamicOrder
 from app.models.static_order import StaticOrder
-from app.core.deps import get_proxy_service, get_user_service
+from app.core.deps import get_proxy_service, get_user_service, get_dashboard_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -252,41 +252,39 @@ def sync_resource_usage(db: Session, main_user: MainUser):
 @router.get("/open/app/dashboard/info/v2")
 async def get_dashboard_info(
     current_user: User = Depends(get_current_user),
-    proxy_service: ProxyService = Depends(get_proxy_service),
-    user_service: UserService = Depends(get_user_service),
+    dashboard_service: DashboardService = Depends(get_dashboard_service),
     db: Session = Depends(get_db)
 ):
     """获取仪表盘信息"""
     try:
         logger.info(f"[Dashboard Service] 开始获取仪表盘数据, 当前用户: {current_user.username}")
         
-        # 获取用户统计数据并确保数据类型为数字
-        total_recharge = float(get_total_recharge(db, current_user.id) or 0)
-        total_consumption = float(get_total_consumption(db, current_user.id) or 0)
-        month_recharge = float(get_month_recharge(db, current_user.id) or 0)
-        month_consumption = float(get_month_consumption(db, current_user.id) or 0)
-        last_month_consumption = float(get_last_month_consumption(db, current_user.id) or 0)
-        
-        # 获取资源使用情况
-        dynamic_resources = get_dynamic_resources_usage(db, current_user.id)
-        static_resources = get_static_resources_usage(db, current_user.id)
+        # 获取用户统计数据
+        if current_user.is_agent:
+            stats = await dashboard_service.get_agent_statistics(current_user.id, db)
+        else:
+            stats = await dashboard_service.get_user_statistics(current_user.id, db)
+            
+        # 获取每日统计数据
+        daily_stats = await dashboard_service.get_daily_statistics(db)
         
         # 构建响应数据
         response_data = {
             "statistics": {
-                "totalRecharge": total_recharge,
-                "totalConsumption": total_consumption,
-                "monthRecharge": month_recharge,
-                "monthConsumption": month_consumption,
-                "lastMonthConsumption": last_month_consumption,
-                "balance": float(current_user.balance or 0)
+                "totalRecharge": float(stats.get("total_amount", 0)),
+                "totalConsumption": float(stats.get("total_orders", 0)),
+                "monthRecharge": float(stats.get("monthly_amount", 0)),
+                "monthConsumption": float(stats.get("monthly_orders", 0)),
+                "lastMonthConsumption": float(stats.get("last_month_orders", 0)),
+                "balance": float(stats.get("balance", 0))
             },
-            "dynamicResources": dynamic_resources,
-            "staticResources": static_resources
+            "dynamicResources": [],  # 将在后续版本中添加
+            "staticResources": [],   # 将在后续版本中添加
+            "dailyStats": daily_stats
         }
         
         logger.info("[Dashboard Service] 仪表盘数据获取成功")
-        logger.info(f"[Dashboard Service] 响应数据: {json.dumps(response_data)}")
+        logger.debug(f"[Dashboard Service] 响应数据: {json.dumps(response_data)}")
         
         return {
             "code": 0,
@@ -296,10 +294,9 @@ async def get_dashboard_info(
         
     except Exception as e:
         logger.error(f"[Dashboard Service] 获取仪表盘数据失败: {str(e)}")
-        logger.error(traceback.format_exc())
         raise HTTPException(
             status_code=500,
-            detail={"code": 500, "message": f"获取仪表盘数据失败: {str(e)}"}
+            detail=f"获取仪表盘数据失败: {str(e)}"
         )
 
 def get_total_recharge(db: Session, user_id: int) -> float:

@@ -320,4 +320,66 @@ async def activate_business(
     except Exception as e:
         logger.error(f"[{func_name}] Error: {str(e)}", exc_info=True)
         logger.error(f"[{func_name}] Stack trace:", stack_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/open/app/product/query/v2")
+async def query_product(
+    request: Dict[str, Any],
+    proxy_service: ProxyService = Depends(get_proxy_service),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """查询产品信息"""
+    func_name = "query_product"
+    try:
+        logger.info(f"[{func_name}] 开始处理请求")
+        logger.info(f"[{func_name}] 请求参数类型: {type(request)}")
+        logger.info(f"[{func_name}] 请求参数内容: {json.dumps(request, ensure_ascii=False)}")
+        logger.info(f"[{func_name}] 请求参数键值: {list(request.keys())}")
+        
+        # 验证必要参数
+        required_fields = ["regionCode", "countryCode", "cityCode", "proxyType"]
+        missing_fields = [field for field in required_fields if field not in request]
+        if missing_fields:
+            error_msg = f"缺少必要参数: {', '.join(missing_fields)}"
+            logger.error(f"[{func_name}] {error_msg}")
+            raise HTTPException(
+                status_code=400,
+                detail=error_msg
+            )
+            
+        # 验证参数值
+        if not isinstance(request.get("proxyType"), (int, str)):
+            error_msg = f"proxyType 参数类型错误: {type(request.get('proxyType'))}"
+            logger.error(f"[{func_name}] {error_msg}")
+            raise HTTPException(
+                status_code=400,
+                detail=error_msg
+            )
+            
+        # 调用服务前的参数日志
+        logger.info(f"[{func_name}] 准备调用 ProxyService.query_product")
+        logger.info(f"[{func_name}] regionCode: {request.get('regionCode')}")
+        logger.info(f"[{func_name}] countryCode: {request.get('countryCode')}")
+        logger.info(f"[{func_name}] cityCode: {request.get('cityCode')}")
+        logger.info(f"[{func_name}] proxyType: {request.get('proxyType')}")
+        
+        # 调用服务
+        try:
+            response = await proxy_service.query_product(request)
+            logger.info(f"[{func_name}] 服务调用成功")
+            logger.info(f"[{func_name}] 响应内容: {json.dumps(response, ensure_ascii=False)}")
+            return response
+        except Exception as e:
+            logger.error(f"[{func_name}] 服务调用失败: {str(e)}")
+            logger.error(f"[{func_name}] 错误堆栈:", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"服务调用失败: {str(e)}"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[{func_name}] 处理请求时发生错误: {str(e)}")
+        logger.error(f"[{func_name}] 错误堆栈:", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e)) 

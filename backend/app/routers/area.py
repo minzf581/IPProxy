@@ -23,10 +23,10 @@
 3. 记录详细的日志信息
 """
 
-from typing import Dict, Any, List
-from fastapi import APIRouter, Depends, Body
-from app.services.area_service import AreaService
-from app.core.deps import get_area_service
+from typing import Dict, Any, List, Optional
+from fastapi import APIRouter, Depends, Body, HTTPException
+from app.services import IPIPVBaseAPI
+from app.core.deps import get_ipipv_api
 import logging
 
 # 设置日志记录器
@@ -34,17 +34,57 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-@router.post("/open/app/area/v2")
+@router.get("/open/app/area/v2")
 async def get_area_list(
+    ipipv_api: IPIPVBaseAPI = Depends(get_ipipv_api)
+) -> Dict[str, Any]:
+    """获取区域列表"""
+    try:
+        logger.info("[区域服务] 开始获取区域列表")
+        result = await ipipv_api._make_request("api/open/app/area/v2", {
+            "appUsername": "test_user"
+        })
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": result
+        }
+    except Exception as e:
+        logger.error(f"[区域服务] 获取区域列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/open/app/city/list/v2")
+async def get_city_list(
+    countryCode: str,
+    ipipv_api: IPIPVBaseAPI = Depends(get_ipipv_api)
+) -> Dict[str, Any]:
+    """获取城市列表"""
+    try:
+        logger.info(f"[城市服务] 开始获取城市列表: countryCode={countryCode}")
+        result = await ipipv_api._make_request("api/open/app/city/list/v2", {
+            "countryCode": countryCode,
+            "appUsername": "test_user"
+        })
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": result
+        }
+    except Exception as e:
+        logger.error(f"[城市服务] 获取城市列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/open/app/area/v2")
+async def get_area_list_post(
     params: Dict[str, Any] = Body(...),
-    area_service: AreaService = Depends(get_area_service)
+    ipipv_api: IPIPVBaseAPI = Depends(get_ipipv_api)
 ) -> Dict[str, Any]:
     """获取区域列表"""
     try:
         logger.info(f"获取区域列表，参数：{params}")
         
         # 获取区域列表
-        result = await area_service.get_area_list(params)
+        result = await ipipv_api._make_request("api/open/app/area/v2", params)
         
         # 构建标准响应格式
         response = {
@@ -66,9 +106,9 @@ async def get_area_list(
         }
 
 @router.post("/open/app/city/list/v2")
-async def get_city_list(
+async def get_city_list_post(
     params: Dict[str, Any] = Body(...),
-    area_service: AreaService = Depends(get_area_service)
+    ipipv_api: IPIPVBaseAPI = Depends(get_ipipv_api)
 ) -> Dict[str, Any]:
     """获取城市列表"""
     try:
@@ -79,7 +119,7 @@ async def get_city_list(
             try:
                 encrypted_params = params.get("params")
                 logger.info(f"收到加密参数: {encrypted_params}")
-                decrypted_params = area_service._decrypt_response(encrypted_params)
+                decrypted_params = ipipv_api._decrypt_response(encrypted_params)
                 logger.info(f"解密后参数: {decrypted_params}")
                 if not isinstance(decrypted_params, dict):
                     logger.error(f"解密后参数格式错误: {type(decrypted_params)}")
@@ -111,7 +151,10 @@ async def get_city_list(
         logger.info(f"使用国家代码: {country_code}")
             
         # 获取城市列表
-        cities = await area_service.get_city_list(country_code)
+        cities = await ipipv_api._make_request("api/open/app/city/list/v2", {
+            "countryCode": country_code,
+            "appUsername": "test_user"
+        })
         logger.info(f"获取到城市列表，数量: {len(cities) if cities else 0}")
         
         return {

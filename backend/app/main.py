@@ -96,9 +96,9 @@ LOGGING_CONFIG = {
             "handlers": ["console", "file"],
             "propagate": False
         },
-        "app.services.area_service": {
-            "level": "WARNING",  # 设置区域服务的日志级别为WARNING，减少输出
-            "handlers": ["console"],
+        "app.services.ipipv_base_api": {
+            "level": "INFO",  # 设置IPIPV基础API的日志级别为INFO
+            "handlers": ["console", "file"],
             "propagate": False
         },
         "httpx": {

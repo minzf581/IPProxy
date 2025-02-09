@@ -162,4 +162,78 @@ class ProxyService(IPIPVBaseAPI):
             return response if isinstance(response, list) else []
         except Exception as e:
             logger.error(f"获取IP范围列表失败: {str(e)}")
-            return [] 
+            return []
+
+    async def query_product(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        查询产品信息
+        
+        Args:
+            params: 请求参数
+            
+        Returns:
+            Dict[str, Any]: 产品信息
+        """
+        try:
+            logger.info("[ProxyService] 开始查询产品信息")
+            logger.info(f"[ProxyService] 原始请求参数: {params}")
+            
+            # 验证并规范化参数
+            required_params = ["regionCode", "countryCode", "cityCode", "proxyType"]
+            for param in required_params:
+                if param not in params:
+                    error_msg = f"缺少必要参数: {param}"
+                    logger.error(f"[ProxyService] {error_msg}")
+                    return {"code": 400, "msg": error_msg, "data": []}
+            
+            # 确保 proxyType 是整数
+            try:
+                if isinstance(params["proxyType"], str):
+                    params["proxyType"] = int(params["proxyType"])
+            except ValueError:
+                error_msg = f"proxyType 参数无法转换为整数: {params['proxyType']}"
+                logger.error(f"[ProxyService] {error_msg}")
+                return {"code": 400, "msg": error_msg, "data": []}
+            
+            # 构建请求参数
+            request_params = {
+                "regionCode": params["regionCode"],
+                "countryCode": params["countryCode"],
+                "cityCode": params["cityCode"],
+                "proxyType": params["proxyType"],
+                "appUsername": "test_user"
+            }
+            
+            logger.info(f"[ProxyService] 处理后的请求参数: {request_params}")
+            
+            # 调用IPIPV API
+            try:
+                response = await self._make_request(
+                    path="/api/open/app/product/query/v2",
+                    params=request_params
+                )
+                logger.info(f"[ProxyService] API响应: {response}")
+                
+                return {
+                    "code": 0,
+                    "msg": "success",
+                    "data": response
+                }
+                
+            except Exception as e:
+                logger.error(f"[ProxyService] API调用失败: {str(e)}")
+                logger.error("[ProxyService] 错误堆栈:", exc_info=True)
+                return {
+                    "code": 500,
+                    "msg": f"API调用失败: {str(e)}",
+                    "data": []
+                }
+            
+        except Exception as e:
+            logger.error(f"[ProxyService] 查询产品信息失败: {str(e)}")
+            logger.error("[ProxyService] 错误堆栈:", exc_info=True)
+            return {
+                "code": 500,
+                "msg": f"查询失败: {str(e)}",
+                "data": []
+            } 

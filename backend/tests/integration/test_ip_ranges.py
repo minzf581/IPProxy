@@ -3,7 +3,10 @@ import os
 import logging
 import time
 import hashlib
-from app.services import AreaService, ProxyService, UserService
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models.region import Region, Country, City
+from app.services import IPIPVBaseAPI, ProxyService, UserService
 
 # 设置日志级别和格式
 logging.basicConfig(
@@ -12,6 +15,18 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+@pytest.fixture
+def db():
+    db = next(get_db())
+    try:
+        yield db
+    finally:
+        db.close()
+
+@pytest.fixture
+def ipipv_api():
+    return IPIPVBaseAPI()
 
 @pytest.mark.asyncio
 class TestIPRanges:
@@ -164,4 +179,21 @@ class TestIPRanges:
             elif isinstance(response, dict):
                 logger.info(f"IP段详细信息: {response}")
                 assert "ipStart" in response, f"{proxy_type['name']}响应中应包含 ipStart"
-                assert "ipEnd" in response, f"{proxy_type['name']}响应中应包含 ipEnd" 
+                assert "ipEnd" in response, f"{proxy_type['name']}响应中应包含 ipEnd"
+
+@pytest.mark.asyncio
+async def test_get_ip_ranges(db: Session, ipipv_api: IPIPVBaseAPI):
+    """测试获取IP范围"""
+    # 准备测试数据
+    params = {
+        "countryCode": "US",
+        "cityCode": "NYC",
+        "proxyType": 103  # 静态国外家庭
+    }
+    
+    # 调用API
+    result = await ipipv_api._make_request("api/open/app/product/query/v2", params)
+    
+    # 验证结果
+    assert result is not None
+    assert isinstance(result, list) 

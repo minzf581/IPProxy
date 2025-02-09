@@ -185,6 +185,25 @@ interface CidrBlock {
   count: number;
 }
 
+interface RawArea {
+  code?: string;
+  name?: string;
+  cname?: string;
+  children?: RawArea[];
+  countryList?: RawCountry[];
+}
+
+interface RawCountry {
+  countryCode?: string;
+  countryName?: string;
+  cityList?: RawCity[];
+}
+
+interface RawCity {
+  cityCode?: string;
+  cityName?: string;
+}
+
 export class IPProxyAPI {
   private baseURL: string;
   private appKey: string;
@@ -488,57 +507,75 @@ export class IPProxyAPI {
   // 获取区域列表
   async getAreaList(): Promise<AreaResponse[]> {
     try {
-      const response = await this.request<AreaResponse[] | { data: AreaResponse[] }>('open/app/area/v2', {
-        codes: [],  // 空数组表示获取所有区域
+      console.log('[getAreaList] 开始获取区域列表');
+      
+      const response = await this.request<RawArea[] | { data: RawArea[] }>('open/app/area/v2', {
         appUsername: 'test_user'
       });
-
-      console.log('[IPProxyAPI] 区域列表原始响应:', response);
-
-      // 如果响应直接就是数组，说明是成功的响应
+      
+      console.log('[getAreaList] 原始响应:', response);
+      
+      // 处理响应数据
+      let areaList: AreaResponse[] = [];
+      
       if (Array.isArray(response)) {
-        // 确保每个区域对象都有必要的字段
-        const validAreas = response.filter((area: Partial<AreaResponse>) => {
-          const isValid = area && typeof area === 'object' && 
-            'code' in area && 
-            ('name' in area || 'cname' in area);
-          if (!isValid) {
-            console.warn('[IPProxyAPI] 跳过无效的区域数据:', area);
-          }
-          return isValid;
-        }).map((area: Partial<AreaResponse>) => ({
+        areaList = response.map((area: RawArea) => ({
           code: area.code || '',
-          name: area.name || area.cname || '',
+          name: area.name || '',
           cname: area.cname || area.name || '',
-          children: Array.isArray(area.children) ? area.children.map((child: Partial<AreaResponse>) => ({
+          children: Array.isArray(area.children) ? area.children.map((child: RawArea) => ({
             code: child.code || '',
-            name: child.name || child.cname || '',
-            cname: child.cname || child.name || ''
-          })) : []
+            name: child.name || '',
+            cname: child.cname || child.name || '',
+            children: Array.isArray(child.children) ? child.children.map((grandChild: RawArea) => ({
+              code: grandChild.code || '',
+              name: grandChild.name || '',
+              cname: grandChild.cname || grandChild.name || ''
+            })) : undefined
+          })) : undefined,
+          countryList: Array.isArray(area.countryList) ? area.countryList.map((country: RawCountry) => ({
+            countryCode: country.countryCode || '',
+            countryName: country.countryName || '',
+            cityList: Array.isArray(country.cityList) ? country.cityList.map((city: RawCity) => ({
+              cityCode: city.cityCode || '',
+              cityName: city.cityName || ''
+            })) : []
+          })) : undefined
         }));
-
-        console.log('[IPProxyAPI] 处理后的区域列表:', validAreas);
-        return validAreas;
+      } else if (response && typeof response === 'object' && 'data' in response) {
+        const data = response.data;
+        if (Array.isArray(data)) {
+          areaList = data.map((area: RawArea) => ({
+            code: area.code || '',
+            name: area.name || '',
+            cname: area.cname || area.name || '',
+            children: Array.isArray(area.children) ? area.children.map((child: RawArea) => ({
+              code: child.code || '',
+              name: child.name || '',
+              cname: child.cname || child.name || '',
+              children: Array.isArray(child.children) ? child.children.map((grandChild: RawArea) => ({
+                code: grandChild.code || '',
+                name: grandChild.name || '',
+                cname: grandChild.cname || grandChild.name || ''
+              })) : undefined
+            })) : undefined,
+            countryList: Array.isArray(area.countryList) ? area.countryList.map((country: RawCountry) => ({
+              countryCode: country.countryCode || '',
+              countryName: country.countryName || '',
+              cityList: Array.isArray(country.cityList) ? country.cityList.map((city: RawCity) => ({
+                cityCode: city.cityCode || '',
+                cityName: city.cityName || ''
+              })) : []
+            })) : undefined
+          }));
+        }
       }
-
-      // 如果响应是对象，尝试从 data 字段获取数组
-      if (response && 'data' in response && Array.isArray(response.data)) {
-        return response.data.map((area: Partial<AreaResponse>) => ({
-          code: area.code || '',
-          name: area.name || area.cname || '',
-          cname: area.cname || area.name || '',
-          children: Array.isArray(area.children) ? area.children.map((child: Partial<AreaResponse>) => ({
-            code: child.code || '',
-            name: child.name || child.cname || '',
-            cname: child.cname || child.name || ''
-          })) : []
-        }));
-      }
-
-      console.error('[IPProxyAPI] 响应格式不正确:', response);
-      return [];
+      
+      console.log('[getAreaList] 处理后的区域列表:', areaList);
+      return areaList;
+      
     } catch (error) {
-      console.error('[IPProxyAPI] 获取区域列表失败:', error);
+      console.error('[getAreaList] 获取区域列表失败:', error);
       throw error;
     }
   }
@@ -851,6 +888,7 @@ export class IPProxyAPI {
   async getCountriesByRegion(regionCode: string): Promise<AreaResponse[]> {
     try {
       console.log('[getCountriesByRegion] Starting request with region code:', regionCode);
+      
       // 先获取完整的区域列表
       const response = await this.request<AreaResponse[]>(API_ROUTES.AREA.LIST, {
         appUsername: 'test_user'
@@ -859,14 +897,24 @@ export class IPProxyAPI {
       // 找到指定区域的数据
       const region = response.find(area => area.code === regionCode);
       
-      if (!region || !region.children) {
+      if (!region || !Array.isArray(region.children)) {
         console.warn('[getCountriesByRegion] No countries found for region:', regionCode);
         return [];
       }
       
       console.log('[getCountriesByRegion] Found countries:', region.children);
-      return region.children;
-      
+      return region.children.map(country => ({
+        code: country.code || '',
+        name: country.name || country.cname || '',
+        cname: country.cname || country.name || '',
+        children: Array.isArray(country.children)
+          ? country.children.map(city => ({
+              code: city.code || '',
+              name: city.name || city.cname || '',
+              cname: city.cname || city.name || ''
+            }))
+          : []
+      }));
     } catch (error) {
       console.error('[getCountriesByRegion] Error:', error);
       throw error;
@@ -878,14 +926,11 @@ export class IPProxyAPI {
     try {
       console.log('[IPProxyAPI] getCitiesByCountry - 开始获取城市列表，国家代码:', countryCode);
       
-      const params = {
-        version: "v2",
-        encrypt: "AES",
-        countryCode: countryCode,
-        appUsername: "test_user"
-      };
+      const response = await this.request<any>('open/app/city/list/v2', {
+        countryCode: countryCode.toUpperCase(),
+        appUsername: 'test_user'
+      });
       
-      const response = await this.request<any>('open/app/city/list/v2', params);
       console.log('[IPProxyAPI] getCitiesByCountry - 原始响应:', response);
       
       if (!Array.isArray(response)) {
@@ -893,44 +938,13 @@ export class IPProxyAPI {
         return [];
       }
 
-      // 添加数据验证和详细日志
-      const cities = response.map((city, index) => {
-        console.log(`[IPProxyAPI] getCitiesByCountry - 处理城市数据 ${index}:`, city);
-        
-        const cityCode = city.cityCode || city.code || '';
-        
-        // 从城市代码中提取城市名称（例如：CAN000TOR -> Toronto）
-        const extractCityName = (code: string) => {
-          const cityPart = code.slice(-3);  // 获取最后三个字符
-          const cityMap: { [key: string]: string } = {
-            'TOR': 'Toronto',
-            'MTR': 'Montreal',
-            'LOD': 'London',
-            '000': 'All Cities'
-          };
-          return cityMap[cityPart] || code;
-        };
-        
-        // 优先使用 API 返回的名称，如果为空则使用从代码中提取的名称
-        const cityData = {
-          code: cityCode,
-          name: city.cityName || city.name || extractCityName(cityCode),
-          cname: city.cname || city.cityName || extractCityName(cityCode),
-          cityCode: cityCode,
-          cityName: city.cityName || city.name || extractCityName(cityCode)
-        };
-        
-        console.log(`[IPProxyAPI] getCitiesByCountry - 处理后的城市数据 ${index}:`, cityData);
-        return cityData;
-      }).filter(city => {
-        const isValid = Boolean(city.code);
-        if (!isValid) {
-          console.warn('[IPProxyAPI] getCitiesByCountry - 过滤掉无效的城市数据:', city);
-        }
-        return isValid;
-      });
+      const cities = response.map(city => ({
+        code: city.cityCode || city.code || '',
+        name: city.cityName || city.name || city.cname || '',
+        cname: city.cname || city.cityName || city.name || ''
+      }));
       
-      console.log('[IPProxyAPI] getCitiesByCountry - 最终城市列表:', cities);
+      console.log('[IPProxyAPI] getCitiesByCountry - 处理后的城市列表:', cities);
       return cities;
     } catch (error) {
       console.error('[IPProxyAPI] getCitiesByCountry - 错误:', error);
@@ -945,63 +959,48 @@ export class IPProxyAPI {
     countryCode?: string;
     cityCode?: string;
     staticType?: string;
-    version?: string;
   }): Promise<IpRange[]> {
     try {
-      const response = await this.request<any[]>('/open/app/product/query/v2', params);
+      console.log('[getIpRanges] 开始请求，参数:', params);
       
-      if (!response || !Array.isArray(response)) {
-        console.warn('[IPProxyAPI] 无效的响应数据:', response);
+      // 构建请求参数
+      const requestParams = {
+        proxyType: params.proxyType,
+        appUsername: 'test_user',
+        ...(params.regionCode && { regionCode: params.regionCode.toUpperCase() }),
+        ...(params.countryCode && { countryCode: params.countryCode.toUpperCase() }),
+        ...(params.cityCode && { cityCode: params.cityCode.toUpperCase() }),
+        ...(params.staticType && { staticType: params.staticType })
+      };
+
+      console.log('[getIpRanges] 处理后的请求参数:', requestParams);
+      
+      const response = await this.request<any[]>('open/app/product/query/v2', requestParams);
+      
+      if (!Array.isArray(response)) {
+        console.warn('[getIpRanges] 响应不是数组:', response);
         return [];
       }
       
-      // 转换和验证数据
-      const ipRanges = response.flatMap(item => {
-        // 如果产品没有启用或库存为0，跳过
-        if (!item.enable || item.inventory <= 0) {
-          console.warn('[IPProxyAPI] 跳过无效的产品:', item);
-          return [];
-        }
+      // 转换响应数据
+      const ipRanges = response.map(item => ({
+        ipStart: item.ipStart || '',
+        ipEnd: item.ipEnd || '',
+        ipCount: Number(item.ipCount) || 0,
+        stock: Number(item.inventory) || 0,
+        staticType: String(item.staticType || ''),
+        countryCode: String(item.countryCode || ''),
+        cityCode: String(item.cityCode || ''),
+        regionCode: String(item.areaCode || ''),
+        price: Number(item.costPrice) || 0,
+        status: Number(item.enable) || 0
+      }));
 
-        // 如果有cidrBlocks，使用cidrBlocks中的IP段信息
-        if (item.cidrBlocks && Array.isArray(item.cidrBlocks)) {
-          return item.cidrBlocks.map((block: CidrBlock) => ({
-            ipStart: block.startIp,
-            ipEnd: block.endIp,
-            ipCount: block.count || 0,
-            stock: item.inventory || 0,
-            staticType: item.staticType || '',
-            countryCode: item.countryCode || '',
-            cityCode: item.cityCode || '',
-            regionCode: item.areaCode || '',
-            price: item.costPrice || 0,
-            status: item.enable || 0
-          }));
-        }
-        
-        // 如果没有cidrBlocks但有其他必要信息，创建单个IP段
-        if (item.inventory > 0) {
-          return [{
-            ipStart: '',  // 这些产品可能不暴露具体IP
-            ipEnd: '',
-            ipCount: item.ipCount || item.inventory || 0,
-            stock: item.inventory || 0,
-            staticType: item.staticType || '',
-            countryCode: item.countryCode || '',
-            cityCode: item.cityCode || '',
-            regionCode: item.areaCode || '',
-            price: item.costPrice || 0,
-            status: item.enable || 0
-          }];
-        }
-
-        return [];
-      });
-
-      console.log('[IPProxyAPI] 处理后的IP段列表:', ipRanges);
+      console.log('[getIpRanges] 处理后的IP段列表:', ipRanges);
       return ipRanges;
+      
     } catch (error) {
-      console.error('[IPProxyAPI] 查询IP段失败:', error);
+      console.error('[getIpRanges] 查询IP段失败:', error);
       throw new Error('查询IP段失败: ' + (error instanceof Error ? error.message : String(error)));
     }
   }

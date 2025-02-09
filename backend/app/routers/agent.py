@@ -622,25 +622,16 @@ async def get_area_list(
 ) -> Dict[str, Any]:
     """获取地区列表"""
     try:
-        logger.info("[IPIPV] 获取区域列表")
-        # 构造请求参数
-        request_params = {
-            "version": "v2",
-            "encrypt": "AES"
-        }
-        # 合并用户传入的参数
-        if params:
-            request_params.update(params)
-            
-        result = await area_service.get_area_list(request_params)
+        logger.info("[AreaService] 获取区域列表")
+        result = await area_service.get_area_list(params)
         return {
             "code": 0,
             "message": "success",
-            "data": result if result else []
+            "data": result
         }
     except Exception as e:
-        logger.error(f"[IPIPV] 获取区域列表失败: {str(e)}")
-        logger.error(f"[IPIPV] 错误堆栈: {traceback.format_exc()}")
+        logger.error(f"[AreaService] 获取区域列表失败: {str(e)}")
+        logger.error(f"[AreaService] 错误堆栈: {traceback.format_exc()}")
         return {
             "code": 500,
             "message": str(e),

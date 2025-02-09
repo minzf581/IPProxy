@@ -16,16 +16,14 @@ touch "$LOG_FILE"
 log() {
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     local message="[$timestamp] [INFO] $1"
-    echo "$message"
-    echo "$message" > >(tee -a "$LOG_FILE")
+    echo "$message" | tee -a "$LOG_FILE"
 }
 
 # 定义错误日志函数
 error() {
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     local message="[$timestamp] [ERROR] $1"
-    echo "$message"
-    echo "$message" > >(tee -a "$LOG_FILE")
+    echo "$message" | tee -a "$LOG_FILE"
     exit 1
 }
 
@@ -51,7 +49,7 @@ if [ ! -f "requirements.txt" ]; then
     error "requirements.txt 不存在"
 fi
 
-pip3 install -r requirements.txt 2>&1 | tee -a "$LOG_FILE" || error "安装Python依赖失败"
+pip3 install -r requirements.txt 2>&1 | tee -a "$LOG_FILE"
 
 # 启动后端服务
 log "启动后端服务..."
@@ -65,7 +63,7 @@ if [ ! -f "package.json" ]; then
     error "package.json 不存在"
 fi
 
-npm install 2>&1 | tee -a "$LOG_FILE" || error "安装前端依赖失败"
+npm install 2>&1 | tee -a "$LOG_FILE"
 
 # 启动前端服务
 log "启动前端服务..."
