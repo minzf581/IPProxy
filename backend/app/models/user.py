@@ -10,7 +10,7 @@ class User(Base, TimestampMixin):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
     password = Column(String(255), nullable=False)
-    email = Column(String(255), unique=True, nullable=True)
+    email = Column(String(255), index=True, nullable=True)  # 允许重复邮箱
     phone = Column(String(20), unique=True, nullable=True)
     status = Column(Integer, nullable=False, default=1)  # 1=正常 0=禁用
     is_admin = Column(Boolean, default=False)
