@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-02-11T17:33:32.539421",
+  "timestamp": "2025-02-12T07:41:05.738522",
   "results": {
     "matched": [
       "/api/open/app/dashboard/info/v2",
@@ -50,6 +50,7 @@
       "dynamic/{order_id}",
       "instance/sync/v2",
       "instance/v2",
+      "open/app/agent-orders/v2",
       "open/app/agent/list",
       "open/app/agent/{agent_id}",
       "open/app/agent/{agent_id}/statistics",

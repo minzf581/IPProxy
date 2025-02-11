@@ -15,15 +15,19 @@ import type { TableProps } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import styles from './index.module.less';
+import { getAgentOrders } from '@/services/agentService';
 
 const { RangePicker } = DatePicker;
 
 interface OrderData {
   id: string;
-  orderNo: string;
-  agentId: string;
+  order_no: string;
+  agent_id: string;
   amount: number;
-  createTime: string;
+  created_at: string;
+  status: string;
+  type: string;
+  remark?: string;
 }
 
 const AgentOrders: React.FC = () => {
@@ -42,15 +46,15 @@ const AgentOrders: React.FC = () => {
   const columns: ColumnsType<OrderData> = [
     {
       title: '订单号',
-      dataIndex: 'orderNo',
-      key: 'orderNo',
+      dataIndex: 'order_no',
+      key: 'order_no',
       width: 180,
       fixed: 'left',
     },
     {
       title: '代理商',
-      dataIndex: 'agentId',
-      key: 'agentId',
+      dataIndex: 'agent_id',
+      key: 'agent_id',
       width: 120,
     },
     {
@@ -62,9 +66,21 @@ const AgentOrders: React.FC = () => {
       render: (amount: number) => `¥${amount.toFixed(2)}`,
     },
     {
+      title: '状态',
+      dataIndex: 'status',
+      key: 'status',
+      width: 100,
+    },
+    {
+      title: '类型',
+      dataIndex: 'type',
+      key: 'type',
+      width: 100,
+    },
+    {
       title: '创建时间',
-      dataIndex: 'createTime',
-      key: 'createTime',
+      dataIndex: 'created_at',
+      key: 'created_at',
       width: 180,
     },
     {
@@ -103,31 +119,20 @@ const AgentOrders: React.FC = () => {
   const fetchData = async (params: any) => {
     setLoading(true);
     try {
-      // TODO: 替换为实际的API调用
-      const response = await fetch('/api/agent-orders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(params),
+      const { data } = await getAgentOrders({
+        agentId: params.agentId,
+        page: params.current || 1,
+        pageSize: params.pageSize || 10,
+        status: params.status,
       });
-      const result = await response.json();
-      
-      // 模拟数据
-      const mockData: OrderData[] = Array(10).fill(null).map((_, index) => ({
-        id: `${index + 1}`,
-        orderNo: `DD${dayjs().format('YYYYMMDD')}${String(index + 1).padStart(6, '0')}`,
-        agentId: `agent${index + 1}`,
-        amount: Math.floor(Math.random() * 10000) / 100,
-        createTime: dayjs().subtract(index, 'hour').format('YYYY-MM-DD HH:mm:ss'),
-      }));
-      
-      setData(mockData);
+
+      setData(data.list);
       setPagination({
         ...pagination,
-        total: 100,
+        total: data.total,
       });
     } catch (error) {
+      console.error('获取代理商订单列表失败:', error);
       message.error('获取数据失败');
     }
     setLoading(false);
@@ -227,10 +232,13 @@ const AgentOrders: React.FC = () => {
       >
         {currentOrder && (
           <div>
-            <p>订单号：{currentOrder.orderNo}</p>
-            <p>代理商：{currentOrder.agentId}</p>
+            <p>订单号：{currentOrder.order_no}</p>
+            <p>代理商：{currentOrder.agent_id}</p>
             <p>金额：¥{currentOrder.amount.toFixed(2)}</p>
-            <p>创建时间：{currentOrder.createTime}</p>
+            <p>状态：{currentOrder.status}</p>
+            <p>类型：{currentOrder.type}</p>
+            <p>创建时间：{currentOrder.created_at}</p>
+            {currentOrder.remark && <p>备注：{currentOrder.remark}</p>}
           </div>
         )}
       </Modal>
@@ -238,4 +246,4 @@ const AgentOrders: React.FC = () => {
   );
 };
 
-export default AgentOrders; 
+export default AgentOrders;

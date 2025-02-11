@@ -10,8 +10,7 @@ import {
   Input,
   Form,
   DatePicker,
-  Select,
-  Option
+  Select
 } from 'antd';
 import { useRequest } from 'ahooks';
 import type { StaticOrder } from '@/types/staticOrder';
@@ -19,9 +18,10 @@ import {
   getStaticOrders,
   updateStaticOrderStatus
 } from '@/services/staticOrder';
-import { formatDateTime } from '@/utils/date';
+import { formatDateTime } from '@/utils/dateUtils';
 
 const { RangePicker } = DatePicker;
+const { Option } = Select;
 
 interface SearchParams {
   status?: string;

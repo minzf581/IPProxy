@@ -178,6 +178,7 @@ app.include_router(product.router, prefix="/api")
 app.include_router(static_order.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(callback.router, prefix="/api")
+app.include_router(agent.router, prefix="/api")  # 添加代理商路由
 
 # 白名单路径
 AUTH_WHITELIST = [
@@ -185,7 +186,12 @@ AUTH_WHITELIST = [
     "/api/open/app/area/v2",
     "/api/open/app/city/list/v2",
     "/api/open/app/product/query/v2",
-    "/api/open/app/location/options/v2"
+    "/api/open/app/location/options/v2",
+    "/api/open/app/agent/list",  # 添加代理商列表接口
+    "/api/open/app/agent/*/statistics",  # 添加代理商统计接口
+    "/api/open/app/static/order/list/v2",  # 添加静态订单列表接口
+    "/api/open/app/order/v2",  # 添加订单列表接口
+    "/api/open/app/proxy/user/v2"  # 添加代理用户接口
 ]
 
 async def ensure_default_users():
@@ -318,7 +324,7 @@ async def auth_middleware(request: Request, call_next):
         return response
         
     # 检查是否是白名单路径
-    if any(path.startswith(white_path) for white_path in AUTH_WHITELIST):
+    if any(path.startswith(white_path.replace("*", "")) for white_path in AUTH_WHITELIST):
         logger.info(f"[Auth Middleware] Whitelist path: {path}, skipping auth")
         return await call_next(request)
         
@@ -330,7 +336,10 @@ async def auth_middleware(request: Request, call_next):
         logger.warning("[Auth Middleware] No Authorization header found")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="未提供认证信息"
+            detail={
+                "code": 401,
+                "message": "未提供认证信息"
+            }
         )
         
     try:
@@ -340,7 +349,10 @@ async def auth_middleware(request: Request, call_next):
             logger.warning("[Auth Middleware] Invalid auth scheme")
             raise HTTPException(
                 status_code=401,
-                detail="认证方案无效",
+                detail={
+                    "code": 401,
+                    "message": "认证方案无效"
+                },
                 headers={"WWW-Authenticate": "Bearer"}
             )
             
@@ -352,16 +364,25 @@ async def auth_middleware(request: Request, call_next):
                 logger.warning("[Auth Middleware] Invalid token payload")
                 raise HTTPException(
                     status_code=401,
-                    detail="无效的token",
+                    detail={
+                        "code": 401,
+                        "message": "无效的token"
+                    },
                     headers={"WWW-Authenticate": "Bearer"}
                 )
         except jwt.JWTError as e:
             logger.error(f"[Auth Middleware] JWT decode error: {str(e)}")
             raise HTTPException(
                 status_code=401,
-                detail="无效的token",
+                detail={
+                    "code": 401,
+                    "message": "无效的token"
+                },
                 headers={"WWW-Authenticate": "Bearer"}
             )
+            
+        # 设置用户ID到请求状态
+        request.state.user_id = user_id
             
         response = await call_next(request)
         response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
@@ -373,7 +394,10 @@ async def auth_middleware(request: Request, call_next):
         logger.error(f"[Auth Middleware] Unexpected error: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail="服务器内部错误",
+            detail={
+                "code": 500,
+                "message": "服务器内部错误"
+            },
             headers={"WWW-Authenticate": "Bearer"}
         )
 

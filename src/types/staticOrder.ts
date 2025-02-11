@@ -48,5 +48,8 @@ export interface StaticOrder {
 export interface StaticOrderResponse {
   code: number;
   msg: string;
-  data: StaticOrder;
+  data: {
+    total: number;
+    list: StaticOrder[];
+  };
 } 

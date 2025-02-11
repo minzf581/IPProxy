@@ -68,7 +68,7 @@ from typing import Optional
 from app.services import UserService, ProxyService, AreaService
 from app.models.main_user import MainUser
 from app.services.auth import get_current_user
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from sqlalchemy import func
 import uuid
@@ -76,6 +76,9 @@ from app.schemas.agent import AgentList, AgentCreate, AgentUpdate
 import json
 import traceback
 from app.core.deps import get_user_service, get_proxy_service, get_area_service
+from app.models.dynamic_order import DynamicOrder
+from app.models.static_order import StaticOrder
+from sqlalchemy import or_
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -175,24 +178,41 @@ async def get_agent_list(
     try:
         logger.info(f"获取代理商列表: page={page}, pageSize={pageSize}")
         
-        # 调用用户服务获取代理商列表
-        params = {
-            "page": page,
-            "pageSize": pageSize,
-            "role": "agent"  # 只获取代理商角色
-        }
-        response = await user_service.get_user_list(params)
-        if not response:
-            raise HTTPException(status_code=500, detail="获取代理商列表失败")
+        # 构建查询条件
+        query = db.query(User).filter(User.is_agent == True)
+        
+        # 计算总数
+        total = query.count()
+        
+        # 分页查询
+        agents = query.order_by(User.created_at.desc()) \
+            .offset((page - 1) * pageSize) \
+            .limit(pageSize) \
+            .all()
+            
+        # 转换为响应格式
+        agent_list = []
+        for agent in agents:
+            agent_list.append({
+                "id": agent.id,
+                "username": agent.username,
+                "email": agent.email,
+                "balance": agent.balance,
+                "status": agent.status,
+                "remark": agent.remark,
+                "created_at": agent.created_at.isoformat() if agent.created_at else None,
+                "updated_at": agent.updated_at.isoformat() if agent.updated_at else None
+            })
             
         return {
             "code": 0,
             "message": "获取代理商列表成功",
-            "data": response
+            "data": {
+                "list": agent_list,
+                "total": total
+            }
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"获取代理商列表失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -551,11 +571,16 @@ async def update_agent_status(
 @router.get("/agent/{agent_id}/transactions")
 async def get_agent_transactions(
     agent_id: int,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(10, ge=1, le=100),
+    status: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """获取代理商交易记录"""
     try:
+        logger.info(f"获取代理商交易记录: agent_id={agent_id}, page={page}, pageSize={pageSize}, status={status}")
+        
         # 检查代理商是否存在
         agent = db.query(User).filter(User.id == agent_id, User.is_agent == True).first()
         if not agent:
@@ -565,17 +590,43 @@ async def get_agent_transactions(
         if not current_user.is_admin and current_user.id != agent_id:
             raise HTTPException(status_code=403, detail={"code": 403, "message": "没有权限执行此操作"})
         
-        # 获取交易记录
-        transactions = db.query(Transaction).filter(Transaction.user_id == agent_id).all()
+        # 构建查询条件
+        query = db.query(Transaction).filter(Transaction.user_id == agent_id)
+        
+        if status:
+            query = query.filter(Transaction.status == status)
+        
+        # 计算总数
+        total = query.count()
+        
+        # 分页查询
+        transactions = query.order_by(Transaction.created_at.desc()) \
+            .offset((page - 1) * pageSize) \
+            .limit(pageSize) \
+            .all()
+        
+        # 转换为响应格式
+        transaction_list = []
+        for t in transactions:
+            transaction_list.append({
+                "id": t.id,
+                "order_no": t.order_no,
+                "amount": float(t.amount),
+                "status": t.status,
+                "type": t.type,
+                "remark": t.remark,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "updated_at": t.updated_at.isoformat() if t.updated_at else None
+            })
         
         return {
-            "code": 200,
+            "code": 0,
             "message": "success",
             "data": {
-                "transactions": [t.to_dict() for t in transactions],
-                "total": len(transactions),
-                "page": 1,
-                "page_size": len(transactions)
+                "list": transaction_list,
+                "total": total,
+                "page": page,
+                "pageSize": pageSize
             }
         }
     except HTTPException:
@@ -606,3 +657,139 @@ async def get_area_list(
             "message": str(e),
             "data": []
         }
+
+@router.get("/open/app/agent-orders/v2")
+async def get_agent_orders(
+    agentId: Optional[int] = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(10, ge=1, le=100),
+    status: Optional[str] = None,
+    startDate: Optional[str] = None,
+    endDate: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """获取代理商订单列表"""
+    try:
+        logger.info(f"获取代理商订单列表: agent_id={agentId}, page={page}, pageSize={pageSize}, status={status}, startDate={startDate}, endDate={endDate}")
+        logger.info(f"当前用户: id={current_user.id}, is_admin={current_user.is_admin}, is_agent={current_user.is_agent}")
+        
+        # 权限检查
+        if not current_user.is_admin and current_user.id != agentId:
+            logger.warning(f"权限检查失败: 用户{current_user.id}尝试访问代理商{agentId}的订单")
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": 403,
+                    "message": "没有权限查看此代理商的订单"
+                }
+            )
+        
+        # 构建动态订单查询
+        dynamic_query = db.query(DynamicOrder)
+        static_query = db.query(StaticOrder)
+        
+        # 如果指定了代理商ID，添加过滤条件
+        if agentId:
+            logger.info(f"按代理商ID过滤: {agentId}")
+            dynamic_query = dynamic_query.filter(DynamicOrder.agent_id == agentId)
+            static_query = static_query.filter(StaticOrder.agent_id == agentId)
+        elif not current_user.is_admin:
+            # 非管理员必须指定代理商ID
+            logger.error("非管理员用户未指定代理商ID")
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": 400,
+                    "message": "必须指定代理商ID"
+                }
+            )
+        
+        # 状态过滤
+        if status:
+            logger.info(f"按状态过滤: {status}")
+            dynamic_query = dynamic_query.filter(DynamicOrder.status == status)
+            static_query = static_query.filter(StaticOrder.status == status)
+        
+        # 日期范围过滤
+        if startDate:
+            start_datetime = datetime.strptime(startDate, "%Y-%m-%d")
+            logger.info(f"按开始日期过滤: {start_datetime}")
+            dynamic_query = dynamic_query.filter(DynamicOrder.created_at >= start_datetime)
+            static_query = static_query.filter(StaticOrder.created_at >= start_datetime)
+            
+        if endDate:
+            end_datetime = datetime.strptime(endDate, "%Y-%m-%d") + timedelta(days=1)
+            logger.info(f"按结束日期过滤: {end_datetime}")
+            dynamic_query = dynamic_query.filter(DynamicOrder.created_at < end_datetime)
+            static_query = static_query.filter(StaticOrder.created_at < end_datetime)
+        
+        # 获取所有订单
+        dynamic_orders = dynamic_query.all()
+        static_orders = static_query.all()
+        
+        logger.info(f"查询结果: 动态订单数量={len(dynamic_orders)}, 静态订单数量={len(static_orders)}")
+        
+        # 合并订单并转换格式
+        all_orders = []
+        
+        # 处理动态订单
+        for order in dynamic_orders:
+            all_orders.append({
+                "id": str(order.id),
+                "order_no": order.order_no,
+                "amount": float(order.total_amount) if order.total_amount else 0.0,
+                "status": order.status,
+                "type": "dynamic",
+                "remark": order.remark,
+                "created_at": order.created_at.strftime("%Y-%m-%d %H:%M:%S") if order.created_at else None,
+                "updated_at": order.updated_at.strftime("%Y-%m-%d %H:%M:%S") if order.updated_at else None
+            })
+        
+        # 处理静态订单
+        for order in static_orders:
+            all_orders.append({
+                "id": str(order.id),
+                "order_no": order.order_no,
+                "amount": float(order.amount) if order.amount else 0.0,
+                "status": order.status,
+                "type": "static",
+                "remark": order.remark,
+                "created_at": order.created_at.strftime("%Y-%m-%d %H:%M:%S") if order.created_at else None,
+                "updated_at": order.updated_at.strftime("%Y-%m-%d %H:%M:%S") if order.updated_at else None
+            })
+        
+        # 按创建时间排序
+        all_orders.sort(key=lambda x: x["created_at"] or "", reverse=True)
+        
+        # 计算总数
+        total = len(all_orders)
+        logger.info(f"总订单数: {total}")
+        
+        # 分页
+        start = (page - 1) * pageSize
+        end = start + pageSize
+        paginated_orders = all_orders[start:end]
+        logger.info(f"返回订单数: {len(paginated_orders)}")
+            
+        return {
+            "code": 0,
+            "message": "获取代理商订单列表成功",
+            "data": {
+                "list": paginated_orders,
+                "total": total
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取代理商订单列表失败: {str(e)}")
+        logger.error(f"错误堆栈: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": 500,
+                "message": str(e)
+            }
+        )

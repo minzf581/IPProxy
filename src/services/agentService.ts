@@ -10,6 +10,17 @@ interface ApiResponse<T> {
   data: T;
 }
 
+interface AgentOrder {
+  id: string;
+  order_no: string;
+  amount: number;
+  status: string;
+  type: 'dynamic' | 'static';
+  remark?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export async function getAgentList(params: { page: number; pageSize: number; status?: string }) {
   debugAgent.info('Getting agent list with params:', params);
   const response = await api.get<ApiResponse<{ list: AgentInfo[]; total: number }>>('/api/open/app/agent/list', { params });
@@ -60,17 +71,22 @@ export async function getAgentOrders(params: {
   page: number;
   pageSize: number;
   status?: string;
-}) {
+  startDate?: string;
+  endDate?: string;
+}): Promise<ApiResponse<{ list: AgentOrder[]; total: number }>> {
   debugAgent.info('Getting agent orders:', params);
-  const response = await api.get<ApiResponse<{ list: any[]; total: number }>>(`/api/open/app/agent/${params.agentId}/orders`, {
+  const response = await api.get<ApiResponse<{ list: AgentOrder[]; total: number }>>('/api/open/app/agent-orders/v2', {
     params: {
+      agentId: params.agentId,
       page: params.page,
       pageSize: params.pageSize,
       status: params.status,
+      startDate: params.startDate,
+      endDate: params.endDate,
     },
   });
   debugAgent.info('Agent orders response:', response.data);
-  return response.data.data;
+  return response.data;
 }
 
 export async function getAgentUsers(params: {
