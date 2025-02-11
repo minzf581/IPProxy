@@ -159,10 +159,12 @@ app = FastAPI(
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000"],  # 开发环境允许前端地址
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,  # 预检请求缓存时间
 )
 
 # 注册路由
@@ -177,19 +179,14 @@ app.include_router(static_order.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(callback.router, prefix="/api")
 
-# 定义公共路径（不需要认证的路径）
-public_paths = {
-    "/auth/login",
-    "/open/app/area/v2",
-    "/open/app/city/list/v2",
-    "/open/app/proxy/info/v2",
-    "/open/app/proxy/flow/use/log/v2",
-    "/open/app/dashboard/info/v2",
-    "/open/app/location/options/v2",
-    "/docs",
-    "/redoc",
-    "/openapi.json"
-}
+# 白名单路径
+AUTH_WHITELIST = [
+    "/api/auth/login",
+    "/api/open/app/area/v2",
+    "/api/open/app/city/list/v2",
+    "/api/open/app/product/query/v2",
+    "/api/open/app/location/options/v2"
+]
 
 async def ensure_default_users():
     """确保默认用户存在"""
@@ -307,28 +304,33 @@ async def root():
 # 添加认证中间件
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    """认证中间件，验证请求的token"""
+    """认证中间件"""
     path = request.url.path
     logger.info(f"[Auth Middleware] Processing request: {path}")
     
-    # 移除路径中的 /api 前缀用于匹配
-    check_path = path.replace("/api", "", 1) if path.startswith("/api") else path
-    
-    # 如果是白名单路由，直接放行
-    if check_path in public_paths or any(check_path.startswith(p) for p in ["/docs", "/redoc", "/openapi.json"]):
+    # 处理 OPTIONS 请求
+    if request.method == "OPTIONS":
+        response = Response(status_code=200)
+        response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Max-Age"] = "3600"
+        return response
+        
+    # 检查是否是白名单路径
+    if any(path.startswith(white_path) for white_path in AUTH_WHITELIST):
         logger.info(f"[Auth Middleware] Whitelist path: {path}, skipping auth")
         return await call_next(request)
         
-    # 获取Authorization头
+    # 获取认证头
     auth_header = request.headers.get("Authorization")
     logger.info(f"[Auth Middleware] Authorization header: {auth_header}")
     
     if not auth_header:
         logger.warning("[Auth Middleware] No Authorization header found")
         raise HTTPException(
-            status_code=401,
-            detail="未提供认证信息",
-            headers={"WWW-Authenticate": "Bearer"}
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="未提供认证信息"
         )
         
     try:
@@ -361,7 +363,9 @@ async def auth_middleware(request: Request, call_next):
                 headers={"WWW-Authenticate": "Bearer"}
             )
             
-        return await call_next(request)
+        response = await call_next(request)
+        response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+        return response
         
     except HTTPException:
         raise

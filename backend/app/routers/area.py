@@ -179,6 +179,8 @@ async def get_city_list_post(
             
         # 过滤和转换城市数据
         filtered_cities = []
+        seen_city_codes = set()  # 用于去重
+        
         for city in city_list:
             if not isinstance(city, dict):
                 continue
@@ -186,12 +188,41 @@ async def get_city_list_post(
             city_code = city.get("cityCode") or city.get("code")
             city_name = city.get("cityName") or city.get("name")
             
-            if city_code and city_name:
-                filtered_cities.append({
-                    "cityCode": city_code,
-                    "cityName": city_name,
-                    "countryCode": country_code.upper()
-                })
+            # 跳过无效的城市数据
+            if not city_code or not city_name:
+                continue
+                
+            # 跳过重复的城市代码
+            if city_code in seen_city_codes:
+                continue
+                
+            # 跳过特殊字符和数字开头的城市名
+            if any(char in city_name for char in ['*', '#', '@', '$']) or city_name[0].isdigit():
+                continue
+                
+            # 跳过过长的城市名（可能是错误数据）
+            if len(city_name) > 50:
+                continue
+                
+            # 跳过测试数据
+            if 'test' in city_name.lower() or 'test' in city_code.lower():
+                continue
+                
+            seen_city_codes.add(city_code)
+            filtered_cities.append({
+                "cityCode": city_code,
+                "cityName": city_name,
+                "countryCode": country_code.upper()
+            })
+        
+        # 按城市名称排序
+        filtered_cities.sort(key=lambda x: x['cityName'])
+        
+        # 限制返回数量
+        max_cities = 100
+        if len(filtered_cities) > max_cities:
+            logger.info(f"城市数量超过{max_cities}，进行截断")
+            filtered_cities = filtered_cities[:max_cities]
         
         logger.info(f"获取到城市列表，过滤前数量: {len(city_list)}, 过滤后数量: {len(filtered_cities)}")
         logger.debug(f"过滤后的城市数据: {filtered_cities}")
