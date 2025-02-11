@@ -334,52 +334,118 @@ async def query_product(
         logger.info(f"[{func_name}] 开始处理请求")
         logger.info(f"[{func_name}] 请求参数类型: {type(request)}")
         logger.info(f"[{func_name}] 请求参数内容: {json.dumps(request, ensure_ascii=False)}")
-        logger.info(f"[{func_name}] 请求参数键值: {list(request.keys())}")
+        
+        # 处理加密参数
+        if "params" in request:
+            try:
+                encrypted_params = request.get("params")
+                logger.info(f"[{func_name}] 收到加密参数: {encrypted_params}")
+                decrypted_params = proxy_service._decrypt_response(encrypted_params)
+                logger.info(f"[{func_name}] 解密后参数: {decrypted_params}")
+                if not isinstance(decrypted_params, dict):
+                    logger.error(f"[{func_name}] 解密后参数格式错误: {type(decrypted_params)}")
+                    return {
+                        "code": 400,
+                        "msg": "参数格式错误",
+                        "data": []
+                    }
+                request = decrypted_params
+            except Exception as e:
+                logger.error(f"[{func_name}] 解密参数失败: {str(e)}")
+                return {
+                    "code": 400,
+                    "msg": "参数解密失败",
+                    "data": []
+                }
+
+        # 参数名称映射
+        param_mapping = {
+            "regionCode": "regionCode",
+            "countryCode": "countryCode",
+            "cityCode": "cityCode",
+            "proxyType": "proxyType"
+        }
+        
+        mapped_request = {}
+        for frontend_key, backend_key in param_mapping.items():
+            if frontend_key in request:
+                mapped_request[backend_key] = request[frontend_key]
         
         # 验证必要参数
         required_fields = ["regionCode", "countryCode", "cityCode", "proxyType"]
-        missing_fields = [field for field in required_fields if field not in request]
+        missing_fields = [field for field in required_fields if field not in mapped_request]
         if missing_fields:
             error_msg = f"缺少必要参数: {', '.join(missing_fields)}"
             logger.error(f"[{func_name}] {error_msg}")
-            raise HTTPException(
-                status_code=400,
-                detail=error_msg
-            )
+            return {
+                "code": 400,
+                "msg": error_msg,
+                "data": []
+            }
             
-        # 验证参数值
-        if not isinstance(request.get("proxyType"), (int, str)):
-            error_msg = f"proxyType 参数类型错误: {type(request.get('proxyType'))}"
-            logger.error(f"[{func_name}] {error_msg}")
-            raise HTTPException(
-                status_code=400,
-                detail=error_msg
-            )
+        # 处理 proxyType 参数
+        try:
+            proxy_type = mapped_request["proxyType"]
+            if isinstance(proxy_type, str):
+                if proxy_type.lower() == "static":
+                    proxy_type = 1
+                elif proxy_type.lower() == "dynamic":
+                    proxy_type = 2
+                else:
+                    proxy_type = int(proxy_type)
+            mapped_request["proxyType"] = [proxy_type]  # 转换为数组格式
+        except (ValueError, TypeError) as e:
+            logger.error(f"[{func_name}] proxyType 转换失败: {str(e)}")
+            return {
+                "code": 400,
+                "msg": "proxyType 参数格式错误",
+                "data": []
+            }
             
-        # 调用服务前的参数日志
-        logger.info(f"[{func_name}] 准备调用 ProxyService.query_product")
-        logger.info(f"[{func_name}] regionCode: {request.get('regionCode')}")
-        logger.info(f"[{func_name}] countryCode: {request.get('countryCode')}")
-        logger.info(f"[{func_name}] cityCode: {request.get('cityCode')}")
-        logger.info(f"[{func_name}] proxyType: {request.get('proxyType')}")
-        
         # 调用服务
         try:
-            response = await proxy_service.query_product(request)
+            response = await proxy_service.query_product(mapped_request)
             logger.info(f"[{func_name}] 服务调用成功")
             logger.info(f"[{func_name}] 响应内容: {json.dumps(response, ensure_ascii=False)}")
-            return response
+            
+            # 如果没有找到IP段，返回默认的ALL选项
+            if not response or len(response) == 0:
+                default_response = [{
+                    "ipStart": "ALL",
+                    "ipEnd": "ALL",
+                    "ipCount": 0,
+                    "stock": 999999,
+                    "staticType": request.get("staticType", "1"),
+                    "countryCode": mapped_request["countryCode"],
+                    "cityCode": mapped_request["cityCode"],
+                    "regionCode": mapped_request["regionCode"],
+                    "price": 0,
+                    "status": 1
+                }]
+                return {
+                    "code": 0,
+                    "msg": "success",
+                    "data": default_response
+                }
+                
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": response
+            }
         except Exception as e:
             logger.error(f"[{func_name}] 服务调用失败: {str(e)}")
             logger.error(f"[{func_name}] 错误堆栈:", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"服务调用失败: {str(e)}"
-            )
+            return {
+                "code": 500,
+                "msg": f"服务调用失败: {str(e)}",
+                "data": []
+            }
             
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"[{func_name}] 处理请求时发生错误: {str(e)}")
-        logger.error(f"[{func_name}] 错误堆栈:", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e)) 
+        logger.error(f"[{func_name}] Error: {str(e)}")
+        return {
+            "code": 500,
+            "msg": str(e),
+            "data": []
+        } 

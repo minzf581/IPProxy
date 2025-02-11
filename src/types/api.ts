@@ -55,10 +55,11 @@ export interface Country {
 
 export interface City {
   code: string;      // 城市代码
-  name?: string;     // 城市英文名
+  name: string;      // 城市英文名
   cname: string;     // 城市中文名
   cityCode?: string; // 兼容旧版 API
   cityName?: string; // 兼容旧版 API
+  countryCode?: string; // 国家代码
 }
 
 export interface Area {
@@ -204,5 +205,15 @@ export interface AreaResponse {
       cityCode: string;
       cityName: string;
     }>;
+  }>;
+}
+
+export interface CityResponse {
+  code: number;
+  msg: string;
+  data: Array<{
+    cityCode: string;
+    cityName: string;
+    countryCode: string;
   }>;
 }

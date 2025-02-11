@@ -15,7 +15,7 @@ export class Debug {
   constructor(options: DebugOptions = {}) {
     this.namespace = options.namespace || 'App';
     this.showTimestamp = options.timestamp !== false;
-    this.enabled = options.enabled !== false && process.env.NODE_ENV !== 'production';
+    this.enabled = options.enabled !== false && import.meta.env.DEV;
   }
 
   private getPrefix(level: string): string {
@@ -185,22 +185,22 @@ export const debug: DebugNamespaces = {
   order: new Debug({ namespace: 'Order' }),
   user: new Debug({ namespace: 'User' }),
   log: (namespace: string, message: string, ...args: any[]) => {
-    if (process.env.NODE_ENV !== 'production') {
+    if (import.meta.env.DEV) {
       console.log(`${namespace}:`, message, ...args);
     }
   },
   info: (namespace: string, message: string, ...args: any[]) => {
-    if (process.env.NODE_ENV !== 'production') {
+    if (import.meta.env.DEV) {
       console.log(`${namespace}:INFO`, message, ...args);
     }
   },
   error: (namespace: string, message: string, ...args: any[]) => {
-    if (process.env.NODE_ENV !== 'production') {
+    if (import.meta.env.DEV) {
       console.error(`${namespace}:ERROR`, message, ...args);
     }
   },
   warn: (namespace: string, message: string, ...args: any[]) => {
-    if (process.env.NODE_ENV !== 'production') {
+    if (import.meta.env.DEV) {
       console.warn(`${namespace}:WARN`, message, ...args);
     }
   }

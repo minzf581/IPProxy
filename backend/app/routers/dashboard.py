@@ -251,19 +251,15 @@ def sync_resource_usage(db: Session, main_user: MainUser):
 
 @router.get("/open/app/dashboard/info/v2")
 async def get_dashboard_info(
-    current_user: User = Depends(get_current_user),
-    dashboard_service: DashboardService = Depends(get_dashboard_service),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    dashboard_service: DashboardService = Depends(get_dashboard_service)
 ):
     """获取仪表盘信息"""
     try:
-        logger.info(f"[Dashboard Service] 开始获取仪表盘数据, 当前用户: {current_user.username}")
+        logger.info("[Dashboard Service] 开始获取仪表盘数据")
         
         # 获取用户统计数据
-        if current_user.is_agent:
-            stats = await dashboard_service.get_agent_statistics(current_user.id, db)
-        else:
-            stats = await dashboard_service.get_user_statistics(current_user.id, db)
+        stats = await dashboard_service.get_user_statistics(None, db)
             
         # 获取每日统计数据
         daily_stats = await dashboard_service.get_daily_statistics(db)
@@ -293,11 +289,12 @@ async def get_dashboard_info(
         }
         
     except Exception as e:
-        logger.error(f"[Dashboard Service] 获取仪表盘数据失败: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取仪表盘数据失败: {str(e)}"
-        )
+        logger.error(f"[Dashboard Service] 获取仪表盘数据失败: {traceback.format_exc()}")
+        return {
+            "code": 500,
+            "msg": f"获取仪表盘数据失败: {str(e)}",
+            "data": None
+        }
 
 def get_total_recharge(db: Session, user_id: int) -> float:
     """获取累计充值金额"""

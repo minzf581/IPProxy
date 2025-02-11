@@ -162,7 +162,7 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
       
       const apiPath = currentAgent 
         ? `/api/open/app/agent/${currentAgent.id}/dashboard`
-        : '/api/open/app/agent/dashboard';
+        : '/api/open/app/dashboard/info/v2';
       
       console.log('Making request to:', apiPath);
       

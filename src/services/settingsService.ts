@@ -44,8 +44,14 @@ export const DEFAULT_PRICES: PriceSettings = {
 // 获取资源价格设置
 export async function getResourcePrices(agentId: number): Promise<PriceSettings> {
   try {
+    // 确保 agentId 是有效的数字
+    if (!agentId || isNaN(Number(agentId))) {
+      debug.warn('无效的代理商ID，使用默认价格');
+      return DEFAULT_PRICES;
+    }
+
     debug.log(`开始获取代理商 ${agentId} 的价格设置`);
-    const response = await api.get<ApiResponse<PriceSettings>>(`/settings/agent/${agentId}/prices`);
+    const response = await api.get<ApiResponse<PriceSettings>>(`/api/settings/agent/${agentId}/prices`);
     
     if (!response.data || response.data.code !== 0) {
       throw new Error(response.data?.msg || '获取价格设置失败');
@@ -61,6 +67,12 @@ export async function getResourcePrices(agentId: number): Promise<PriceSettings>
       return DEFAULT_PRICES;
     }
     
+    // 如果是 422 错误（参数验证失败），返回默认价格
+    if (error.response?.status === 422) {
+      debug.warn('参数验证失败，使用默认价格');
+      return DEFAULT_PRICES;
+    }
+    
     throw error;
   }
 }
@@ -69,7 +81,7 @@ export async function getResourcePrices(agentId: number): Promise<PriceSettings>
 export async function updateResourcePrices(agentId: number, prices: PriceSettings): Promise<void> {
   try {
     debug.log(`开始更新代理商 ${agentId} 的价格设置:`, prices);
-    const response = await api.put<ApiResponse<void>>(`/settings/agent/${agentId}/prices`, prices);
+    const response = await api.put<ApiResponse<void>>(`/api/settings/agent/${agentId}/prices`, prices);
     
     if (!response.data || response.data.code !== 0) {
       throw new Error(response.data?.msg || '更新价格设置失败');

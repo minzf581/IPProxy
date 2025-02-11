@@ -57,13 +57,15 @@ import asyncio
 from app.models.user import User
 from app.models.agent_price import AgentPrice
 from decimal import Decimal
-from app.core.security import get_password_hash
-from app.api.endpoints import product
-from app.core.config import settings as app_settings
+from app.core.security import get_password_hash, SECRET_KEY, ALGORITHM
+from app.api.endpoints import product, static_order
+from app.config import settings as app_settings
 import logging.config
 from fastapi.security import OAuth2PasswordBearer
 from app.services.auth import verify_token, get_current_user
 from contextlib import asynccontextmanager
+from fastapi import status
+import jwt
 
 # 配置日志
 LOGGING_CONFIG = {
@@ -154,53 +156,40 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# 添加 CORS 中间件
+# 配置CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # 允许的前端域名
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"],  # 允许的HTTP方法
-    allow_headers=["*"],  # 允许的headers
-    expose_headers=["*"],  # 暴露的headers
-    max_age=3600,  # 预检请求的缓存时间
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# 设置路由前缀
-prefix = "/api"
+# 注册路由
+app.include_router(auth.router, prefix="/api")  # 认证路由
+app.include_router(user.router, prefix="/api")
+app.include_router(order.router, prefix="/api")
+app.include_router(proxy.router, prefix="/api")
+app.include_router(area.router, prefix="/api")
+app.include_router(dashboard.router, prefix="/api")
+app.include_router(product.router, prefix="/api")
+app.include_router(static_order.router, prefix="/api")
+app.include_router(settings.router, prefix="/api")
+app.include_router(callback.router, prefix="/api")
 
-# 导入并注册静态订单路由
-from app.api.endpoints import static_order
-app.include_router(static_order.router, prefix=prefix + "/static-order", tags=["静态订单"])
-
-# 注册其他路由
-app.include_router(auth.router, prefix=prefix, tags=["认证"])
-app.include_router(user.router, prefix=prefix, tags=["用户"])
-app.include_router(agent.router, prefix=prefix, tags=["代理商"])
-app.include_router(proxy.router, prefix=prefix, tags=["代理"])
-app.include_router(order.router, prefix=prefix, tags=["订单"])
-app.include_router(instance.router, prefix=prefix, tags=["实例"])
-app.include_router(dashboard.router, prefix=prefix, tags=["仪表盘"])
-app.include_router(settings.router, prefix=prefix, tags=["设置"])
-app.include_router(area.router, prefix=prefix, tags=["区域"])
-app.include_router(product.router, prefix=prefix, tags=["产品"])
-app.include_router(callback.router, prefix=prefix, tags=["回调"])
-
-# 不需要认证的路径
-public_paths = [
-    "/api/auth/login",
-    "/api/open/app/area/v2",
-    "/api/open/app/city/list/v2",
-    "/api/open/app/order/v2",
-    "/api/open/app/location/options/v2",
-    "/api/open/app/product/query/v2",
-    "/api/open/app/instance/calculate/v2",
-    "/api/open/app/proxy/price/calculate/v2",
-    "/api/order/callback/{order_id}",
-    "/api/static-order/list",
+# 定义公共路径（不需要认证的路径）
+public_paths = {
+    "/auth/login",
+    "/open/app/area/v2",
+    "/open/app/city/list/v2",
+    "/open/app/proxy/info/v2",
+    "/open/app/proxy/flow/use/log/v2",
+    "/open/app/dashboard/info/v2",
+    "/open/app/location/options/v2",
     "/docs",
     "/redoc",
     "/openapi.json"
-]
+}
 
 async def ensure_default_users():
     """确保默认用户存在"""
@@ -318,92 +307,70 @@ async def root():
 # 添加认证中间件
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    """认证中间件，处理请求的认证"""
-    logger.info(f"[Auth Middleware] Processing request: {request.url.path}")
+    """认证中间件，验证请求的token"""
+    path = request.url.path
+    logger.info(f"[Auth Middleware] Processing request: {path}")
     
-    # 检查是否是公开路径
-    current_path = request.url.path
-    is_public = False
+    # 移除路径中的 /api 前缀用于匹配
+    check_path = path.replace("/api", "", 1) if path.startswith("/api") else path
     
-    for public_path in public_paths:
-        # 如果公开路径包含花括号（路径参数），则进行模式匹配
-        if "{" in public_path:
-            # 将路径参数模式转换为正则表达式
-            pattern = public_path.replace("{", "(?P<").replace("}", ">[^/]+)")
-            import re
-            if re.match(f"^{pattern}$", current_path):
-                is_public = True
-                break
-        # 否则进行精确匹配
-        elif current_path == public_path:
-            is_public = True
-            break
-    
-    if is_public:
-        logger.info(f"[Auth Middleware] Public path: {current_path}, skipping auth")
+    # 如果是白名单路由，直接放行
+    if check_path in public_paths or any(check_path.startswith(p) for p in ["/docs", "/redoc", "/openapi.json"]):
+        logger.info(f"[Auth Middleware] Whitelist path: {path}, skipping auth")
         return await call_next(request)
-    
-    # 获取认证头
+        
+    # 获取Authorization头
     auth_header = request.headers.get("Authorization")
     logger.info(f"[Auth Middleware] Authorization header: {auth_header}")
     
     if not auth_header:
         logger.warning("[Auth Middleware] No Authorization header found")
-        return JSONResponse(
+        raise HTTPException(
             status_code=401,
-            content={"code": 401, "message": "未授权"}
+            detail="未提供认证信息",
+            headers={"WWW-Authenticate": "Bearer"}
         )
-    
-    # 验证 Bearer token
+        
     try:
+        # 验证token格式
         scheme, token = auth_header.split()
         if scheme.lower() != "bearer":
-            logger.warning(f"[Auth Middleware] Invalid auth scheme: {scheme}")
-            return JSONResponse(
+            logger.warning("[Auth Middleware] Invalid auth scheme")
+            raise HTTPException(
                 status_code=401,
-                content={"code": 401, "message": "无效的认证方案"}
+                detail="认证方案无效",
+                headers={"WWW-Authenticate": "Bearer"}
             )
             
-        # 验证 token
-        logger.info(f"[Auth Middleware] Verifying token: {token}")
-        payload = verify_token(token)
-        if not payload:
-            logger.warning("[Auth Middleware] Invalid token")
-            return JSONResponse(
+        # 验证token
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            user_id = payload.get("sub")
+            if not user_id:
+                logger.warning("[Auth Middleware] Invalid token payload")
+                raise HTTPException(
+                    status_code=401,
+                    detail="无效的token",
+                    headers={"WWW-Authenticate": "Bearer"}
+                )
+        except jwt.JWTError as e:
+            logger.error(f"[Auth Middleware] JWT decode error: {str(e)}")
+            raise HTTPException(
                 status_code=401,
-                content={"code": 401, "message": "无效的令牌"}
+                detail="无效的token",
+                headers={"WWW-Authenticate": "Bearer"}
             )
             
-        logger.info(f"[Auth Middleware] Token verified, payload: {payload}")
+        return await call_next(request)
         
-        # 从数据库获取用户信息
-        db = request.state.db
-        user_id = int(payload.get("sub"))  # 从payload中获取user_id
-        user = db.query(User).filter(User.id == user_id).first()
-        
-        if not user:
-            logger.warning(f"[Auth Middleware] User not found: {user_id}")
-            return JSONResponse(
-                status_code=401,
-                content={"code": 401, "message": "用户不存在"}
-            )
-            
-        # 将用户信息添加到请求状态中
-        request.state.user = user
-        request.state.user_id = user.id
-        logger.info(f"[Auth Middleware] User info added to request state: id={user.id}, is_agent={user.is_agent}")
-        
-        # 继续处理请求
-        response = await call_next(request)
-        logger.info(f"[Auth Middleware] Response status code: {response.status_code}")
-        return response
-        
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"[Auth Middleware] Auth failed: {str(e)}")
-        logger.exception("[Auth Middleware] Detailed error:")
-        return JSONResponse(
-            status_code=401,
-            content={"code": 401, "message": "认证失败"}
+        logger.error(f"[Auth Middleware] Unexpected error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="服务器内部错误",
+            headers={"WWW-Authenticate": "Bearer"}
         )
 
 # 添加数据库中间件（注意：这个中间件必须在认证中间件之后注册，这样它会先执行）

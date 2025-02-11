@@ -2,7 +2,7 @@ from typing import Dict, Optional
 import logging
 from fastapi import HTTPException
 from app.services.ipipv_base_api import IPIPVBaseAPI
-from app.core.config import settings
+from app.config import settings
 import json
 import traceback
 from datetime import datetime
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.dynamic_order import DynamicOrder
 from decimal import Decimal
 import httpx
+from app.utils.crypto import encrypt, decrypt
 
 logger = logging.getLogger(__name__)
 

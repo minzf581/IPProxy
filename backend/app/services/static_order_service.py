@@ -7,7 +7,7 @@ from app.models.instance import Instance
 from app.models.user import User
 from app.services.ipipv_base_api import IPIPVBaseAPI
 from app.services.payment_service import PaymentService
-from app.core.config import settings
+from app.config import settings
 from fastapi import HTTPException
 import uuid
 from sqlalchemy.exc import SQLAlchemyError
@@ -415,69 +415,111 @@ class StaticOrderService:
             logger.info("[StaticOrderService] 开始同步产品库存")
             
             # 调用IPIPV API获取产品列表
-            result = await self.ipipv_api._make_request(
+            api_response = await self.ipipv_api._make_request(
                 "/api/open/app/product/query/v2",
                 {
                     "proxyType": [103]  # 静态国外家庭代理
                 }
             )
             
-            if not result:
+            if not api_response:
                 logger.error("[StaticOrderService] 获取产品列表失败")
+                return False
+            
+            # 处理API响应数据
+            try:
+                if isinstance(api_response, str):
+                    result = json.loads(api_response)
+                else:
+                    result = api_response
+                
+                # 检查响应格式并提取数据
+                if isinstance(result, dict):
+                    if 'data' in result:
+                        product_list = result['data']
+                        if isinstance(product_list, str):
+                            product_list = json.loads(product_list)
+                    else:
+                        logger.error("[StaticOrderService] API响应缺少data字段")
+                        return False
+                else:
+                    product_list = result
+                
+                if not isinstance(product_list, list):
+                    logger.error(f"[StaticOrderService] 产品数据类型错误: {type(product_list)}")
+                    return False
+                    
+            except json.JSONDecodeError as e:
+                logger.error(f"[StaticOrderService] 解析产品数据失败: {str(e)}")
                 return False
                 
             # 更新本地数据库
-            for product in result:
-                existing = self.db.query(ProductInventory).filter_by(
-                    product_no=product.get('productNo')
-                ).first()
-                
-                product_data = {
-                    'product_no': product.get('productNo'),
-                    'product_name': product.get('productName'),
-                    'proxy_type': product.get('proxyType'),
-                    'use_type': product.get('useType'),
-                    'protocol': product.get('protocol'),
-                    'use_limit': product.get('useLimit'),
-                    'sell_limit': product.get('sellLimit'),
-                    'area_code': product.get('areaCode'),
-                    'country_code': product.get('countryCode'),
-                    'state_code': product.get('stateCode'),
-                    'city_code': product.get('cityCode'),
-                    'detail': product.get('detail'),
-                    'cost_price': product.get('costPrice'),
-                    'inventory': product.get('inventory', 0),
-                    'ip_type': product.get('ipType'),
-                    'isp_type': product.get('ispType'),
-                    'net_type': product.get('netType'),
-                    'duration': product.get('duration'),
-                    'unit': product.get('unit'),
-                    'band_width': product.get('bandWidth'),
-                    'band_width_price': product.get('bandWidthPrice'),
-                    'max_band_width': product.get('maxBandWidth'),
-                    'flow': product.get('flow'),
-                    'cpu': product.get('cpu'),
-                    'memory': product.get('memory'),
-                    'enable': product.get('enable', 1),
-                    'supplier_code': product.get('supplierCode'),
-                    'ip_count': product.get('ipCount'),
-                    'ip_duration': product.get('ipDuration'),
-                    'assign_ip': product.get('assignIp', -1),
-                    'cidr_status': product.get('cidrStatus', -1),
-                    'static_type': product.get('staticType'),
-                    'last_sync_time': datetime.now(),
-                    'ip_start': product.get('ipStart'),
-                    'ip_end': product.get('ipEnd')
-                }
-                
-                if existing:
-                    # 更新现有记录
-                    for key, value in product_data.items():
-                        setattr(existing, key, value)
-                else:
-                    # 创建新记录
-                    new_product = ProductInventory(**product_data)
-                    self.db.add(new_product)
+            for product in product_list:
+                if not isinstance(product, dict):
+                    logger.warning(f"[StaticOrderService] 跳过无效的产品数据: {product}")
+                    continue
+                    
+                try:
+                    product_no = str(product.get('productNo', ''))
+                    if not product_no:
+                        logger.warning("[StaticOrderService] 产品编号为空，跳过")
+                        continue
+                        
+                    existing = self.db.query(ProductInventory).filter_by(
+                        product_no=product_no
+                    ).first()
+                    
+                    product_data = {
+                        'product_no': product_no,
+                        'product_name': str(product.get('productName', '')),
+                        'proxy_type': product.get('proxyType'),
+                        'use_type': product.get('useType'),
+                        'protocol': product.get('protocol'),
+                        'use_limit': product.get('useLimit'),
+                        'sell_limit': product.get('sellLimit'),
+                        'area_code': str(product.get('areaCode', '')),
+                        'country_code': str(product.get('countryCode', '')),
+                        'state_code': str(product.get('stateCode', '')),
+                        'city_code': str(product.get('cityCode', '')),
+                        'detail': str(product.get('detail', '')),
+                        'cost_price': float(product.get('costPrice', 0)),
+                        'inventory': int(product.get('inventory', 0)),
+                        'ip_type': product.get('ipType'),
+                        'isp_type': product.get('ispType'),
+                        'net_type': product.get('netType'),
+                        'duration': product.get('duration'),
+                        'unit': product.get('unit'),
+                        'band_width': product.get('bandWidth'),
+                        'band_width_price': product.get('bandWidthPrice'),
+                        'max_band_width': product.get('maxBandWidth'),
+                        'flow': product.get('flow'),
+                        'cpu': product.get('cpu'),
+                        'memory': product.get('memory'),
+                        'enable': product.get('enable', 1),
+                        'supplier_code': product.get('supplierCode'),
+                        'ip_count': product.get('ipCount'),
+                        'ip_duration': product.get('ipDuration'),
+                        'assign_ip': product.get('assignIp', -1),
+                        'cidr_status': product.get('cidrStatus', -1),
+                        'static_type': product.get('staticType'),
+                        'last_sync_time': datetime.now(),
+                        'ip_start': product.get('ipStart'),
+                        'ip_end': product.get('ipEnd')
+                    }
+                    
+                    if existing:
+                        # 更新现有记录
+                        for key, value in product_data.items():
+                            setattr(existing, key, value)
+                    else:
+                        # 创建新记录
+                        new_product = ProductInventory(**product_data)
+                        self.db.add(new_product)
+                    
+                except Exception as e:
+                    logger.error(f"[StaticOrderService] 处理产品数据失败: {str(e)}")
+                    logger.exception(e)
+                    continue
             
             try:
                 self.db.commit()

@@ -1,12 +1,16 @@
 export interface StaticOrderFormData {
-  productNo: string;
-  region: string;
-  country: string;
-  city: string;
-  staticType: string;
-  quantity: number;
+  orderType: 'static_proxy';
+  poolId: string;
+  regionCode?: string;
+  countryCode?: string;
+  cityCode?: string;
+  staticType?: string;
+  ipCount: number;
   duration: number;
+  unitPrice: number;
+  totalAmount: number;
   remark?: string;
+  userId: number;
 }
 
 export interface StaticOrderInstance {

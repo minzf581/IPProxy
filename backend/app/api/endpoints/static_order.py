@@ -11,9 +11,9 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/static-order", tags=["静态订单"])
+router = APIRouter(prefix="/open/app/static/order", tags=["静态订单"])
 
-@router.post("/create")
+@router.post("/create/v2")
 async def create_static_order(
     order_data: Dict[str, Any],
     db: Session = Depends(get_db),
@@ -41,7 +41,7 @@ async def create_static_order(
         logger.error(f"创建静态代理订单失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/list")
+@router.get("/open/app/static/order/list/v2")
 async def list_static_orders(
     request: Request,
     page: int = 1,
@@ -102,7 +102,7 @@ async def list_static_orders(
         logger.error(f"获取静态代理订单列表失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/{order_no}")
+@router.get("/{order_no}/v2")
 async def get_static_order(
     order_no: str,
     db: Session = Depends(get_db),
@@ -126,7 +126,7 @@ async def get_static_order(
         logger.error(f"获取静态代理订单失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.put("/{order_no}/status")
+@router.put("/{order_no}/status/v2")
 async def update_static_order_status(
     order_no: str,
     status: str = Body(...),

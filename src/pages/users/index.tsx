@@ -27,7 +27,7 @@ import type { ApiResponse } from '@/types/api';
 import styles from './index.module.less';
 import { SearchOutlined, EditOutlined, LockOutlined, AppstoreAddOutlined, ReloadOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useRequest } from '@/hooks/useRequest';
-import BusinessActivationModal from './components/BusinessActivationModal';
+import BusinessActivationModal from "@/pages/users/components/BusinessActivationModal";
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import type { RangePickerProps } from 'antd/es/date-picker';
 
@@ -454,7 +454,10 @@ const UserManagementPage: React.FC = () => {
       {businessModalVisible && selectedUser && (
         <BusinessActivationModal
           visible={businessModalVisible}
-          user={selectedUser}
+          user={{
+            id: String(selectedUser.id),
+            username: selectedUser.username
+          }}
           onCancel={() => {
             console.log('BusinessActivationModal onCancel 被调用');
             setBusinessModalVisible(false);

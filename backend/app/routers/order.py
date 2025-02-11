@@ -63,7 +63,7 @@
 #    - 避免大量数据查询
 #    - 优化查询条件
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Request, Body
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
@@ -79,6 +79,9 @@ import traceback
 from pydantic import BaseModel
 import json
 import uuid
+import time
+import random
+from app.schemas.order import CreateOrderRequest, OrderListResponse, OrderDetailResponse
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -119,7 +122,14 @@ class CreateOrderRequest(BaseModel):
     totalAmount: float
     remark: Optional[str] = None
     userId: int  # 添加用户ID字段
+    regionCode: Optional[str] = None
+    countryCode: Optional[str] = None
+    cityCode: Optional[str] = None
+    staticType: Optional[str] = None
+    ipCount: int
+    duration: int
 
+# 修改路由前缀
 router = APIRouter()
 
 @router.get("/dynamic")
@@ -446,11 +456,18 @@ async def create_order(
                 app_order_no=app_order_no,
                 user_id=request.userId,  # 使用传入的用户ID
                 agent_id=target_user.agent_id,  # 使用目标用户的代理商ID
-                pool_type=request.poolId,
-                unit_price=request.unitPrice,
-                amount=request.totalAmount,
-                status="active",
-                remark=request.remark
+                product_no=request.poolId,  # 使用poolId作为product_no
+                proxy_type=103,  # 静态国外家庭代理
+                region_code=request.regionCode,  # 区域代码
+                country_code=request.countryCode,  # 国家代码
+                city_code=request.cityCode,  # 城市代码
+                static_type=request.staticType,  # 静态类型
+                ip_count=request.ipCount,  # IP数量
+                duration=request.duration,  # 时长
+                unit=1,  # 单位：天
+                amount=request.totalAmount,  # 总金额
+                status="active",  # 订单状态
+                remark=request.remark  # 备注
             )
             
         # 扣除用户余额
@@ -479,4 +496,160 @@ async def create_order(
         raise HTTPException(
             status_code=500,
             detail={"code": 500, "message": f"订单创建失败: {str(e)}"}
+        )
+
+@router.post("/open/app/static/order/create/v2", response_model=OrderListResponse)
+async def create_static_order(
+    request: CreateOrderRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """创建静态订单"""
+    try:
+        logger.info(f"创建静态订单，参数: {request}")
+        
+        # 检查用户余额
+        if current_user.balance < request.totalAmount:
+            raise HTTPException(
+                status_code=400,
+                detail="余额不足"
+            )
+            
+        # 检查用户是否存在
+        target_user = db.query(User).filter(User.id == request.userId).first()
+        if not target_user:
+            raise HTTPException(
+                status_code=404,
+                detail="用户不存在"
+            )
+            
+        # 如果是代理商，只能为自己的下级用户创建订单
+        if current_user.is_agent and target_user.agent_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="只能为下级用户创建订单"
+            )
+            
+        # 生成订单号
+        order_no = f"ST{int(time.time())}{random.randint(1000, 9999)}"
+        
+        # 创建静态订单
+        order = StaticOrder(
+            order_no=order_no,
+            user_id=request.userId,
+            agent_id=current_user.id if current_user.is_agent else None,
+            product_no=request.poolId,
+            proxy_type=103,  # 静态代理类型
+            region_code=request.regionCode,
+            country_code=request.countryCode,
+            city_code=request.cityCode,
+            static_type=request.staticType,
+            ip_count=request.ipCount,
+            duration=request.duration,
+            unit=1,  # 单位：天
+            amount=request.totalAmount,
+            status="active",
+            remark=request.remark
+        )
+        
+        db.add(order)
+        db.commit()
+        
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": order.to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"创建静态订单失败: {str(e)}")
+        logger.exception(e)
+        raise HTTPException(
+            status_code=500,
+            detail="创建订单失败"
+        )
+
+@router.get("/open/app/static/order/list/v2", response_model=OrderListResponse)
+async def get_static_orders(
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(10, ge=1, le=100),
+    status: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """获取静态订单列表"""
+    try:
+        query = db.query(StaticOrder)
+        
+        # 如果是代理商，只能查看自己的订单
+        if current_user.is_agent:
+            query = query.filter(StaticOrder.agent_id == current_user.id)
+            
+        # 状态过滤
+        if status:
+            query = query.filter(StaticOrder.status == status)
+            
+        # 计算总数
+        total = query.count()
+        
+        # 分页
+        orders = query.order_by(StaticOrder.created_at.desc()).offset((page - 1) * pageSize).limit(pageSize).all()
+        
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "list": [order.to_dict() for order in orders],
+                "total": total
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"获取静态订单列表失败: {str(e)}")
+        logger.exception(e)
+        raise HTTPException(
+            status_code=500,
+            detail="获取订单列表失败"
+        )
+
+@router.get("/open/app/static/order/detail/v2/{order_no}", response_model=OrderDetailResponse)
+async def get_static_order_detail(
+    order_no: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """获取静态订单详情"""
+    try:
+        # 查询订单
+        order = db.query(StaticOrder).filter(StaticOrder.order_no == order_no).first()
+        
+        if not order:
+            raise HTTPException(
+                status_code=404,
+                detail="订单不存在"
+            )
+            
+        # 如果是代理商，只能查看自己的订单
+        if current_user.is_agent and order.agent_id != current_user.id:
+            raise HTTPException(
+                status_code=403,
+                detail="无权查看该订单"
+            )
+            
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": order.to_dict()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取静态订单详情失败: {str(e)}")
+        logger.exception(e)
+        raise HTTPException(
+            status_code=500,
+            detail="获取订单详情失败"
         ) 

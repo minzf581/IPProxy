@@ -18,7 +18,7 @@ import traceback
 from app.database import get_db
 from fastapi import Request
 from app.services.auth import get_current_user, oauth2_scheme
-from app.core.config import settings
+from app.config import settings
 
 # 配置日志 - 只输出CRITICAL级别的日志，实质上禁用大多数日志
 logging.basicConfig(

@@ -6,7 +6,7 @@ import type { DynamicOrder } from '@/types/order';
 import { api } from './request';
 import { message } from 'antd';
 
-const DEBUG = process.env.NODE_ENV === 'development';
+const DEBUG = import.meta.env.DEV;
 
 function logDebug(methodName: string, ...args: any[]) {
   if (DEBUG) {
@@ -202,6 +202,21 @@ interface RawCountry {
 interface RawCity {
   cityCode?: string;
   cityName?: string;
+}
+
+interface CityResponse {
+  cityCode: string;
+  cityName: string;
+}
+
+interface CityApiResponse {
+  code: number;
+  msg: string;
+  data: Array<{
+    cityCode: string;
+    cityName: string;
+    countryCode: string;
+  }>;
 }
 
 export class IPProxyAPI {
@@ -889,13 +904,18 @@ export class IPProxyAPI {
     try {
       console.log('[getCountriesByRegion] Starting request with region code:', regionCode);
       
-      // 先获取完整的区域列表
-      const response = await this.request<AreaResponse[]>(API_ROUTES.AREA.LIST, {
+      // 获取区域列表
+      const response = await this.request<ApiResponse<AreaResponse[]>>(API_ROUTES.AREA.LIST, {
         appUsername: 'test_user'
       });
       
+      if (!response || !response.data || !Array.isArray(response.data)) {
+        console.warn('[getCountriesByRegion] Invalid response format:', response);
+        return [];
+      }
+
       // 找到指定区域的数据
-      const region = response.find(area => area.code === regionCode);
+      const region = response.data.find(area => area.code === regionCode);
       
       if (!region || !Array.isArray(region.children)) {
         console.warn('[getCountriesByRegion] No countries found for region:', regionCode);
@@ -922,30 +942,18 @@ export class IPProxyAPI {
   }
 
   // 根据国家获取城市列表
-  async getCitiesByCountry(countryCode: string): Promise<City[]> {
+  async getCitiesByCountry(countryCode: string): Promise<CityApiResponse> {
     try {
       console.log('[IPProxyAPI] getCitiesByCountry - 开始获取城市列表，国家代码:', countryCode);
       
-      const response = await this.request<any>('open/app/city/list/v2', {
+      const response = await this.request<CityApiResponse>('open/app/city/list/v2', {
         countryCode: countryCode.toUpperCase(),
         appUsername: 'test_user'
       });
       
       console.log('[IPProxyAPI] getCitiesByCountry - 原始响应:', response);
       
-      if (!Array.isArray(response)) {
-        console.error('[IPProxyAPI] getCitiesByCountry - 响应格式错误:', response);
-        return [];
-      }
-
-      const cities = response.map(city => ({
-        code: city.cityCode || city.code || '',
-        name: city.cityName || city.name || city.cname || '',
-        cname: city.cname || city.cityName || city.name || ''
-      }));
-      
-      console.log('[IPProxyAPI] getCitiesByCountry - 处理后的城市列表:', cities);
-      return cities;
+      return response;
     } catch (error) {
       console.error('[IPProxyAPI] getCitiesByCountry - 错误:', error);
       throw error;
@@ -1098,6 +1106,39 @@ export class IPProxyAPI {
 
   private generateReqId(): string {
     return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  }
+
+  // 简单API调用方法
+  async getAreaListSimple(): Promise<ApiResponse<AreaResponse[]>> {
+    return api.get('/api/area/list');
+  }
+
+  async getCountriesByRegionSimple(regionCode: string): Promise<ApiResponse<AreaResponse[]>> {
+    return api.post('/api/area/countries', {
+      data: { regionCode }
+    });
+  }
+
+  async getCitiesByCountrySimple(countryCode: string): Promise<ApiResponse<AreaResponse[]>> {
+    return api.post('/api/area/cities', {
+      data: { countryCode }
+    });
+  }
+
+  async getIpRangesSimple(params: {
+    region_code: string;
+    country_code: string;
+    city_code: string;
+  }): Promise<ApiResponse<IpRange[]>> {
+    const requestParams = {
+      regionCode: params.region_code,
+      countryCode: params.country_code,
+      cityCode: params.city_code,
+      proxyType: 103  // 静态国外家庭
+    };
+    return api.post('/api/open/app/product/query/v2', {
+      data: requestParams
+    });
   }
 }
 

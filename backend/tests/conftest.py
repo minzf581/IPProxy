@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import asyncio
 from typing import Generator
 from app.database import Base, get_db
-from app.core.config import settings
+from app.config import settings
 from app.services.ipipv_service import IPIPVService
 from app.main import app
 from app.utils.auth import create_access_token, get_password_hash
@@ -19,6 +19,7 @@ from app.models.dashboard import ProxyInfo
 from app.models.resource_usage import ResourceUsageStatistics
 from app.models.static_order import StaticOrder
 from app.models.transaction import Transaction
+from fastapi.testclient import TestClient
 
 # 使用SQLite内存数据库进行测试
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"

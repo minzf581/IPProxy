@@ -28,6 +28,7 @@ from fastapi import APIRouter, Depends, Body, HTTPException
 from app.services import IPIPVBaseAPI
 from app.core.deps import get_ipipv_api
 import logging
+import traceback
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -155,12 +156,50 @@ async def get_city_list_post(
             "countryCode": country_code,
             "appUsername": "test_user"
         })
-        logger.info(f"获取到城市列表，数量: {len(cities) if cities else 0}")
+        
+        if not cities or not isinstance(cities, dict):
+            logger.warning(f"未找到城市数据或格式错误: country_code={country_code}, response={cities}")
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": []
+            }
+            
+        # 获取实际的城市列表数据
+        city_list = cities.get('data', [])
+        if not isinstance(city_list, list):
+            logger.warning(f"城市列表格式错误: {city_list}")
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": []
+            }
+            
+        logger.debug(f"原始城市数据: {city_list}")
+            
+        # 过滤和转换城市数据
+        filtered_cities = []
+        for city in city_list:
+            if not isinstance(city, dict):
+                continue
+                
+            city_code = city.get("cityCode") or city.get("code")
+            city_name = city.get("cityName") or city.get("name")
+            
+            if city_code and city_name:
+                filtered_cities.append({
+                    "cityCode": city_code,
+                    "cityName": city_name,
+                    "countryCode": country_code.upper()
+                })
+        
+        logger.info(f"获取到城市列表，过滤前数量: {len(city_list)}, 过滤后数量: {len(filtered_cities)}")
+        logger.debug(f"过滤后的城市数据: {filtered_cities}")
         
         return {
             "code": 0,
             "msg": "success",
-            "data": cities if cities else []
+            "data": filtered_cities
         }
         
     except Exception as e:
@@ -169,5 +208,38 @@ async def get_city_list_post(
         return {
             "code": 500,
             "msg": "获取城市列表失败",
+            "data": []
+        }
+
+@router.get("/open/app/location/options/v2")
+async def get_area_list():
+    """获取地区列表"""
+    try:
+        logger.info("[Area] 开始获取地区列表")
+        api = IPIPVBaseAPI()
+        result = await api._make_request(
+            "open/app/location/options/v2",
+            {}
+        )
+        
+        if not result:
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": []
+            }
+            
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": result.get("data", [])
+        }
+        
+    except Exception as e:
+        logger.error(f"[Area] 获取地区列表失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {
+            "code": 500,
+            "msg": "获取地区列表失败",
             "data": []
         } 

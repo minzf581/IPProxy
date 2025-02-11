@@ -38,7 +38,7 @@ const LoadingComponent = () => (
 // Debug 函数
 const debug = {
   log: (...args: any[]) => {
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       console.log('[Router Debug]', ...args);
     }
   }

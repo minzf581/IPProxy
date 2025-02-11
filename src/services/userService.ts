@@ -160,19 +160,21 @@ export async function createUser(params: CreateUserParams): Promise<ApiResponse<
       password: '******' // 隐藏密码
     });
 
-    const response = await api.post<User>(API_ROUTES.USER.CREATE, requestData);
-    console.log('[Create User Debug] Response:', response);
+    const response = await api.post<ApiResponse<User>>(API_ROUTES.USER.CREATE, requestData);
+    console.log('[Create User Debug] Response:', response.data);
 
-    // 直接使用响应数据
-    const userData = response.data;
-    
+    if (response.data.code !== 0) {
+      throw new Error(response.data.msg || '创建用户失败');
+    }
+
     // 转换用户状态
-    const formattedUser = {
+    const userData = response.data.data;
+    const formattedUser = userData ? {
       ...userData,
       status: String(userData.status).toLowerCase() === '1' || String(userData.status).toLowerCase() === 'active' 
         ? 'active' as const 
         : 'disabled' as const
-    };
+    } : null;
 
     return {
       code: 0,

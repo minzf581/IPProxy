@@ -1,16 +1,14 @@
 from datetime import datetime, timedelta
 from typing import Optional
-import jwt
-from jwt import PyJWTError
 from fastapi import Depends, HTTPException, status, Header
 from fastapi.security import OAuth2PasswordBearer
-from ..models.user import User
-from ..database import SessionLocal
-import logging
+from jose import JWTError, jwt
 from sqlalchemy.orm import Session
+from app.models.user import User
 from app.database import get_db
-from app.core.config import settings
 from app.core.security import verify_password, get_password_hash
+from app.config import settings, SECRET_KEY, ALGORITHM
+import logging
 import os
 
 # 配置日志
@@ -27,8 +25,8 @@ class AuthService:
     
     def __init__(self):
         """初始化认证服务"""
-        self.secret_key = settings.SECRET_KEY
-        self.algorithm = settings.ALGORITHM
+        self.secret_key = SECRET_KEY
+        self.algorithm = ALGORITHM
         self.access_token_expire_minutes = settings.ACCESS_TOKEN_EXPIRE_MINUTES
         
     def create_access_token(self, data: dict, expires_delta: Optional[timedelta] = None) -> str:
@@ -54,7 +52,7 @@ class AuthService:
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
             logger.info(f"[Auth Service] Token decoded successfully: {payload}")
             return payload
-        except PyJWTError as e:
+        except JWTError as e:
             logger.error(f"[Auth Service] Token verification failed: {str(e)}")
             return None
             
@@ -143,7 +141,7 @@ class AuthService:
                         detail="无效的认证令牌",
                         headers={"WWW-Authenticate": "Bearer"},
                     )
-            except PyJWTError:
+            except JWTError:
                 logger.error("令牌解码失败")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,

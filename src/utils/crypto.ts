@@ -1,5 +1,17 @@
 import CryptoJS from 'crypto-js';
 
+// 调试开关
+const DEBUG = import.meta.env.DEV;
+
+// 调试日志函数
+const debug = {
+  log: (...args: any[]) => {
+    if (DEBUG) {
+      console.log(...args);
+    }
+  }
+};
+
 /**
  * 对密码进行哈希处理
  * @param password 原始密码
@@ -17,9 +29,11 @@ export async function hashPassword(password: string): Promise<string> {
  */
 export function encrypt(text: string, key: string): string {
   try {
-    console.log('\n=== Encryption Details ===');
-    console.log('Input text:', text);
-    console.log('Key:', key);
+    if (import.meta.env.DEV) {
+      console.log('\n=== Encryption Details ===');
+      console.log('Input text:', text);
+      console.log('Key:', key);
+    }
     
     // 1. 验证输入
     if (!text || !key) {
@@ -28,18 +42,24 @@ export function encrypt(text: string, key: string): string {
 
     // 2. 使用密钥的前16字节作为 IV
     const iv = CryptoJS.enc.Utf8.parse(key.slice(0, 16));
-    console.log('IV (hex):', iv.toString());
-    console.log('IV (base64):', CryptoJS.enc.Base64.stringify(iv));
+    if (import.meta.env.DEV) {
+      console.log('IV (hex):', iv.toString());
+      console.log('IV (base64):', CryptoJS.enc.Base64.stringify(iv));
+    }
     
     // 3. 转换密钥为 WordArray（使用完整密钥）
     const keyBytes = CryptoJS.enc.Utf8.parse(key);
-    console.log('Key bytes (hex):', keyBytes.toString());
-    console.log('Key bytes (base64):', CryptoJS.enc.Base64.stringify(keyBytes));
+    if (import.meta.env.DEV) {
+      console.log('Key bytes (hex):', keyBytes.toString());
+      console.log('Key bytes (base64):', CryptoJS.enc.Base64.stringify(keyBytes));
+    }
     
     // 4. 转换明文为 WordArray
     const textBytes = CryptoJS.enc.Utf8.parse(text);
-    console.log('Text bytes (hex):', textBytes.toString());
-    console.log('Text bytes (base64):', CryptoJS.enc.Base64.stringify(textBytes));
+    if (import.meta.env.DEV) {
+      console.log('Text bytes (hex):', textBytes.toString());
+      console.log('Text bytes (base64):', CryptoJS.enc.Base64.stringify(textBytes));
+    }
 
     // 5. 加密（使用 CBC 模式）
     const encrypted = CryptoJS.AES.encrypt(text, keyBytes, {
@@ -50,22 +70,24 @@ export function encrypt(text: string, key: string): string {
 
     // 6. 获取密文的不同格式
     const ciphertext = encrypted.ciphertext;
-    console.log('Ciphertext (hex):', ciphertext.toString());
-    console.log('Ciphertext (base64):', CryptoJS.enc.Base64.stringify(ciphertext));
+    if (import.meta.env.DEV) {
+      console.log('Ciphertext (hex):', ciphertext.toString());
+      console.log('Ciphertext (base64):', CryptoJS.enc.Base64.stringify(ciphertext));
+    }
 
     // 7. 获取最终的 Base64 结果
     const result = encrypted.toString();
-    console.log('Final result (base64):', result);
-
-    // 8. 验证结果
-    console.log('Validation:', {
-      input: text,
-      inputLength: text.length,
-      result: result,
-      resultLength: result.length,
-      isBase64: /^[A-Za-z0-9+/=]+$/.test(result)
-    });
-    console.log('=== End Encryption ===\n');
+    if (import.meta.env.DEV) {
+      console.log('Final result (base64):', result);
+      console.log('Validation:', {
+        input: text,
+        inputLength: text.length,
+        result: result,
+        resultLength: result.length,
+        isBase64: /^[A-Za-z0-9+/=]+$/.test(result)
+      });
+      console.log('=== End Encryption ===\n');
+    }
 
     return result;
   } catch (error) {
@@ -114,12 +136,14 @@ export function decrypt(ciphertext: string, key: string): string {
     }
 
     // 8. 记录日志
-    console.log('[Decryption]', {
-      input: ciphertext,
-      inputLength: ciphertext.length,
-      result: result,
-      resultLength: result.length
-    });
+    if (import.meta.env.DEV) {
+      console.log('[Decryption]', {
+        input: ciphertext,
+        inputLength: ciphertext.length,
+        result: result,
+        resultLength: result.length
+      });
+    }
 
     return result;
   } catch (error) {
@@ -129,7 +153,7 @@ export function decrypt(ciphertext: string, key: string): string {
 }
 
 // 运行测试
-if (process.env.NODE_ENV === 'development') {
+if (import.meta.env.DEV) {
   const testMessage = '{"type":"info","timestamp":"1704794999"}';
   const testKey = 'AK20241120145620';
   

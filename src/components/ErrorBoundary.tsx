@@ -30,7 +30,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
         <Result
           status="error"
           title="页面加载失败"
-          subTitle={process.env.NODE_ENV === 'development' ? this.state.error?.message : '请刷新页面重试'}
+          subTitle={import.meta.env.DEV ? this.state.error?.message : '请刷新页面重试'}
           extra={[
             <Button type="primary" key="refresh" onClick={() => window.location.reload()}>
               刷新页面

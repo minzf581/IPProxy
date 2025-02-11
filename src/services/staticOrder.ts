@@ -1,4 +1,5 @@
-import { request } from '@/utils/request';
+import { api as request } from '@/utils/request';
+import { API_ROUTES } from '@/shared/routes';
 import type {
   StaticOrderFormData,
   StaticOrder,
@@ -6,14 +7,11 @@ import type {
 } from '@/types/staticOrder';
 
 export async function createStaticOrder(data: StaticOrderFormData) {
-  return request<StaticOrderResponse>('/api/v1/static-orders', {
-    method: 'POST',
-    data,
-  });
+  return request.post<StaticOrderResponse>(API_ROUTES.ORDER.STATIC.CREATE, data);
 }
 
 export async function getStaticOrder(orderNo: string) {
-  return request<StaticOrderResponse>(`/api/v1/static-orders/${orderNo}`);
+  return request.get<StaticOrderResponse>(`${API_ROUTES.ORDER.STATIC.DETAIL}/${orderNo}`);
 }
 
 export async function getStaticOrders(params: {
@@ -23,15 +21,14 @@ export async function getStaticOrders(params: {
   startTime?: string;
   endTime?: string;
 }) {
-  return request<{
+  return request.get<{
     code: number;
     msg: string;
     data: {
       total: number;
       list: StaticOrder[];
     };
-  }>('/api/v1/static-orders', {
-    method: 'GET',
+  }>(API_ROUTES.ORDER.STATIC.LIST, {
     params,
   });
 }
@@ -41,11 +38,8 @@ export async function updateStaticOrderStatus(
   status: string,
   remark?: string
 ) {
-  return request<StaticOrderResponse>(`/api/v1/static-orders/${orderNo}/status`, {
-    method: 'PUT',
-    data: {
-      status,
-      remark,
-    },
+  return request.put<StaticOrderResponse>(`${API_ROUTES.ORDER.STATIC.STATUS}/${orderNo}`, {
+    status,
+    remark,
   });
 } 

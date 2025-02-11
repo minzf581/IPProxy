@@ -187,40 +187,82 @@ class IPIPVBaseAPI:
             logger.info(f"[IPIPVBaseAPI] 发送请求: {path}")
             logger.debug(f"[IPIPVBaseAPI] 请求数据: {json.dumps(request_data, ensure_ascii=False)}")
             
+            # 修正 URL 拼接
+            url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
+            
             # 发送请求
             async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self.base_url}/{path}", json=request_data) as response:
-                    response_data = await response.json()
-                    logger.debug(f"[IPIPVBaseAPI] 响应数据: {json.dumps(response_data, ensure_ascii=False)}")
+                async with session.post(
+                    url,
+                    json=request_data,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "application/json"
+                    }
+                ) as response:
+                    response_text = await response.text()
+                    logger.debug(f"[IPIPVBaseAPI] 响应状态码: {response.status}")
+                    logger.debug(f"[IPIPVBaseAPI] 响应内容: {truncate_response(response_text)}")
                     
                     if response.status != 200:
                         logger.error(f"[IPIPVBaseAPI] 请求失败: HTTP {response.status}")
-                        logger.error(f"[IPIPVBaseAPI] 错误响应: {json.dumps(response_data, ensure_ascii=False)}")
-                        raise Exception(f"API请求失败: {response_data.get('msg', '未知错误')}")
+                        return {
+                            "code": response.status,
+                            "msg": "API请求失败",
+                            "data": None
+                        }
                     
-                    # 检查业务响应码
-                    if response_data.get("code") not in [0, 200]:
-                        error_msg = response_data.get("msg", "未知错误")
-                        logger.error(f"[IPIPVBaseAPI] 业务处理失败: {error_msg}")
-                        raise Exception(f"业务处理失败: {error_msg}")
-                    
-                    # 如果响应数据是加密的，尝试解密
-                    encrypted_data = response_data.get("data")
-                    if isinstance(encrypted_data, str):
-                        try:
-                            decrypted_data = self._decrypt_response(encrypted_data)
-                            if decrypted_data:
-                                response_data["data"] = decrypted_data
-                        except Exception as e:
-                            logger.error(f"[IPIPVBaseAPI] 解密响应数据失败: {str(e)}")
-                            logger.error("[IPIPVBaseAPI] 错误堆栈:", exc_info=True)
-                    
-                    return response_data.get("data", [])
-                    
+                    try:
+                        result = json.loads(response_text)
+                        
+                        # 检查响应格式
+                        if not isinstance(result, dict):
+                            logger.error("[IPIPVBaseAPI] 响应格式错误: 不是有效的JSON对象")
+                            return {
+                                "code": 500,
+                                "msg": "响应格式错误",
+                                "data": None
+                            }
+                            
+                        # 如果响应中包含加密数据，进行解密
+                        if result.get('code') == 200 and isinstance(result.get('data'), str):
+                            try:
+                                decrypted_data = self._decrypt_response(result['data'])
+                                if decrypted_data is not None:
+                                    result['data'] = decrypted_data
+                                else:
+                                    logger.error("[IPIPVBaseAPI] 响应数据解密失败")
+                                    return {
+                                        "code": 500,
+                                        "msg": "响应数据解密失败",
+                                        "data": None
+                                    }
+                            except Exception as e:
+                                logger.error(f"[IPIPVBaseAPI] 解密过程出错: {str(e)}")
+                                return {
+                                    "code": 500,
+                                    "msg": f"解密失败: {str(e)}",
+                                    "data": None
+                                }
+                        
+                        return result
+                        
+                    except json.JSONDecodeError:
+                        logger.error("[IPIPVBaseAPI] 响应解析失败: 非JSON格式")
+                        return {
+                            "code": 500,
+                            "msg": "响应格式错误",
+                            "data": None
+                        }
+                        
         except Exception as e:
             logger.error(f"[IPIPVBaseAPI] 请求失败: {str(e)}")
-            logger.error("[IPIPVBaseAPI] 错误堆栈:", exc_info=True)
-            raise
+            logger.error(traceback.format_exc())
+            return {
+                "code": 500,
+                "msg": str(e),
+                "data": None
+            }
     
     def _decrypt_response(self, encrypted_text: str) -> Optional[Dict[str, Any]]:
         """解密API响应"""

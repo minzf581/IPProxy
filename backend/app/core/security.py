@@ -19,7 +19,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from jose import JWTError, jwt
-from app.core.config import settings
+from app.config import settings, SECRET_KEY, ALGORITHM
 
 # 配置日志
 logging.basicConfig(level=logging.DEBUG)
@@ -71,7 +71,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     else:
         expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
 def verify_token(token: str) -> Optional[Dict[str, Any]]:
@@ -85,7 +85,7 @@ def verify_token(token: str) -> Optional[Dict[str, Any]]:
         Optional[Dict[str, Any]]: 如果令牌有效，返回完整的payload；否则返回None
     """
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("sub") is None:
             return None
         return payload

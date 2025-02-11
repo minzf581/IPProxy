@@ -188,8 +188,8 @@ router = APIRouter()
 
 @router.get("/user/list")
 async def get_user_list(
-    page: int = 1,
-    pageSize: int = 10,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(10, ge=1, le=100),
     username: Optional[str] = None,
     status: Optional[str] = None,
     current_user: User = Depends(get_current_user),

@@ -11,10 +11,12 @@ from httpx import AsyncClient
 from app.main import app
 from app.database import get_db
 import logging
-from app.core.config import settings
+from app.config import settings
 import os
 import json
 import asyncio
+from fastapi.testclient import TestClient
+from app.services.proxy_service import ProxyService
 
 # 设置日志级别为 DEBUG
 logging.basicConfig(

@@ -189,14 +189,13 @@ const StaticOrderPage: React.FC = () => {
       
       const params = {
         page,
-        size,
-        orderType: 'static',
+        pageSize: size,
         ...search
       };
       
       console.log('[Static Order List Debug] 发送请求参数:', params);
       
-      const response = await request.post('/open/app/order/v2', params);
+      const response = await request.get('/open/app/static/order/list/v2', { params });
       
       console.log('[Static Order List Debug] API完整响应:', response);
       console.log('[Static Order List Debug] 响应数据:', response.data);

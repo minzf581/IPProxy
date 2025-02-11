@@ -6,6 +6,10 @@ import axios, {
 } from 'axios';
 import { message } from 'antd';
 import { API_ROUTES } from '@/shared/routes';
+import { debug } from './debug';
+
+// 调试开关
+const DEBUG = import.meta.env.DEV;
 
 // 创建axios实例的工厂函数
 const createAxiosInstance = (config: CreateAxiosDefaults = {}): AxiosInstance => {
@@ -21,22 +25,33 @@ const createAxiosInstance = (config: CreateAxiosDefaults = {}): AxiosInstance =>
   instance.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
       // 打印原始URL
-      console.log('[Request Debug] Original URL:', config.url);
+      if (DEBUG) {
+        console.log('[Request Debug] Original URL:', config.url);
+      }
       
       // 确保URL以/开头
       if (config.url && !config.url.startsWith('/')) {
         config.url = `/${config.url}`;
       }
       
-      console.log('[Request Debug] Processed URL:', config.url);
-      console.log('[Request Debug] Final URL will be:', `${config.baseURL || ''}${config.url}`);
+      // 如果使用的是 client 实例（不带baseURL），则添加 /api 前缀
+      if (!config.baseURL && config.url && !config.url.startsWith('/api/')) {
+        config.url = `/api${config.url}`;
+      }
+      
+      if (DEBUG) {
+        console.log('[Request Debug] Processed URL:', config.url);
+        console.log('[Request Debug] Final URL will be:', `${config.baseURL || ''}${config.url}`);
+      }
       
       // 获取token
       const token = localStorage.getItem('token');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-        console.log('[Request Debug] Token added to headers');
-      } else {
+        if (DEBUG) {
+          console.log('[Request Debug] Token added to headers');
+        }
+      } else if (DEBUG) {
         console.log('[Request Debug] No token found');
       }
       
@@ -103,10 +118,10 @@ const createAxiosInstance = (config: CreateAxiosDefaults = {}): AxiosInstance =>
 };
 
 // 创建带有 /api 前缀的实例
-const api = createAxiosInstance({ baseURL: '/api' });
+const api = createAxiosInstance();
 
-// 创建不带前缀的实例
-const client = createAxiosInstance();
+// 创建不带前缀的实例，用于直接访问完整URL
+const client = createAxiosInstance({ baseURL: '' });
 
 // 创建请求方法工厂函数
 const createRequestMethods = (instance: AxiosInstance) => ({
@@ -118,8 +133,8 @@ const createRequestMethods = (instance: AxiosInstance) => ({
 });
 
 // 导出请求方法
-const request = createRequestMethods(client);
-const apiRequest = createRequestMethods(api);
+const request = createRequestMethods(api);
+const apiRequest = createRequestMethods(client);
 
 export { api, client, apiRequest };
 export default request; 

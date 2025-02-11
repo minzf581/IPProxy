@@ -9,8 +9,8 @@
 // API 版本
 export const API_VERSION = 'v2';
 
-// API 基础路径 - 移除，因为已经在axios配置中设置
-export const API_BASE = '';
+// API 基础路径
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
 // API 模块前缀
 export const API_PREFIX = {
@@ -21,10 +21,21 @@ export const API_PREFIX = {
   PROXY: 'proxy'
 } as const;
 
-// 打印路由配置信息
-console.log('[Routes Config] API_VERSION:', API_VERSION);
-console.log('[Routes Config] API_BASE:', API_BASE);
-console.log('[Routes Config] API_PREFIX:', API_PREFIX);
+// 打印调试信息的函数
+function logDebugInfo() {
+  if (process.env.NODE_ENV === 'development') {
+    console.log('[Routes Config]', {
+      API_VERSION,
+      API_BASE,
+      API_PREFIX,
+    });
+  }
+}
+
+// 只在开发环境下执行调试日志
+if (process.env.NODE_ENV === 'development') {
+  logDebugInfo();
+}
 
 /**
  * API 路由配置
@@ -38,7 +49,7 @@ export const API_ROUTES = {
     LOGIN: `${API_PREFIX.AUTH}/login`,
     LOGOUT: `${API_PREFIX.AUTH}/logout`,
     REFRESH: `${API_PREFIX.AUTH}/refresh`,
-    PROFILE: `${API_PREFIX.AUTH}/profile`
+    PROFILE: `${API_PREFIX.AUTH}/current-user`
   },
 
   USER: {
@@ -55,7 +66,13 @@ export const API_ROUTES = {
     CREATE: `${API_PREFIX.OPEN}/order/create/v2`,
     LIST: `${API_PREFIX.OPEN}/order/list/v2`,
     DETAIL: `${API_PREFIX.OPEN}/order/detail/v2`,
-    CANCEL: `${API_PREFIX.OPEN}/order/cancel/v2`
+    CANCEL: `${API_PREFIX.OPEN}/order/cancel/v2`,
+    STATIC: {
+      LIST: `${API_PREFIX.OPEN}/static/order/list/v2`,
+      CREATE: `${API_PREFIX.OPEN}/static/order/create/v2`,
+      DETAIL: `${API_PREFIX.OPEN}/static/order/detail/v2`,
+      STATUS: `${API_PREFIX.OPEN}/static/order/status/v2`
+    }
   },
 
   PROXY: {
@@ -70,17 +87,29 @@ export const API_ROUTES = {
     STOCK: `${API_PREFIX.OPEN}/area/stock/${API_VERSION}`,
     CITY_LIST: `${API_PREFIX.OPEN}/city/list/${API_VERSION}`,
     IP_RANGES: `${API_PREFIX.OPEN}/product/query/${API_VERSION}`
-  }
+  },
+
+  SETTINGS: {
+    AGENT: {
+      PRICES: {
+        GET: (id: string) => `/settings/agent/${id}/prices`,
+        UPDATE: (id: string) => `/settings/agent/${id}/prices`
+      }
+    }
+  },
 } as const;
 
-// 打印生成的路由
-console.log('[Routes Config] Generated Routes:', {
-  AUTH: API_ROUTES.AUTH,
-  USER: API_ROUTES.USER,
-  ORDER: API_ROUTES.ORDER,
-  PROXY: API_ROUTES.PROXY,
-  AREA: API_ROUTES.AREA
-});
+// 调试日志
+if (process.env.NODE_ENV === 'development') {
+  console.log('[Routes Config] Generated Routes:', {
+    AUTH: API_ROUTES.AUTH,
+    USER: API_ROUTES.USER,
+    ORDER: API_ROUTES.ORDER,
+    PROXY: API_ROUTES.PROXY,
+    AREA: API_ROUTES.AREA,
+    SETTINGS: API_ROUTES.SETTINGS
+  });
+}
 
 // 为了方便 Python 使用，导出一个常量字符串版本
 export const ROUTES_PY = `
@@ -102,7 +131,7 @@ API_ROUTES = {
         "LOGIN": f"{API_PREFIX['AUTH']}/login",
         "LOGOUT": f"{API_PREFIX['AUTH']}/logout",
         "REFRESH": f"{API_PREFIX['AUTH']}/refresh",
-        "PROFILE": f"{API_PREFIX['AUTH']}/profile"
+        "PROFILE": f"{API_PREFIX['AUTH']}/current-user"
     },
     "USER": {
         "CREATE": f"{API_PREFIX['OPEN']}/user/create/v2",
@@ -117,7 +146,13 @@ API_ROUTES = {
         "CREATE": f"{API_PREFIX['OPEN']}/order/create/v2",
         "LIST": f"{API_PREFIX['OPEN']}/order/list/v2",
         "DETAIL": f"{API_PREFIX['OPEN']}/order/detail/v2",
-        "CANCEL": f"{API_PREFIX['OPEN']}/order/cancel/v2"
+        "CANCEL": f"{API_PREFIX['OPEN']}/order/cancel/v2",
+        "STATIC": {
+            "LIST": f"{API_PREFIX['OPEN']}/static/order/list/v2",
+            "CREATE": f"{API_PREFIX['OPEN']}/static/order/create/v2",
+            "DETAIL": f"{API_PREFIX['OPEN']}/static/order/detail/v2",
+            "STATUS": f"{API_PREFIX['OPEN']}/static/order/status/v2"
+        }
     },
     "PROXY": {
         "QUERY": f"{API_PREFIX['OPEN']}/product/query/{API_VERSION}",
@@ -130,6 +165,14 @@ API_ROUTES = {
         "STOCK": f"{API_PREFIX['OPEN']}/area/stock/{API_VERSION}",
         "CITY_LIST": f"{API_PREFIX['OPEN']}/city/list/{API_VERSION}",
         "IP_RANGES": f"{API_PREFIX['OPEN']}/product/query/{API_VERSION}"
+    },
+    "SETTINGS": {
+        "AGENT": {
+            "PRICES": {
+                "GET": lambda id: f"{API_PREFIX['ADMIN']}/settings/agent/{id}/prices",
+                "UPDATE": lambda id: f"{API_PREFIX['ADMIN']}/settings/agent/{id}/prices"
+            }
+        }
     }
 }
 `; 

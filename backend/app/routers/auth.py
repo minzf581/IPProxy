@@ -87,11 +87,11 @@ from app.database import get_db
 # 设置日志记录器
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/auth")
+router = APIRouter(tags=["认证"])
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
-@router.post("/login")
+@router.post("/auth/login")
 async def login(user_data: UserLogin, db: Session = Depends(get_db)):
     """用户登录"""
     try:
@@ -121,7 +121,7 @@ async def login(user_data: UserLogin, db: Session = Depends(get_db)):
             detail=str(e)
         )
 
-@router.get("/current-user")
+@router.get("/auth/current-user")
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """获取当前用户信息"""
     try:
@@ -137,7 +137,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
             detail=str(e)
         )
 
-@router.post("/password")
+@router.post("/auth/password")
 async def update_password(
     old_password: str,
     new_password: str,

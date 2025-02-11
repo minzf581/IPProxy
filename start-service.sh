@@ -27,9 +27,33 @@ error() {
     exit 1
 }
 
+# 定义警告日志函数
+warn() {
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local message="[$timestamp] [WARN] $1"
+    echo "$message" | tee -a "$LOG_FILE"
+}
+
 # 记录启动信息
 log "开始启动服务..."
 log "日志文件位置: $LOG_FILE"
+
+# 检查路由匹配情况
+log "检查路由匹配情况..."
+python3 scripts/check_routes.py --silent
+CHECK_RESULT=$?
+
+if [ $CHECK_RESULT -eq 1 ]; then
+    warn "发现新的前端独有路由，这可能会导致404错误。详细信息请查看 logs/route_check.json"
+    warn "建议在启动服务前解决路由不匹配问题"
+    
+    # 询问是否继续
+    read -p "是否继续启动服务？(y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        error "用户取消启动服务"
+    fi
+fi
 
 # 停止现有服务
 log "停止现有服务..."

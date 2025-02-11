@@ -554,38 +554,7 @@ async def get_agent_transactions(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """
-    获取代理商交易记录
-    
-    此接口用于查询代理商的所有交易记录，包括充值、扣减等操作。
-    支持分页查询和多种筛选条件。
-    
-    参数:
-        agent_id (int): 代理商ID
-        current_user (User): 当前操作用户
-        db (Session): 数据库会话
-    
-    返回:
-        Dict[str, Any]: 包含交易记录列表
-            - code (int): 状态码
-            - message (str): 操作结果描述
-            - data (dict): 
-                - list (List[dict]): 交易记录列表
-                - total (int): 总记录数
-                - page (int): 当前页码
-                - page_size (int): 每页记录数
-    
-    异常:
-        - 404: 代理商不存在
-        - 403: 无权限查看记录
-        - 500: 服务器内部错误
-    
-    注意事项:
-        1. 管理员可以查看所有代理商的记录
-        2. 代理商只能查看自己的记录
-        3. 支持按时间范围和交易类型筛选
-        4. 结果按时间倒序排列
-    """
+    """获取代理商交易记录"""
     try:
         # 检查代理商是否存在
         agent = db.query(User).filter(User.id == agent_id, User.is_agent == True).first()
@@ -637,55 +606,3 @@ async def get_area_list(
             "message": str(e),
             "data": []
         }
-
-@router.get("/settings/agent/{agent_id}/prices")
-async def get_agent_prices(
-    agent_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-) -> Dict[str, Any]:
-    """获取代理商价格设置"""
-    try:
-        # 检查权限：只有管理员或者代理商本人可以查看
-        if not current_user.is_admin and current_user.id != agent_id:
-            raise HTTPException(
-                status_code=403,
-                detail="没有权限查看价格设置"
-            )
-            
-        # 获取代理商
-        agent = db.query(User).filter(
-            User.id == agent_id,
-            User.is_agent == True
-        ).first()
-        
-        if not agent:
-            raise HTTPException(
-                status_code=404,
-                detail="代理商不存在"
-            )
-            
-        # 返回价格配置
-        return {
-            "code": 0,
-            "msg": "success",
-            "data": {
-                "dynamic": {
-                    "pool1": 100,  # 动态代理池1价格
-                    "pool2": 200   # 动态代理池2价格
-                },
-                "static": {
-                    "residential": 300,  # 静态住宅代理价格
-                    "datacenter": 400    # 静态数据中心代理价格
-                }
-            }
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"获取代理商价格设置失败: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
