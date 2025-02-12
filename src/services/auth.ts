@@ -6,7 +6,9 @@ import { API_ROUTES } from '@/shared/routes';
 // Debug 函数
 const debug = {
   log: (...args: any[]) => {
-    console.log('[Auth Service Debug]', ...args);
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Auth Service Debug]', ...args);
+    }
   },
   error: (...args: any[]) => {
     console.error('[Auth Service Error]', ...args);
@@ -21,97 +23,81 @@ interface LoginResponse {
   user: User;
 }
 
+interface BackendResponse<T> {
+  code: number;
+  msg: string;
+  data: T;
+}
+
 export const login = async (username: string, password: string): Promise<ApiResponse<LoginResponse>> => {
   try {
     debug.log('开始登录请求:', { username, timestamp: new Date().toISOString() });
     
-    debug.log('发送登录请求到 API:', { 
-      endpoint: API_ROUTES.AUTH.LOGIN,
-      requestData: { username, password: '***' },
-      timestamp: new Date().toISOString()
-    });
+    const { data: backendResponse } = await apiRequest.post<BackendResponse<LoginResponse>>(
+      API_ROUTES.AUTH.LOGIN, 
+      { username, password }
+    );
     
-    const response = await apiRequest.post<ApiResponse<LoginResponse>>(API_ROUTES.AUTH.LOGIN, { username, password });
-    const responseData = response.data;
-    debug.log('收到原始响应:', responseData);
+    debug.log('收到登录响应:', backendResponse);
     
-    // 检查响应格式
-    if (!responseData || typeof responseData !== 'object') {
-      throw new Error('无效的响应格式');
+    if (backendResponse.code === 0 && backendResponse.data) {
+      // 保存 token 到 localStorage
+      localStorage.setItem('token', backendResponse.data.token);
+      debug.log('Token已保存到localStorage');
+      
+      return {
+        code: 200,  // 转换为前端标准状态码
+        message: backendResponse.msg || '登录成功',
+        data: backendResponse.data
+      };
     }
-
-    // 检查响应状态
-    if (responseData.code !== 0) {
-      throw new Error(responseData.msg || '登录失败');
-    }
-
-    // 检查响应数据
-    if (!responseData.data || !responseData.data.token || !responseData.data.user) {
-      debug.error('响应数据不完整:', {
-        hasData: !!responseData.data,
-        hasToken: !!responseData.data?.token,
-        hasUser: !!responseData.data?.user,
-        timestamp: new Date().toISOString()
-      });
-      throw new Error('登录响应数据不完整');
-    }
-
-    // 保存 token 到 localStorage
-    localStorage.setItem('token', responseData.data.token);
     
-    return responseData;
+    // 登录失败的情况
+    const errorMessage = backendResponse.msg || '登录失败';
+    debug.error('登录失败:', errorMessage);
+    throw new Error(errorMessage);
+    
   } catch (error: any) {
-    debug.error('登录过程出错:', {
-      errorType: error.constructor.name,
-      message: error.message,
-      hasResponse: !!error.response,
-      responseStatus: error.response?.status,
-      responseData: error.response?.data,
-      stack: error.stack,
-      timestamp: new Date().toISOString()
-    });
-    throw error;
+    debug.error('登录请求失败:', error);
+    // 尝试从错误响应中获取详细信息
+    const errorMessage = error.response?.data?.msg || error.message || '登录失败';
+    throw new Error(errorMessage);
   }
 };
 
 export const getCurrentUser = async (): Promise<ApiResponse<User | null>> => {
   try {
     debug.log('获取当前用户信息');
-    const response = await apiRequest.get<ApiResponse<User>>(API_ROUTES.AUTH.PROFILE);
-    debug.log('当前用户响应:', response.data);
+    const token = localStorage.getItem('token');
     
-    // 检查响应格式
-    if (!response.data || typeof response.data !== 'object') {
-      throw new Error('无效的响应格式');
+    if (!token) {
+      debug.warn('未找到token，用户可能未登录');
+      return {
+        code: 401,
+        message: '未登录',
+        data: null
+      };
     }
 
-    // 检查响应状态
-    if (response.data.code !== 0) {
-      throw new Error(response.data.msg || '获取用户信息失败');
+    const { data: backendResponse } = await apiRequest.get<BackendResponse<User>>(API_ROUTES.AUTH.PROFILE);
+    debug.log('获取用户信息成功:', backendResponse);
+    
+    if (backendResponse.code === 0) {
+      return {
+        code: 200,
+        message: backendResponse.msg || '获取用户信息成功',
+        data: backendResponse.data
+      };
     }
-
-    // 检查响应数据
-    if (!response.data.data) {
-      debug.error('响应数据不完整:', {
-        hasData: !!response.data.data,
-        timestamp: new Date().toISOString()
-      });
-      throw new Error('用户信息响应数据不完整');
-    }
-
-    return response.data;
+    
+    throw new Error(backendResponse.msg || '获取用户信息失败');
+    
   } catch (error: any) {
-    debug.error('获取用户信息出错:', {
-      error,
-      message: error.message,
-      response: error.response,
-      timestamp: new Date().toISOString()
-    });
-    return {
-      code: error.response?.status || 500,
-      msg: error.message || '获取用户信息失败',
-      data: null
-    };
+    debug.error('获取用户信息失败:', error);
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+    }
+    throw new Error(error.response?.data?.msg || error.message || '获取用户信息失败');
   }
 };
 
@@ -123,22 +109,24 @@ export const logout = () => {
 export const updatePassword = async (data: { oldPassword: string; newPassword: string }): Promise<ApiResponse<void>> => {
   try {
     debug.log('更新密码');
-    const response = await apiRequest.post<void>(API_ROUTES.AUTH.PROFILE, data);
-    const result = response.data;
-    debug.log('更新密码响应:', result);
+    const { data: backendResponse } = await apiRequest.post<BackendResponse<void>>(
+      API_ROUTES.AUTH.PROFILE, 
+      data
+    );
+    debug.log('密码更新成功');
     
-    return {
-      code: 0,
-      msg: 'success',
-      data: undefined
-    };
+    if (backendResponse.code === 0) {
+      return {
+        code: 200,
+        message: backendResponse.msg || '密码更新成功',
+        data: undefined
+      };
+    }
+    
+    throw new Error(backendResponse.msg || '更新密码失败');
+    
   } catch (error: any) {
-    debug.error('更新密码出错:', {
-      error,
-      message: error.message,
-      response: error.response,
-      timestamp: new Date().toISOString()
-    });
-    throw error;
+    debug.error('更新密码失败:', error);
+    throw new Error(error.response?.data?.msg || error.message || '更新密码失败');
   }
 }; 

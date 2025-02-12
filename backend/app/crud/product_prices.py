@@ -35,42 +35,22 @@ def get_prices(
             try:
                 logger.debug(f"处理产品 ID: {product.id}")
                 # 构建基础价格信息
-                price_info = {
-                    'id': product.id,
-                    'type': 'dynamic' if product.proxy_type == 1 else 'static',
-                    'name': product.product_name,
-                    'cost_price': Decimal(str(product.cost_price)) if product.cost_price else Decimal('0'),
-                    'global_price': Decimal(str(product.global_price)) if product.global_price else Decimal('0'),
-                    'area': product.area_code,
-                    'country': product.country_code,
-                    'city': product.city_code,
-                    'ip_range': f"{product.ip_start}-{product.ip_end}" if product.ip_start and product.ip_end else None,
-                    'updated_at': product.updated_at
-                }
-
-                # 设置显示价格
-                if agent_id:
-                    logger.debug(f"查询代理商 {agent_id} 的价格")
-                    # 查询代理商特定价格
-                    agent_price = db.query(AgentPrice).filter(
-                        AgentPrice.agent_id == agent_id
-                    ).first()
-                    
-                    if agent_price:
-                        price_info['price'] = Decimal(str(agent_price.get_dynamic_price())) if product.proxy_type == 1 else Decimal(str(agent_price.get_static_price()))
-                    elif product.global_price:
-                        price_info['price'] = Decimal(str(product.global_price))
-                    else:
-                        price_info['price'] = Decimal(str(product.cost_price)) if product.cost_price else Decimal('0')
-                else:
-                    # 全局价格查询
-                    if product.global_price:
-                        price_info['price'] = Decimal(str(product.global_price))
-                    else:
-                        price_info['price'] = Decimal(str(product.cost_price)) if product.cost_price else Decimal('0')
+                price_info = ProductPriceBase(
+                    id=product.id,
+                    type=product.product_no,  # 使用产品编号作为类型
+                    proxyType=product.proxy_type,
+                    area=product.area_code,
+                    country=product.country_code,
+                    city=product.city_code,
+                    ipRange=f"{product.ip_start}-{product.ip_end}" if product.ip_start and product.ip_end else None,
+                    price=Decimal(str(product.global_price)) if product.global_price else Decimal(str(product.cost_price)),
+                    isGlobal=is_global,
+                    createdAt=product.created_at,
+                    updatedAt=product.updated_at
+                )
                 
                 logger.debug(f"产品 {product.id} 的价格信息: {price_info}")
-                result.append(ProductPriceBase(**price_info))
+                result.append(price_info)
             except Exception as e:
                 logger.error(f"处理产品 {product.id} 时发生错误: {str(e)}", exc_info=True)
                 continue

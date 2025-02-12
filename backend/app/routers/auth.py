@@ -95,66 +95,123 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 async def login(user_data: UserLogin, db: Session = Depends(get_db)):
     """用户登录"""
     try:
+        logger.info(f"尝试登录用户: {user_data.username}")
         user = await authenticate_user(user_data.username, user_data.password, db)
         if not user:
+            logger.warning(f"登录失败: 用户名或密码错误 - {user_data.username}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="用户名或密码错误",
+                detail={
+                    "code": 401,
+                    "message": "用户名或密码错误"
+                },
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
+        # 生成访问令牌
         access_token = create_access_token(data={"sub": str(user.id)})
+        if not access_token:
+            logger.error(f"生成访问令牌失败: {user_data.username}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "code": 500,
+                    "message": "生成访问令牌失败"
+                }
+            )
+            
+        logger.info(f"用户登录成功: {user_data.username}")
         return {
             "code": 0,
-            "msg": "登录成功",
+            "message": "登录成功",
             "data": {
                 "token": access_token,
-                "user": UserResponse.from_orm(user)
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "is_admin": user.is_admin,
+                    "is_agent": user.is_agent,
+                    "status": user.status,
+                    "balance": float(user.balance) if user.balance else 0.0,
+                    "created_at": user.created_at.isoformat() if user.created_at else None,
+                    "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None
+                }
             }
         }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"登录失败: {str(e)}")
+        logger.error(f"登录过程发生错误: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            detail={
+                "code": 500,
+                "message": f"登录失败: {str(e)}"
+            }
         )
 
 @router.get("/auth/current-user")
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """获取当前用户信息"""
     try:
+        logger.info(f"获取用户信息: {current_user.username}")
         return {
             "code": 0,
-            "msg": "获取用户信息成功",
-            "data": UserResponse.from_orm(current_user)
+            "message": "获取用户信息成功",
+            "data": {
+                "id": current_user.id,
+                "username": current_user.username,
+                "email": current_user.email,
+                "is_admin": current_user.is_admin,
+                "is_agent": current_user.is_agent,
+                "status": current_user.status,
+                "balance": float(current_user.balance) if current_user.balance else 0.0,
+                "created_at": current_user.created_at.isoformat() if current_user.created_at else None,
+                "last_login_at": current_user.last_login_at.isoformat() if current_user.last_login_at else None
+            }
         }
     except Exception as e:
         logger.error(f"获取用户信息失败: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            detail={
+                "code": 500,
+                "message": f"获取用户信息失败: {str(e)}"
+            }
         )
 
 @router.post("/auth/password")
 async def update_password(
     old_password: str,
     new_password: str,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """修改密码"""
     try:
-        if not authenticate_user(current_user.username, old_password):
+        logger.info(f"尝试修改密码: {current_user.username}")
+        # 验证原密码
+        user = await authenticate_user(current_user.username, old_password, db)
+        if not user:
+            logger.warning(f"修改密码失败: 原密码错误 - {current_user.username}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="原密码错误"
+                detail={
+                    "code": 400,
+                    "message": "原密码错误"
+                }
             )
         
+        # 更新密码
         current_user.password = get_password_hash(new_password)
+        current_user.updated_at = datetime.utcnow()
+        db.commit()
+        
+        logger.info(f"密码修改成功: {current_user.username}")
         return {
             "code": 0,
-            "msg": "密码修改成功",
+            "message": "密码修改成功",
             "data": None
         }
     except HTTPException:
@@ -163,5 +220,8 @@ async def update_password(
         logger.error(f"修改密码失败: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            detail={
+                "code": 500,
+                "message": f"修改密码失败: {str(e)}"
+            }
         )

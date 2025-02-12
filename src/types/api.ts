@@ -1,7 +1,8 @@
 export interface ApiResponse<T = any> {
   code: number;
   message: string;
-  data?: T;
+  msg?: string;
+  data: T;
 }
 
 export interface ApiRequestParams {
@@ -215,4 +216,27 @@ export interface CityResponse {
     cityName: string;
     countryCode: string;
   }>;
+}
+
+export interface ProductPrice {
+  id: number;
+  type: 'dynamic' | 'static';
+  area: string;
+  country: string;
+  city: string;
+  ipRange: string;
+  price: number;
+  isGlobal: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductPriceParams {
+  isGlobal?: boolean;
+  agentId?: number;
+  type?: string;
+  area?: string;
+  country?: string;
+  city?: string;
+  sync?: boolean;  // 是否同步产品库存
 }

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from typing import List
 from sqlalchemy.orm import Session
 from app.schemas.product import (
@@ -8,10 +8,13 @@ from app.schemas.product import (
     BatchImportRequest
 )
 from app.crud import product_prices
-from app.core.deps import get_db, get_current_user
+from app.core.deps import get_db, get_current_user, get_static_order_service
 from app.models.user import User
+from app.services.static_order_service import StaticOrderService
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 def check_price_permission(user: User, is_global: bool, agent_id: int = None) -> bool:
     """检查用户是否有权限访问或修改价格"""
@@ -37,15 +40,42 @@ async def get_prices(
     
     try:
         prices = product_prices.get_prices(db, is_global, agent_id)
-        return ProductPriceResponse(
-            code=200,
-            message="success",
-            data=prices
-        )
+        return {
+            "code": 200,
+            "message": "success",
+            "data": [price.dict() for price in prices]
+        }
     except Exception as e:
+        logger.error(f"获取价格信息失败: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"获取价格信息失败: {str(e)}"
+        )
+
+@router.post("/prices/sync")
+async def sync_prices(
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    static_order_service: StaticOrderService = Depends(get_static_order_service)
+):
+    """触发价格同步（仅管理员可用）"""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="没有权限执行同步操作"
+        )
+    
+    try:
+        background_tasks.add_task(static_order_service.sync_product_inventory)
+        return {
+            "code": 200,
+            "message": "同步任务已启动"
+        }
+    except Exception as e:
+        logger.error(f"触发同步任务失败: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="触发同步任务失败"
         )
 
 @router.post("/prices")

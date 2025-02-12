@@ -96,7 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await authLogin(username, password);
       debug.log('Login response:', response);
 
-      if (response.code === 0 && response.data) {
+      if (response.code === 200 && response.data) {  // 前端已经转换为标准状态码 200
         const { token, user } = response.data;
         if (!token || !user) {
           debug.error('Invalid login response data:', response.data);
@@ -104,12 +104,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         
         debug.log('Login successful, setting token and user');
-        localStorage.setItem('token', token);
-        setUser(user);
+        setUser(user);  // token 已经在 auth service 中保存
         debug.log('User state updated:', user);
       } else {
         debug.error('Login failed:', response);
-        throw new Error(response.msg || '登录失败');
+        throw new Error(response.message || '登录失败');  // 使用 message 而不是 msg
       }
     } catch (error: any) {
       debug.error('Login failed:', error);

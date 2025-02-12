@@ -6,21 +6,21 @@ from decimal import Decimal
 class ProductPriceBase(BaseModel):
     id: int
     type: str  # 'dynamic' | 'static'
-    name: str
-    cost_price: Decimal = Field(default=Decimal('0'), decimal_places=4)
-    global_price: Decimal = Field(default=Decimal('0'), decimal_places=4)
-    price: Decimal = Field(default=Decimal('0'), decimal_places=4)
     area: Optional[str] = None
     country: Optional[str] = None
     city: Optional[str] = None
-    ip_range: Optional[str] = None
-    updated_at: datetime
+    ipRange: Optional[str] = None
+    price: Decimal = Field(default=Decimal('0'), decimal_places=4)
+    isGlobal: bool = True
+    createdAt: Optional[datetime] = None
+    updatedAt: Optional[datetime] = None
 
     class Config:
         from_attributes = True
         json_encoders = {
             Decimal: lambda v: float(v)
         }
+        alias_generator = lambda x: x[0].lower() + x[1:] if x else x  # 驼峰命名转换
 
 class ProductPriceUpdate(BaseModel):
     id: int

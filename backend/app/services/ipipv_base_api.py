@@ -75,10 +75,10 @@ class IPIPVBaseAPI:
     
     def __init__(self):
         """初始化基础服务"""
-        logger.info("[IPIPVBaseAPI] 初始化服务")
-        self.base_url = settings.IPIPV_API_BASE_URL
-        self.app_key = settings.IPIPV_APP_KEY
-        self.app_secret = settings.IPIPV_APP_SECRET
+        self.logger = logging.getLogger(__name__)
+        self.base_url = settings.IPPROXY_API_URL
+        self.app_key = settings.IPPROXY_APP_KEY
+        self.app_secret = settings.IPPROXY_APP_SECRET
         self.api_version = settings.IPPROXY_API_VERSION
         self.api_encrypt = settings.IPPROXY_API_ENCRYPT
         self.app_username = settings.IPPROXY_APP_USERNAME
@@ -88,15 +88,14 @@ class IPIPVBaseAPI:
         if settings.TESTING:
             from app.tests.mocks.ipproxy_api import MockIPIPVAPI
             self.mock_api = MockIPIPVAPI()
-            logger.info("[IPIPVBaseAPI] 使用测试模式")
+            self.logger.info("[IPIPVBaseAPI] 使用测试模式")
             
-        logger.info(f"[IPIPVBaseAPI] 配置信息:")
-        logger.info(f"  - API URL: {self.base_url}")
-        logger.info(f"  - APP Key: {self.app_key}")
-        logger.info(f"  - API Version: {self.api_version}")
-        logger.info(f"  - API Encrypt: {self.api_encrypt}")
-        logger.info(f"  - APP Username: {self.app_username}")
-        logger.info(f"  - Testing Mode: {settings.TESTING}")
+        # 只在首次初始化时打印配置信息，使用 debug 级别
+        self.logger.debug(
+            "API初始化: URL=%s, Key=%s",
+            self.base_url,
+            self.app_key[:8] + "***"  # 只显示 Key 的前8位
+        )
     
     def set_mock_api(self, mock_api):
         """
@@ -113,7 +112,7 @@ class IPIPVBaseAPI:
         sorted_params = dict(sorted(params.items()))
         # 拼接字符串
         sign_str = f"appKey={self.app_key}&params={json.dumps(sorted_params)}&timestamp={timestamp}&key={self.app_secret}"
-        logger.debug(f"[IPIPVBaseAPI] 签名字符串: {sign_str}")
+        self.logger.debug(f"[IPIPVBaseAPI] 签名字符串: {sign_str}")
         # MD5加密
         return hashlib.md5(sign_str.encode()).hexdigest().upper()
         
@@ -127,7 +126,7 @@ class IPIPVBaseAPI:
             
             # 将参数转换为JSON字符串
             params_str = json.dumps(params, ensure_ascii=False)
-            logger.debug(f"[IPIPVBaseAPI] 加密前参数: {params_str}")
+            self.logger.debug(f"[IPIPVBaseAPI] 加密前参数: {params_str}")
             
             # 补全到16的倍数
             pad_length = 16 - (len(params_str.encode()) % 16)
@@ -139,11 +138,11 @@ class IPIPVBaseAPI:
             
             # Base64编码
             encoded = base64.b64encode(encrypted).decode()
-            logger.debug(f"[IPIPVBaseAPI] 加密后数据: {encoded}")
+            self.logger.debug(f"[IPIPVBaseAPI] 加密后数据: {encoded}")
             return encoded
             
         except Exception as e:
-            logger.error(f"[IPIPVBaseAPI] 参数加密失败: {str(e)}")
+            self.logger.error(f"[IPIPVBaseAPI] 参数加密失败: {str(e)}")
             raise
             
     async def _make_request(self, path: str, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -184,8 +183,8 @@ class IPIPVBaseAPI:
                 "sign": sign
             }
             
-            logger.info(f"[IPIPVBaseAPI] 发送请求: {path}")
-            logger.debug(f"[IPIPVBaseAPI] 请求数据: {json.dumps(request_data, ensure_ascii=False)}")
+            self.logger.info(f"[IPIPVBaseAPI] 发送请求: {path}")
+            self.logger.debug(f"[IPIPVBaseAPI] 请求数据: {json.dumps(request_data, ensure_ascii=False)}")
             
             # 修正 URL 拼接
             url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
@@ -201,11 +200,11 @@ class IPIPVBaseAPI:
                     }
                 ) as response:
                     response_text = await response.text()
-                    logger.debug(f"[IPIPVBaseAPI] 响应状态码: {response.status}")
-                    logger.debug(f"[IPIPVBaseAPI] 响应内容: {truncate_response(response_text)}")
+                    self.logger.debug(f"[IPIPVBaseAPI] 响应状态码: {response.status}")
+                    self.logger.debug(f"[IPIPVBaseAPI] 响应内容: {truncate_response(response_text)}")
                     
                     if response.status != 200:
-                        logger.error(f"[IPIPVBaseAPI] 请求失败: HTTP {response.status}")
+                        self.logger.error(f"[IPIPVBaseAPI] 请求失败: HTTP {response.status}")
                         return {
                             "code": response.status,
                             "msg": "API请求失败",
@@ -217,7 +216,7 @@ class IPIPVBaseAPI:
                         
                         # 检查响应格式
                         if not isinstance(result, dict):
-                            logger.error("[IPIPVBaseAPI] 响应格式错误: 不是有效的JSON对象")
+                            self.logger.error("[IPIPVBaseAPI] 响应格式错误: 不是有效的JSON对象")
                             return {
                                 "code": 500,
                                 "msg": "响应格式错误",
@@ -231,14 +230,14 @@ class IPIPVBaseAPI:
                                 if decrypted_data is not None:
                                     result['data'] = decrypted_data
                                 else:
-                                    logger.error("[IPIPVBaseAPI] 响应数据解密失败")
+                                    self.logger.error("[IPIPVBaseAPI] 响应数据解密失败")
                                     return {
                                         "code": 500,
                                         "msg": "响应数据解密失败",
                                         "data": None
                                     }
                             except Exception as e:
-                                logger.error(f"[IPIPVBaseAPI] 解密过程出错: {str(e)}")
+                                self.logger.error(f"[IPIPVBaseAPI] 解密过程出错: {str(e)}")
                                 return {
                                     "code": 500,
                                     "msg": f"解密失败: {str(e)}",
@@ -248,7 +247,7 @@ class IPIPVBaseAPI:
                         return result
                         
                     except json.JSONDecodeError:
-                        logger.error("[IPIPVBaseAPI] 响应解析失败: 非JSON格式")
+                        self.logger.error("[IPIPVBaseAPI] 响应解析失败: 非JSON格式")
                         return {
                             "code": 500,
                             "msg": "响应格式错误",
@@ -256,8 +255,8 @@ class IPIPVBaseAPI:
                         }
                         
         except Exception as e:
-            logger.error(f"[IPIPVBaseAPI] 请求失败: {str(e)}")
-            logger.error(traceback.format_exc())
+            self.logger.error(f"[IPIPVBaseAPI] 请求失败: {str(e)}")
+            self.logger.error(traceback.format_exc())
             return {
                 "code": 500,
                 "msg": str(e),
@@ -268,36 +267,56 @@ class IPIPVBaseAPI:
         """解密API响应"""
         try:
             if not encrypted_text:
-                logger.error("[IPIPVBaseAPI] 解密输入为空")
+                self.logger.error("[IPIPVBaseAPI] 解密输入为空")
                 return None
             
-            logger.debug(f"[IPIPVBaseAPI] 解密前数据: {encrypted_text}")
+            self.logger.debug(f"[IPIPVBaseAPI] 开始解密数据，长度: {len(encrypted_text)}")
             
             # Base64解码
-            encrypted = base64.b64decode(encrypted_text)
+            try:
+                encrypted = base64.b64decode(encrypted_text)
+                self.logger.debug(f"[IPIPVBaseAPI] Base64解码成功，数据长度: {len(encrypted)}")
+            except Exception as e:
+                self.logger.error(f"[IPIPVBaseAPI] Base64解码失败: {str(e)}, 原始数据: {encrypted_text[:100]}")
+                return None
             
             # 准备解密密钥和IV
             key = self.app_secret[:32].encode()
             iv = self.app_secret[:16].encode()
             
+            # 检查密钥和IV长度
             # AES解密
-            cipher = AES.new(key, AES.MODE_CBC, iv)
-            decrypted = cipher.decrypt(encrypted)
+            try:
+                cipher = AES.new(key, AES.MODE_CBC, iv)
+                decrypted = cipher.decrypt(encrypted)
+                self.logger.debug(f"[IPIPVBaseAPI] AES解密成功，长度: {len(decrypted)}")
+            except Exception as e:
+                self.logger.error(f"[IPIPVBaseAPI] AES解密失败: {str(e)}")
+                return None
             
             # 移除填充
-            pad_length = decrypted[-1]
-            decrypted = decrypted[:-pad_length]
+            try:
+                pad_length = decrypted[-1]
+                if not (0 < pad_length <= 16):
+                    self.logger.error(f"[IPIPVBaseAPI] 无效的填充长度: {pad_length}")
+                    return None
+                decrypted = decrypted[:-pad_length]
+                self.logger.debug(f"[IPIPVBaseAPI] 移除填充成功，最终长度: {len(decrypted)}")
+            except Exception as e:
+                self.logger.error(f"[IPIPVBaseAPI] 移除填充失败: {str(e)}")
+                return None
             
             # 解析JSON
             try:
                 result = json.loads(decrypted.decode())
-                logger.debug(f"[IPIPVBaseAPI] 解密后数据: {json.dumps(result, ensure_ascii=False)}")
+                self.logger.debug(f"[IPIPVBaseAPI] 解密后数据: {json.dumps(result, ensure_ascii=False)}")
                 return result
             except json.JSONDecodeError as e:
-                logger.error(f"[IPIPVBaseAPI] JSON解析失败: {str(e)}")
+                self.logger.error(f"[IPIPVBaseAPI] JSON解析失败: {str(e)}")
+                self.logger.error(f"[IPIPVBaseAPI] 解密后原始数据: {decrypted.decode(errors='ignore')}")
                 return None
             
         except Exception as e:
-            logger.error(f"[IPIPVBaseAPI] 解密失败: {str(e)}")
-            logger.error("[IPIPVBaseAPI] 错误堆栈:", exc_info=True)
+            self.logger.error(f"[IPIPVBaseAPI] 解密失败: {str(e)}")
+            self.logger.error("[IPIPVBaseAPI] 错误堆栈:", exc_info=True)
             return None 

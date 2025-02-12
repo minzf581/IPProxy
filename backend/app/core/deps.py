@@ -20,6 +20,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.services import IPIPVBaseAPI, UserService, ProxyService, AuthService, DashboardService, AreaService
+from app.services.static_order_service import StaticOrderService
 from app.config import settings
 from app.core.security import verify_token
 from app.models.user import User
@@ -134,6 +135,18 @@ def get_area_service() -> Generator[AreaService, None, None]:
         service.app_key = settings.IPPROXY_APP_KEY
         service.app_secret = settings.IPPROXY_APP_SECRET
         logger.debug(f"初始化区域服务: base_url={service.base_url}")
+        yield service
+    finally:
+        pass
+
+def get_static_order_service(
+    db: Session = Depends(get_db),
+    ipipv_api: IPIPVBaseAPI = Depends(get_ipipv_api)
+) -> Generator[StaticOrderService, None, None]:
+    """获取静态订单服务实例"""
+    service = StaticOrderService(db, ipipv_api)
+    try:
+        logger.debug("初始化静态订单服务")
         yield service
     finally:
         pass 

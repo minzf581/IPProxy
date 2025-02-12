@@ -95,6 +95,13 @@ export const API_ROUTES = {
         GET: (id: string) => `/settings/agent/${id}/prices`,
         UPDATE: (id: string) => `/settings/agent/${id}/prices`
       }
+    },
+    PRODUCT: {
+      PRICES: {
+        IMPORT: '/product/prices/import',
+        BATCH_IMPORT: '/product/prices/batch-import',
+        EXPORT: '/product/prices/export'
+      }
     }
   },
 } as const;
@@ -171,6 +178,13 @@ API_ROUTES = {
             "PRICES": {
                 "GET": lambda id: f"{API_PREFIX['ADMIN']}/settings/agent/{id}/prices",
                 "UPDATE": lambda id: f"{API_PREFIX['ADMIN']}/settings/agent/{id}/prices"
+            }
+        },
+        "PRODUCT": {
+            "PRICES": {
+                "IMPORT": "/product/prices/import",
+                "BATCH_IMPORT": "/product/prices/batch-import",
+                "EXPORT": "/product/prices/export"
             }
         }
     }

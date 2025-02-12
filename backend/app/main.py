@@ -342,10 +342,10 @@ async def auth_middleware(request: Request, call_next):
         return await call_next(request)
         
     # 获取认证头
-    auth_header = request.headers.get("Authorization")
+    auth_header = request.headers.get("Authorization", "")
     logger.info(f"[Auth Middleware] Authorization header: {auth_header}")
     
-    if not auth_header:
+    if not auth_header or not auth_header.strip():
         logger.warning("[Auth Middleware] No Authorization header found")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -357,14 +357,26 @@ async def auth_middleware(request: Request, call_next):
         
     try:
         # 验证token格式
-        scheme, token = auth_header.split()
-        if scheme.lower() != "bearer":
+        parts = auth_header.split()
+        if len(parts) != 2 or parts[0].lower() != "bearer":
             logger.warning("[Auth Middleware] Invalid auth scheme")
             raise HTTPException(
                 status_code=401,
                 detail={
                     "code": 401,
                     "message": "认证方案无效"
+                },
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+            
+        token = parts[1]
+        if not token:
+            logger.warning("[Auth Middleware] Empty token")
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "code": 401,
+                    "message": "token不能为空"
                 },
                 headers={"WWW-Authenticate": "Bearer"}
             )
@@ -399,10 +411,21 @@ async def auth_middleware(request: Request, call_next):
             
         response = await call_next(request)
         response.headers["Access-Control-Allow-Origin"] = "http://localhost:3000"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
         return response
         
     except HTTPException:
         raise
+    except ValueError as e:
+        logger.error(f"[Auth Middleware] Value error: {str(e)}")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "code": 401,
+                "message": "认证格式错误"
+            },
+            headers={"WWW-Authenticate": "Bearer"}
+        )
     except Exception as e:
         logger.error(f"[Auth Middleware] Unexpected error: {str(e)}")
         raise HTTPException(
@@ -410,8 +433,7 @@ async def auth_middleware(request: Request, call_next):
             detail={
                 "code": 500,
                 "message": "服务器内部错误"
-            },
-            headers={"WWW-Authenticate": "Bearer"}
+            }
         )
 
 # 添加数据库中间件（注意：这个中间件必须在认证中间件之后注册，这样它会先执行）

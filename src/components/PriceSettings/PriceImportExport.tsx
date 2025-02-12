@@ -6,6 +6,7 @@ import type { ProductPrice } from '@/types/product';
 import type { ApiResponse } from '@/types/api';
 import * as XLSX from 'xlsx';
 import request from '@/utils/request';
+import { API_ROUTES } from '@/shared/routes';
 
 const { Text } = Typography;
 
@@ -27,7 +28,7 @@ interface PreviewData {
 
 interface PriceImportExportProps {
   onImportSuccess: () => void;
-  currentData: ProductPrice[];
+  currentData: Array<ProductPrice & { key?: number }>;
 }
 
 const PriceImportExport: React.FC<PriceImportExportProps> = ({
@@ -235,11 +236,11 @@ const PriceImportExport: React.FC<PriceImportExportProps> = ({
         price: item.price
       }));
 
-      const response = await request.post<ApiResponse<ImportResult>>('/api/product/prices/batch-import', {
+      const response = await request.post<ApiResponse<ImportResult>>(API_ROUTES.SETTINGS.PRODUCT.PRICES.BATCH_IMPORT, {
         prices: importData
       });
 
-      const { code, message: msg, data } = response.data;
+      const { code, msg, data } = response.data;
       
       if (code === 200 && data) {
         const { total, success, failed } = data;

@@ -1,6 +1,6 @@
 from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from app.models.static_order import StaticOrder
 from app.models.instance import Instance
@@ -14,14 +14,47 @@ from sqlalchemy.exc import SQLAlchemyError
 import json
 from app.models.product_inventory import ProductInventory
 from app.models.dynamic_order import DynamicOrder
+import asyncio
+from functools import wraps
+from decimal import Decimal
+import time
+import traceback
 
 logger = logging.getLogger(__name__)
+
+def sync_lock(timeout=300):
+    """同步锁装饰器"""
+    def decorator(func):
+        last_sync_time = 0
+        
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            nonlocal last_sync_time
+            current_time = time.time()
+            
+            if current_time - last_sync_time < timeout:
+                logger.info(f"[StaticOrderService] 距离上次同步时间不足{timeout}秒，跳过本次同步")
+                return True
+                
+            try:
+                result = await func(*args, **kwargs)
+                last_sync_time = current_time
+                return result
+            except Exception as e:
+                logger.error(f"同步失败: {str(e)}")
+                return False
+                
+        return wrapper
+    return decorator
 
 class StaticOrderService:
     def __init__(self, db: Session, ipipv_api: IPIPVBaseAPI):
         self.db = db
         self.ipipv_api = ipipv_api
         self.payment_service = PaymentService(db)
+        self._city_cache = {}  # 城市缓存
+        self._last_city_update = None  # 最后更新时间
+        self.logger = logging.getLogger(__name__)
         
     def generate_order_no(self) -> str:
         """生成订单号"""
@@ -409,131 +442,182 @@ class StaticOrderService:
             logger.exception(e)
             raise HTTPException(status_code=500, detail=f"查询产品信息失败: {str(e)}")
 
+    async def _retry_request(self, proxy_type: int, max_retries: int = 3) -> Optional[List[Dict]]:
+        """重试请求产品数据"""
+        retries = 0
+        while retries < max_retries:
+            try:
+                # 将proxy_type包装成数组
+                response = await self.ipipv_api._make_request(
+                    "api/open/app/product/query/v2",
+                    {"proxyType": [proxy_type]}  # 修改这里，将单个数字改为数组
+                )
+                
+                if response.get("code") == 200:
+                    return response.get("data", [])
+                
+                retries += 1
+                self.logger.error(
+                    f"同步失败[{proxy_type}]: {response.get('msg')}, 尝试次数: {retries}/{max_retries}"
+                )
+                await asyncio.sleep(1)  # 失败后等待1秒再重试
+                
+            except Exception as e:
+                retries += 1
+                self.logger.error(
+                    f"同步失败[{proxy_type}]: {str(e)}, 尝试次数: {retries}/{max_retries}"
+                )
+                await asyncio.sleep(1)
+                
+        self.logger.error(f"同步失败[{proxy_type}]: 重试后仍然失败")
+        return None
+        
+    @sync_lock(timeout=300)
     async def sync_product_inventory(self) -> bool:
         """同步产品库存"""
         try:
-            logger.info("[StaticOrderService] 开始同步产品库存")
+            self.logger.info("开始同步产品库存")
             
-            # 调用IPIPV API获取产品列表
-            api_response = await self.ipipv_api._make_request(
-                "/api/open/app/product/query/v2",
-                {
-                    "proxyType": [103]  # 静态国外家庭代理
-                }
-            )
+            # 初始化统计数据
+            sync_stats = {"total": 0, "success": 0, "failed": 0}
+            update_stats = {"total": 0, "updated": 0, "created": 0, "failed": 0}
             
-            if not api_response:
-                logger.error("[StaticOrderService] 获取产品列表失败")
-                return False
+            # 同步不同类型的产品
+            proxy_types = [101, 102, 103, 104, 105]
+            all_products = []
             
-            # 处理API响应数据
-            try:
-                if isinstance(api_response, str):
-                    result = json.loads(api_response)
-                else:
-                    result = api_response
+            for proxy_type in proxy_types:
+                products = await self._retry_request(proxy_type)
                 
-                # 检查响应格式并提取数据
-                if isinstance(result, dict):
-                    if 'data' in result:
-                        product_list = result['data']
-                        if isinstance(product_list, str):
-                            product_list = json.loads(product_list)
-                    else:
-                        logger.error("[StaticOrderService] API响应缺少data字段")
-                        return False
+                if products:
+                    self.logger.info(f"代理类型[{proxy_type}]同步成功: {len(products)}个产品")
+                    all_products.extend(products)
+                    sync_stats["success"] += 1
                 else:
-                    product_list = result
+                    self.logger.error(f"同步失败[{proxy_type}]: 重试后仍然失败")
+                    sync_stats["failed"] += 1
+                    
+                sync_stats["total"] += 1
                 
-                if not isinstance(product_list, list):
-                    logger.error(f"[StaticOrderService] 产品数据类型错误: {type(product_list)}")
+            # 更新数据库
+            if all_products:
+                try:
+                    update_result = await self._update_product_inventory(all_products)
+                    update_stats.update(update_result)
+                except Exception as e:
+                    self.logger.error(f"更新数据库失败: {str(e)}")
                     return False
                     
-            except json.JSONDecodeError as e:
-                logger.error(f"[StaticOrderService] 解析产品数据失败: {str(e)}")
-                return False
-                
-            # 更新本地数据库
-            for product in product_list:
-                if not isinstance(product, dict):
-                    logger.warning(f"[StaticOrderService] 跳过无效的产品数据: {product}")
-                    continue
-                    
+            # 记录同步结果
+            self.logger.info(
+                f"产品库存同步完成 - "
+                f"同步统计：{json.dumps(sync_stats)}，"
+                f"更新统计：{json.dumps(update_stats)}"
+            )
+            
+            return sync_stats["success"] > 0
+            
+        except Exception as e:
+            self.logger.error(f"同步产品库存失败: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            return False
+
+    def _prepare_product_data(self, product: Dict[str, Any]) -> Dict[str, Any]:
+        """准备产品数据，转换为数据库格式"""
+        try:
+            # 提取IP范围
+            ip_range = product.get('ipRange', '').split('-')
+            ip_start = ip_range[0] if len(ip_range) > 0 else None
+            ip_end = ip_range[1] if len(ip_range) > 1 else None
+            
+            # 基础字段映射
+            return {
+                'product_no': product.get('productNo'),
+                'product_name': product.get('productName'),
+                'proxy_type': product.get('proxyType'),
+                'use_type': str(product.get('useType')),
+                'protocol': str(product.get('protocol')),
+                'use_limit': product.get('useLimit'),
+                'sell_limit': product.get('sellLimit'),
+                'area_code': product.get('areaCode'),
+                'country_code': product.get('countryCode'),
+                'state_code': product.get('stateCode'),
+                'city_code': product.get('cityCode'),
+                'detail': product.get('detail'),
+                'cost_price': Decimal(str(product.get('costPrice', 0))),
+                'inventory': product.get('inventory', 0),
+                'ip_type': product.get('ipType'),
+                'isp_type': product.get('ispType'),
+                'net_type': product.get('netType'),
+                'duration': product.get('duration'),
+                'unit': product.get('unit'),
+                'band_width': product.get('bandWidth'),
+                'band_width_price': Decimal(str(product.get('bandWidthPrice', 0))),
+                'max_band_width': product.get('maxBandWidth'),
+                'flow': product.get('flow'),
+                'cpu': product.get('cpu'),
+                'memory': product.get('memory'),
+                'enable': product.get('enable', 1),
+                'supplier_code': product.get('supplierCode'),
+                'ip_count': product.get('ipCount'),
+                'ip_duration': product.get('ipDuration'),
+                'assign_ip': product.get('assignIp', -1),
+                'cidr_status': product.get('cidrStatus', -1),
+                'static_type': product.get('staticType'),
+                'ip_start': ip_start,
+                'ip_end': ip_end,
+                'last_sync_time': datetime.now()
+            }
+        except Exception as e:
+            self.logger.error(f"准备产品数据失败: {str(e)}")
+            raise
+
+    async def _update_product_inventory(self, products: List[Dict]) -> Dict:
+        """更新产品库存"""
+        total = len(products)
+        updated = 0
+        created = 0
+        failed = 0
+        
+        try:
+            for product in products:
                 try:
-                    product_no = str(product.get('productNo', ''))
-                    if not product_no:
-                        logger.warning("[StaticOrderService] 产品编号为空，跳过")
-                        continue
-                        
-                    existing = self.db.query(ProductInventory).filter_by(
-                        product_no=product_no
+                    # 准备产品数据
+                    product_data = self._prepare_product_data(product)
+                    
+                    # 查找现有产品
+                    existing_product = self.db.query(ProductInventory).filter(
+                        ProductInventory.product_no == product_data['product_no']
                     ).first()
                     
-                    product_data = {
-                        'product_no': product_no,
-                        'product_name': str(product.get('productName', '')),
-                        'proxy_type': product.get('proxyType'),
-                        'use_type': product.get('useType'),
-                        'protocol': product.get('protocol'),
-                        'use_limit': product.get('useLimit'),
-                        'sell_limit': product.get('sellLimit'),
-                        'area_code': str(product.get('areaCode', '')),
-                        'country_code': str(product.get('countryCode', '')),
-                        'state_code': str(product.get('stateCode', '')),
-                        'city_code': str(product.get('cityCode', '')),
-                        'detail': str(product.get('detail', '')),
-                        'cost_price': float(product.get('costPrice', 0)),
-                        'inventory': int(product.get('inventory', 0)),
-                        'ip_type': product.get('ipType'),
-                        'isp_type': product.get('ispType'),
-                        'net_type': product.get('netType'),
-                        'duration': product.get('duration'),
-                        'unit': product.get('unit'),
-                        'band_width': product.get('bandWidth'),
-                        'band_width_price': product.get('bandWidthPrice'),
-                        'max_band_width': product.get('maxBandWidth'),
-                        'flow': product.get('flow'),
-                        'cpu': product.get('cpu'),
-                        'memory': product.get('memory'),
-                        'enable': product.get('enable', 1),
-                        'supplier_code': product.get('supplierCode'),
-                        'ip_count': product.get('ipCount'),
-                        'ip_duration': product.get('ipDuration'),
-                        'assign_ip': product.get('assignIp', -1),
-                        'cidr_status': product.get('cidrStatus', -1),
-                        'static_type': product.get('staticType'),
-                        'last_sync_time': datetime.now(),
-                        'ip_start': product.get('ipStart'),
-                        'ip_end': product.get('ipEnd')
-                    }
-                    
-                    if existing:
-                        # 更新现有记录
+                    if existing_product:
+                        # 更新现有产品
                         for key, value in product_data.items():
-                            setattr(existing, key, value)
+                            setattr(existing_product, key, value)
+                        updated += 1
                     else:
-                        # 创建新记录
+                        # 创建新产品
                         new_product = ProductInventory(**product_data)
                         self.db.add(new_product)
-                    
+                        created += 1
+                        
                 except Exception as e:
-                    logger.error(f"[StaticOrderService] 处理产品数据失败: {str(e)}")
-                    logger.exception(e)
+                    self.logger.error(f"处理产品[{product.get('productNo')}]失败: {str(e)}")
+                    failed += 1
                     continue
             
-            try:
-                self.db.commit()
-                logger.info("[StaticOrderService] 产品库存同步成功")
-                return True
-            except SQLAlchemyError as e:
-                self.db.rollback()
-                logger.error(f"[StaticOrderService] 数据库操作失败: {str(e)}")
-                return False
-                
+            self.db.commit()
+            return {
+                "total": total,
+                "updated": updated,
+                "created": created,
+                "failed": failed
+            }
+            
         except Exception as e:
-            logger.error(f"[StaticOrderService] 同步产品库存失败: {str(e)}")
-            logger.exception(e)
-            return False
+            self.db.rollback()
+            self.logger.error(f"更新产品库存失败: {str(e)}")
+            raise
 
     async def list_orders(
         self,
@@ -575,4 +659,39 @@ class StaticOrderService:
         except Exception as e:
             logger.error(f"获取订单列表失败: {str(e)}")
             logger.exception(e)
-            raise HTTPException(status_code=500, detail="获取订单列表失败") 
+            raise HTTPException(status_code=500, detail="获取订单列表失败")
+
+    async def _update_city_cache(self) -> None:
+        """更新城市缓存"""
+        try:
+            # 获取所有城市列表
+            cities = await self.ipipv_api.get_city_list({
+                "version": "v2"
+            })
+            
+            # 更新缓存
+            for city in cities:
+                city_code = city.get('cityCode')
+                if city_code:
+                    self._city_cache[city_code] = {
+                        'name': city.get('cityName'),
+                        'country_code': city.get('countryCode')
+                    }
+            
+            self._last_city_update = datetime.now()
+            logger.info(f"城市缓存更新成功，共 {len(self._city_cache)} 个城市")
+            
+        except Exception as e:
+            logger.error(f"更新城市缓存失败: {str(e)}")
+
+    async def get_city_name(self, city_code: str) -> str:
+        """获取城市名称"""
+        # 如果缓存为空或者超过24小时，更新缓存
+        if not self._city_cache or (
+            self._last_city_update and 
+            (datetime.now() - self._last_city_update).total_seconds() > 86400
+        ):
+            await self._update_city_cache()
+        
+        city_info = self._city_cache.get(city_code, {})
+        return city_info.get('name', city_code) 
