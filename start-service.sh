@@ -38,23 +38,6 @@ warn() {
 log "开始启动服务..."
 log "日志文件位置: $LOG_FILE"
 
-# 检查路由匹配情况
-log "检查路由匹配情况..."
-python3 scripts/check_routes.py --silent
-CHECK_RESULT=$?
-
-if [ $CHECK_RESULT -eq 1 ]; then
-    warn "发现新的前端独有路由，这可能会导致404错误。详细信息请查看 logs/route_check.json"
-    warn "建议在启动服务前解决路由不匹配问题"
-    
-    # 询问是否继续
-    read -p "是否继续启动服务？(y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        error "用户取消启动服务"
-    fi
-fi
-
 # 停止现有服务
 log "停止现有服务..."
 pkill -f "uvicorn app.main:app" || true
@@ -65,19 +48,50 @@ if [ ! -d "backend" ]; then
     error "后端目录不存在"
 fi
 
-# 安装后端依赖
-log "安装后端依赖..."
+# 进入后端目录
 cd backend || error "无法进入后端目录"
 
+# 检查数据库是否存在
+DB_FILE="app.db"
+INIT_DB=false
+
+if [ ! -f "$DB_FILE" ]; then
+    log "数据库文件不存在，将进行初始化..."
+    INIT_DB=true
+else
+    # 检查数据库是否为空（检查users表是否有数据）
+    USER_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM users;" 2>/dev/null || echo "0")
+    if [ "$USER_COUNT" = "0" ] || [ -z "$USER_COUNT" ]; then
+        log "数据库为空，将进行初始化..."
+        rm -f "$DB_FILE"
+        INIT_DB=true
+    else
+        log "数据库已存在且包含数据，跳过初始化..."
+    fi
+fi
+
+# 安装后端依赖
+log "安装后端依赖..."
 if [ ! -f "requirements.txt" ]; then
     error "requirements.txt 不存在"
 fi
 
 pip3 install -r requirements.txt 2>&1 | tee -a "$LOG_FILE"
 
+# 根据需要初始化数据库
+if [ "$INIT_DB" = true ]; then
+    # 初始化数据库
+    log "初始化数据库..."
+    PYTHONPATH=. python3 scripts/init_db.py 2>&1 | tee -a "$LOG_FILE"
+
+    # 添加测试数据
+    log "添加测试数据..."
+    PYTHONPATH=. python3 scripts/add_test_data.py 2>&1 | tee -a "$LOG_FILE"
+fi
+
 # 启动后端服务
 log "启动后端服务..."
-PYTHONPATH=. python3 -m uvicorn app.main:app --reload 2>&1 | tee -a "$LOG_FILE" &
+PYTHONPATH=. python3 -m uvicorn app.main:app --reload --port 8000 2>&1 | tee -a "$LOG_FILE" &
 
 # 返回根目录并安装前端依赖
 log "安装前端依赖..."
@@ -99,6 +113,18 @@ sleep 2
 log "服务已启动！"
 log "后端服务运行在: http://localhost:8000"
 log "前端服务运行在: http://localhost:3000"
+
+# 只有在初始化数据库时才显示默认用户信息
+if [ "$INIT_DB" = true ]; then
+    log "默认用户:"
+    log "1. 管理员"
+    log "   - 用户名: admin"
+    log "   - 密码: admin123"
+    log "2. 代理商"
+    log "   - 用户名: agent"
+    log "   - 密码: agent123"
+fi
+
 log "按 Ctrl+C 停止所有服务"
 
 # 清理函数

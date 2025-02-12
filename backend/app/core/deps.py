@@ -16,11 +16,19 @@ async def example(
 """
 
 from typing import Generator
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy.orm import Session
 from app.services import IPIPVBaseAPI, UserService, ProxyService, AuthService, DashboardService, AreaService
 from app.config import settings
+from app.core.security import verify_token
+from app.models.user import User
 import logging
 
 logger = logging.getLogger(__name__)
+
+# OAuth2 配置
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 def get_db():
     """获取数据库会话"""
@@ -30,6 +38,33 @@ def get_db():
         yield db
     finally:
         db.close()
+
+async def get_current_user(
+    db: Session = Depends(get_db),
+    token: str = Depends(oauth2_scheme)
+) -> User:
+    """获取当前用户"""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="无效的认证凭据",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    
+    try:
+        payload = verify_token(token)
+        if payload is None:
+            raise credentials_exception
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+    except Exception:
+        raise credentials_exception
+        
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise credentials_exception
+        
+    return user
 
 def get_ipipv_api() -> Generator[IPIPVBaseAPI, None, None]:
     """获取IPIPV基础API实例"""

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, DateTime, Boolean, DECIMAL, TIMESTAMP
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
@@ -24,6 +24,7 @@ class User(Base, TimestampMixin):
     ipipv_username = Column(String(50), unique=True, nullable=True)  # IPIPV平台用户名
     ipipv_password = Column(String(255), nullable=True)  # IPIPV平台密码
 
+    # 关系定义
     agent = relationship("User", remote_side=[id], backref="sub_users")
     resource_usage_history = relationship("ResourceUsageHistory", back_populates="user")
     instances = relationship("Instance", back_populates="user")
@@ -34,6 +35,7 @@ class User(Base, TimestampMixin):
     static_orders = relationship("StaticOrder", foreign_keys="StaticOrder.user_id", back_populates="user")
     agent_dynamic_orders = relationship("DynamicOrder", foreign_keys="DynamicOrder.agent_id", back_populates="agent")
     agent_static_orders = relationship("StaticOrder", foreign_keys="StaticOrder.agent_id", back_populates="agent")
+    prices = relationship("AgentPrice", back_populates="agent", cascade="all, delete-orphan")
 
     def to_dict(self):
         return {

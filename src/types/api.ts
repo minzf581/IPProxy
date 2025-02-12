@@ -1,8 +1,7 @@
-export interface ApiResponse<T> {
-  reqId?: string;
+export interface ApiResponse<T = any> {
   code: number;
-  msg: string;
-  data: T;
+  message: string;
+  data?: T;
 }
 
 export interface ApiRequestParams {

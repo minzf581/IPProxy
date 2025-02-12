@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, DECIMAL, TIMESTAMP, SmallInteger, Text, Float
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.models.base import Base
 
@@ -18,7 +19,8 @@ class ProductInventory(Base):
     state_code = Column(String(6), nullable=False, comment='州省代码')
     city_code = Column(String(9), nullable=False, index=True, comment='城市代码')
     detail = Column(Text, comment='商品描述')
-    cost_price = Column(DECIMAL(10,4), nullable=False, comment='价格')
+    cost_price = Column(DECIMAL(10,4), nullable=False, comment='成本价格')
+    global_price = Column(DECIMAL(10,4), comment='全局销售价格')
     inventory = Column(Integer, nullable=False, default=0, comment='库存')
     ip_type = Column(SmallInteger, default=1, comment='ip类型(1=ipv4,2=ipv6,3=随机)')
     isp_type = Column(SmallInteger, default=0, comment='isp类型(1=单isp,2=双isp,0=未知)')
@@ -46,6 +48,7 @@ class ProductInventory(Base):
 
     def to_dict(self):
         return {
+            'id': self.id,
             'product_no': self.product_no,
             'product_name': self.product_name,
             'proxy_type': self.proxy_type,
@@ -59,6 +62,7 @@ class ProductInventory(Base):
             'city_code': self.city_code,
             'detail': self.detail,
             'cost_price': float(self.cost_price) if self.cost_price else None,
+            'global_price': float(self.global_price) if self.global_price else None,
             'inventory': self.inventory,
             'ip_type': self.ip_type,
             'isp_type': self.isp_type,
@@ -80,5 +84,7 @@ class ProductInventory(Base):
             'static_type': self.static_type,
             'last_sync_time': self.last_sync_time.isoformat() if self.last_sync_time else None,
             'ip_start': self.ip_start,
-            'ip_end': self.ip_end
+            'ip_end': self.ip_end,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None
         } 

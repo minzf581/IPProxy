@@ -1,10 +1,8 @@
-from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, DateTime
 from datetime import datetime
 
-class Base(DeclarativeBase):
-    """Base class for all models"""
-    pass
+Base = declarative_base()
 
 class TimestampMixin:
     """Mixin for created_at and updated_at columns"""

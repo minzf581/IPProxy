@@ -8,11 +8,11 @@ class AgentPrice(Base, TimestampMixin):
 
     id = Column(Integer, primary_key=True, index=True)
     agent_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    dynamic_proxy_price = Column(Numeric(10, 2), default=0.1)  # 动态代理默认价格
-    static_proxy_price = Column(Numeric(10, 2), default=0.2)   # 静态代理默认价格
+    dynamic_proxy_price = Column(Numeric(10, 2), nullable=False, default=0)
+    static_proxy_price = Column(Numeric(10, 2), nullable=False, default=0)
 
-    # 关联关系
-    agent = relationship("User", backref="price_settings")
+    # 关系定义
+    agent = relationship("User", back_populates="prices")
 
     def get_dynamic_price(self, resource_type: str = None) -> float:
         """获取动态代理价格"""

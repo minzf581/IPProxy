@@ -1,47 +1,68 @@
-import React from 'react';
-import { Modal, Form, InputNumber, Tabs, Card, Space, Select, Button, message } from 'antd';
-import { PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import React, { useEffect } from 'react';
+import { Modal, Form, InputNumber, Table, Space, Button, message, Input } from 'antd';
 import { updateAgent } from '@/services/agentService';
+import { updateProductPrices } from '@/services/productInventory';
 import type { UpdateAgentForm } from '@/types/agent';
+import type { ProductPrice } from '@/types/product';
 
 interface Props {
   visible: boolean;
-  agent: {
+  isGlobal?: boolean;
+  agent?: {
     id: number;
     price_config?: UpdateAgentForm['price_config'];
   };
+  initialPrices?: ProductPrice[];
   onClose: () => void;
 }
 
-const { TabPane } = Tabs;
-
-const PriceConfigModal: React.FC<Props> = ({ visible, agent, onClose }) => {
+const PriceConfigModal: React.FC<Props> = ({ 
+  visible, 
+  isGlobal = false,
+  agent,
+  initialPrices = [],
+  onClose 
+}) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = React.useState(false);
+  const [editingKey, setEditingKey] = React.useState<number | null>(null);
 
-  React.useEffect(() => {
-    if (visible && agent.price_config) {
-      form.setFieldsValue({
-        price_config: agent.price_config
-      });
+  useEffect(() => {
+    if (visible) {
+      if (isGlobal && initialPrices.length > 0) {
+        form.setFieldsValue({ prices: initialPrices });
+      } else if (!isGlobal && agent?.price_config) {
+        form.setFieldsValue({ prices: agent.price_config });
+      }
     }
-  }, [visible, agent]);
+  }, [visible, isGlobal, agent, initialPrices]);
 
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
       setLoading(true);
       
-      await updateAgent(agent.id, {
-        price_config: values.price_config
-      });
+      if (isGlobal) {
+        await updateProductPrices({
+          is_global: true,
+          prices: values.prices.map((item: ProductPrice) => ({
+            id: item.id,
+            price: item.price
+          }))
+        });
+        message.success('全局价格设置成功');
+      } else if (agent) {
+        await updateAgent(agent.id, {
+          price_config: values.prices
+        });
+        message.success('代理商价格设置成功');
+      }
       
-      message.success('单价设置成功');
       form.resetFields();
       onClose();
     } catch (error) {
-      console.error('单价设置失败:', error);
-      message.error('单价设置失败');
+      console.error('价格设置失败:', error);
+      message.error('价格设置失败');
     } finally {
       setLoading(false);
     }
@@ -49,141 +70,196 @@ const PriceConfigModal: React.FC<Props> = ({ visible, agent, onClose }) => {
 
   const handleCancel = () => {
     form.resetFields();
+    setEditingKey(null);
     onClose();
   };
 
+  const isEditing = (record: ProductPrice) => record.id === editingKey;
+
+  const edit = (record: ProductPrice) => {
+    form.setFieldsValue({ ...record });
+    setEditingKey(record.id);
+  };
+
+  const save = async (key: number) => {
+    try {
+      const row = await form.validateFields();
+      const newData = [...initialPrices];
+      const index = newData.findIndex(item => key === item.id);
+      if (index > -1) {
+        const item = newData[index];
+        newData.splice(index, 1, {
+          ...item,
+          ...row,
+        });
+        form.setFieldsValue({ prices: newData });
+      }
+      setEditingKey(null);
+    } catch (errInfo) {
+      console.log('Validate Failed:', errInfo);
+    }
+  };
+
+  const columns = [
+    {
+      title: '资源类型',
+      dataIndex: 'type',
+      key: 'type',
+      render: (type: string) => type === 'dynamic' ? '动态资源' : '静态资源'
+    },
+    {
+      title: '产品名称',
+      dataIndex: 'name',
+      key: 'name',
+    },
+    {
+      title: '区域',
+      dataIndex: 'area',
+      key: 'area',
+    },
+    {
+      title: '国家',
+      dataIndex: 'country',
+      key: 'country',
+    },
+    {
+      title: '城市',
+      dataIndex: 'city',
+      key: 'city',
+    },
+    {
+      title: 'IP段',
+      dataIndex: 'ipRange',
+      key: 'ipRange',
+    },
+    {
+      title: '价格',
+      dataIndex: 'price',
+      key: 'price',
+      render: (_: any, record: ProductPrice) => {
+        const editing = isEditing(record);
+        return editing ? (
+          <Form.Item
+            name="price"
+            style={{ margin: 0 }}
+            rules={[
+              { required: true, message: '请输入价格' },
+              { type: 'number', min: 0.1, message: '价格不能小于0.1' }
+            ]}
+          >
+            <InputNumber
+              prefix="¥"
+              step={0.1}
+              precision={1}
+            />
+          </Form.Item>
+        ) : (
+          `¥${record.price.toFixed(1)}`
+        );
+      }
+    },
+    {
+      title: '操作',
+      key: 'action',
+      render: (_: any, record: ProductPrice) => {
+        const editing = isEditing(record);
+        return editing ? (
+          <Space>
+            <Button
+              type="link"
+              onClick={() => save(record.id)}
+            >
+              保存
+            </Button>
+            <Button
+              type="link"
+              onClick={() => setEditingKey(null)}
+            >
+              取消
+            </Button>
+          </Space>
+        ) : (
+          <Button
+            type="link"
+            disabled={editingKey !== null}
+            onClick={() => edit(record)}
+          >
+            修改
+          </Button>
+        );
+      }
+    }
+  ];
+
+  const title = isGlobal ? '全局价格设置' : '代理商价格设置';
+
   return (
     <Modal
-      title="单价设置"
+      title={title}
       open={visible}
       onOk={handleOk}
       onCancel={handleCancel}
       confirmLoading={loading}
-      width={800}
+      width={1200}
     >
-      <Form
-        form={form}
-        layout="vertical"
-      >
-        <Tabs defaultActiveKey="dynamic">
-          <TabPane tab="动态资源" key="dynamic">
-            <Form.List name={['price_config', 'dynamic']}>
-              {(fields, { add, remove }) => (
-                <>
-                  {fields.map(({ key, name, ...restField }) => (
-                    <Space key={key} align="baseline">
-                      <Form.Item
-                        {...restField}
-                        name={[name, 'resourceId']}
-                        rules={[{ required: true, message: '请选择资源' }]}
-                      >
-                        <Select style={{ width: 200 }} placeholder="选择资源">
-                          <Select.Option value="resource1">动态资源1</Select.Option>
-                          <Select.Option value="resource2">动态资源2</Select.Option>
-                          <Select.Option value="resource3">动态资源3</Select.Option>
-                        </Select>
-                      </Form.Item>
-                      <Form.Item
-                        {...restField}
-                        name={[name, 'price']}
-                        rules={[{ required: true, message: '请输入单价' }]}
-                      >
-                        <InputNumber
-                          placeholder="单价(元/GB)"
-                          min={0}
-                          precision={2}
-                          step={0.1}
-                        />
-                      </Form.Item>
-                      <MinusCircleOutlined onClick={() => remove(name)} />
-                    </Space>
-                  ))}
-                  <Form.Item>
-                    <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
-                      添加动态资源单价
-                    </Button>
-                  </Form.Item>
-                </>
-              )}
-            </Form.List>
-          </TabPane>
-          <TabPane tab="静态资源" key="static">
-            <Form.List name={['price_config', 'static']}>
-              {(fields, { add, remove }) => (
-                <>
-                  {fields.map(({ key, name, ...restField }) => (
-                    <Card key={key} style={{ marginBottom: 16 }}>
-                      <Space align="start">
-                        <Form.Item
-                          {...restField}
-                          name={[name, 'resourceId']}
-                          rules={[{ required: true, message: '请选择资源' }]}
-                        >
-                          <Select style={{ width: 200 }} placeholder="选择资源">
-                            <Select.Option value="static1">静态资源1</Select.Option>
-                            <Select.Option value="static2">静态资源2</Select.Option>
-                            <Select.Option value="static3">静态资源3</Select.Option>
-                            <Select.Option value="static4">静态资源4</Select.Option>
-                            <Select.Option value="static5">静态资源5</Select.Option>
-                            <Select.Option value="static7">静态资源7</Select.Option>
-                          </Select>
-                        </Form.Item>
-                        <Form.List name={[name, 'regions']}>
-                          {(subFields, { add: addRegion, remove: removeRegion }) => (
-                            <>
-                              {subFields.map(({ key: subKey, name: subName, ...restSubField }) => (
-                                <Space key={subKey} align="baseline">
-                                  <Form.Item
-                                    {...restSubField}
-                                    name={[subName, 'region']}
-                                    rules={[{ required: true, message: '请选择区域' }]}
-                                  >
-                                    <Select style={{ width: 200 }} placeholder="选择区域">
-                                      <Select.Option value="china">中国</Select.Option>
-                                      <Select.Option value="usa">美国</Select.Option>
-                                      <Select.Option value="europe">欧洲</Select.Option>
-                                      <Select.Option value="asia">亚洲</Select.Option>
-                                    </Select>
-                                  </Form.Item>
-                                  <Form.Item
-                                    {...restSubField}
-                                    name={[subName, 'price']}
-                                    rules={[{ required: true, message: '请输入单价' }]}
-                                  >
-                                    <InputNumber
-                                      placeholder="单价(元/IP)"
-                                      min={0}
-                                      precision={2}
-                                      step={0.1}
-                                    />
-                                  </Form.Item>
-                                  <MinusCircleOutlined onClick={() => removeRegion(subName)} />
-                                </Space>
-                              ))}
-                              <Form.Item>
-                                <Button type="dashed" onClick={() => addRegion()} block icon={<PlusOutlined />}>
-                                  添加区域单价
-                                </Button>
-                              </Form.Item>
-                            </>
-                          )}
-                        </Form.List>
-                        <MinusCircleOutlined onClick={() => remove(name)} />
-                      </Space>
-                    </Card>
-                  ))}
-                  <Form.Item>
-                    <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
-                      添加静态资源单价
-                    </Button>
-                  </Form.Item>
-                </>
-              )}
-            </Form.List>
-          </TabPane>
-        </Tabs>
+      <Form form={form} component={false}>
+        <Table
+          components={{
+            body: {
+              cell: EditableCell,
+            },
+          }}
+          dataSource={initialPrices}
+          columns={columns}
+          rowKey="id"
+          pagination={false}
+        />
       </Form>
     </Modal>
+  );
+};
+
+interface EditableCellProps extends React.HTMLAttributes<HTMLElement> {
+  editing: boolean;
+  dataIndex: string;
+  title: string;
+  inputType: 'number' | 'text';
+  record: ProductPrice;
+  index: number;
+  children: React.ReactNode;
+}
+
+const EditableCell: React.FC<EditableCellProps> = ({
+  editing,
+  dataIndex,
+  title,
+  inputType,
+  record,
+  index,
+  children,
+  ...restProps
+}) => {
+  const inputNode = inputType === 'number' ? <InputNumber /> : <Input />;
+
+  return (
+    <td {...restProps}>
+      {editing ? (
+        <Form.Item
+          name={dataIndex}
+          style={{ margin: 0 }}
+          rules={[
+            {
+              required: true,
+              message: `请输入 ${title}!`,
+            },
+          ]}
+        >
+          {inputNode}
+        </Form.Item>
+      ) : (
+        children
+      )}
+    </td>
   );
 };
 

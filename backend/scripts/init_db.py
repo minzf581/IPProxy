@@ -38,12 +38,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 def init_db():
     """初始化数据库"""
     try:
-        # 创建数据库目录
-        instance_dir = project_root / "instance"
-        instance_dir.mkdir(exist_ok=True)
-        
-        # 删除现有数据库文件
-        db_path = instance_dir / "test.db"
+        # 检查并删除现有数据库文件
+        db_path = project_root / "app.db"
         if db_path.exists():
             db_path.unlink()
             logger.info("已删除现有数据库文件")
@@ -125,6 +121,7 @@ def init_db():
                     city_code="USA0CALAX",
                     detail="美国洛杉矶静态代理",
                     cost_price=Decimal('0.1'),
+                    global_price=Decimal('0.2'),
                     inventory=100,
                     ip_type=1,
                     isp_type=1,
@@ -161,6 +158,7 @@ def init_db():
                     city_code="USA0CALAX",
                     detail="美国洛杉矶静态代理",
                     cost_price=Decimal('0.1'),
+                    global_price=Decimal('0.2'),
                     inventory=1434,
                     ip_type=1,
                     isp_type=1,

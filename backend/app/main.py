@@ -47,8 +47,20 @@ from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from app.models.base import Base
-from app.database import engine, init_db, init_test_data, get_db
-from app.routers import user, agent, dashboard, auth, transaction, order, proxy, instance, area, settings, callback
+from app.database import engine, get_db
+from app.routers import (
+    user, 
+    agent, 
+    dashboard, 
+    auth, 
+    transaction, 
+    order, 
+    proxy, 
+    instance, 
+    area, 
+    settings as settings_router,  # 重命名避免冲突
+    callback
+)
 from app.services.static_order_service import StaticOrderService
 from app.services.ipipv_base_api import IPIPVBaseAPI
 import uvicorn
@@ -59,13 +71,14 @@ from app.models.agent_price import AgentPrice
 from decimal import Decimal
 from app.core.security import get_password_hash, SECRET_KEY, ALGORITHM
 from app.api.endpoints import product, static_order
-from app.config import settings as app_settings
+from app.core.config import settings
 import logging.config
 from fastapi.security import OAuth2PasswordBearer
 from app.services.auth import verify_token, get_current_user
 from contextlib import asynccontextmanager
 from fastapi import status
 import jwt
+from app.api.v1.api import api_router
 
 # 配置日志
 LOGGING_CONFIG = {
@@ -99,7 +112,7 @@ LOGGING_CONFIG = {
             "propagate": False
         },
         "app.services.ipipv_base_api": {
-            "level": "INFO",  # 设置IPIPV基础API的日志级别为INFO
+            "level": "INFO",
             "handlers": ["console", "file"],
             "propagate": False
         },
@@ -131,9 +144,9 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler"""
     # Startup
     try:
-        # 初始化数据库
-        init_db()
-        logger.info("数据库初始化完成")
+        # 创建所有表
+        Base.metadata.create_all(bind=engine)
+        logger.info("数据库表已创建")
 
         # 确保默认用户存在
         await ensure_default_users()
@@ -150,21 +163,20 @@ async def lifespan(app: FastAPI):
     logger.info("应用正在关闭...")
 
 app = FastAPI(
-    title="IP代理管理系统",
+    title=settings.PROJECT_NAME,
     description="IP代理管理系统API文档",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
 
 # 配置CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # 开发环境允许前端地址
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
-    max_age=3600,  # 预检请求缓存时间
 )
 
 # 注册路由
@@ -176,9 +188,10 @@ app.include_router(area.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(product.router, prefix="/api")
 app.include_router(static_order.router, prefix="/api")
-app.include_router(settings.router, prefix="/api")
+app.include_router(settings_router.router, prefix="/api")  # 使用重命名后的路由
 app.include_router(callback.router, prefix="/api")
 app.include_router(agent.router, prefix="/api")  # 添加代理商路由
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 # 白名单路径
 AUTH_WHITELIST = [
@@ -305,7 +318,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 @app.get("/")
 async def root():
     """健康检查接口"""
-    return {"message": "IP代理管理系统API服务正常运行"}
+    return {"message": "Welcome to IP Proxy API"}
 
 # 添加认证中间件
 @app.middleware("http")

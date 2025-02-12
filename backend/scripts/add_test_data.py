@@ -39,6 +39,7 @@ def add_test_data():
                 "city_code": "LAX",  # 洛杉矶
                 "detail": "美国洛杉矶静态住宅代理",
                 "cost_price": Decimal('0.5'),
+                "global_price": Decimal('1.0'),
                 "inventory": 100,
                 "ip_type": 1,  # ipv4
                 "isp_type": 1,  # 单isp
@@ -70,6 +71,7 @@ def add_test_data():
                 "city_code": "LON",  # 伦敦
                 "detail": "英国伦敦静态住宅代理",
                 "cost_price": Decimal('0.6'),
+                "global_price": Decimal('1.2'),
                 "inventory": 50,
                 "ip_type": 1,  # ipv4
                 "isp_type": 1,  # 单isp
@@ -101,6 +103,7 @@ def add_test_data():
                 "city_code": "JPN000000",  # 东京
                 "detail": "日本东京静态住宅代理",
                 "cost_price": Decimal('0.7'),
+                "global_price": Decimal('1.4'),
                 "inventory": 80,
                 "ip_type": 1,  # ipv4
                 "isp_type": 1,  # 单isp
