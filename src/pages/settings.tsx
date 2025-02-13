@@ -13,6 +13,28 @@ import type { ProductPrice } from '@/types/product';
 import type { ColumnsType } from 'antd/es/table';
 import { getMappedValue, getUniqueValues, PRODUCT_NO_MAP, PROXY_TYPE_MAP, AREA_MAP, COUNTRY_MAP, CITY_MAP } from '@/constants/mappings';
 import type { ProductPriceParams } from '@/types/api';
+import { useRequest } from 'ahooks';
+import type { AgentInfo } from '@/types/agent';
+import axios from 'axios';
+import { getAgentList } from '@/services/agentService';
+
+const agentApi = axios.create({
+  baseURL: `${import.meta.env.VITE_API_URL}/api`,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  }
+});
+
+// 添加认证拦截器
+agentApi.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
 const { Option } = Select;
 
@@ -32,6 +54,25 @@ const SettingsPage: React.FC = () => {
   const [selectedPrice, setSelectedPrice] = useState<ProductPrice | null>(null);
   const [prices, setPrices] = useState<PriceTableItem[]>([]);
   const { user } = useAuth();
+  const [selectedAgent, setSelectedAgent] = useState<number | null>(null);
+
+  // 获取代理商列表
+  const fetchAgentList = async () => {
+    try {
+      const result = await getAgentList({ 
+        page: 1, 
+        pageSize: 1000,
+        status: 'active'
+      });
+      return result;
+    } catch (error) {
+      console.error('获取代理商列表失败:', error);
+      return { list: [], total: 0 };
+    }
+  };
+
+  const { data: agentResponse } = useRequest<{ list: AgentInfo[]; total: number }, []>(fetchAgentList);
+  const agents = agentResponse?.list || [];
 
   const [filterOptions, setFilterOptions] = useState<{
     types: { text: string; value: string }[];
@@ -53,11 +94,12 @@ const SettingsPage: React.FC = () => {
     try {
       setLoading(true);
       const response = await getProductPrices({ 
-        isGlobal: true
+        is_global: selectedAgent ? false : true,
+        agent_id: selectedAgent || undefined
       });
       console.log('[Settings] API响应:', response);
       
-      if (response.code === 0 || response.code === 200) {  // 兼容两种成功状态码
+      if (response.code === 0 || response.code === 200) {
         if (!response.data) {
           console.error('[Settings] API响应中没有data字段:', response);
           message.error('获取价格数据失败: 响应数据格式错误');
@@ -86,10 +128,10 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  // 在组件挂载时加载数据
+  // 在组件挂载和代理商选择变化时加载数据
   useEffect(() => {
     loadPrices();
-  }, []);
+  }, [selectedAgent]);
 
   // 更新筛选选项
   useEffect(() => {
@@ -379,23 +421,15 @@ const SettingsPage: React.FC = () => {
         </Col>
       </Row>
 
-      {/* 全局价格设置（仅管理员可见） */}
+      {/* 价格设置（仅管理员可见） */}
       {isAdmin && (
         <Card 
-          title="全局价格设置" 
+          title="价格设置" 
           bordered={false}
           style={{ 
             borderRadius: 8,
             boxShadow: '0 1px 2px rgba(0, 0, 0, 0.03)'
           }}
-          extra={
-            <Space>
-              <PriceImportExport
-                currentData={prices}
-                onImportSuccess={loadPrices}
-              />
-            </Space>
-          }
         >
           <Alert
             message="价格说明"
@@ -403,7 +437,7 @@ const SettingsPage: React.FC = () => {
               <ul style={{ margin: 0, paddingLeft: 20 }}>
                 <li>动态资源：按流量计费，单位为元/GB</li>
                 <li>静态资源：按IP数量计费，单位为元/IP</li>
-                <li>此处设置的价格为系统全局默认价格</li>
+                <li>选择代理商后显示该代理商的价格，未设置时默认为全局价格的120%</li>
                 <li>修改价格后将立即生效</li>
               </ul>
             }
@@ -412,20 +446,40 @@ const SettingsPage: React.FC = () => {
             style={{ marginBottom: 24 }}
           />
 
-          <Table
-            columns={columns}
-            dataSource={prices}
-            loading={priceLoading}
-            rowKey="id"
-            scroll={{ x: 1200 }}
-            pagination={{
-              showSizeChanger: true,
-              showQuickJumper: true,
-              showTotal: (total) => `共 ${total} 条`,
-              defaultPageSize: 10,
-              pageSizeOptions: ['10', '20', '50', '100']
-            }}
-          />
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Space direction="vertical" size="small" style={{ width: '100%' }}>
+              <div>设置对象</div>
+              <Select
+                placeholder="选择代理商（默认为全局价格）"
+                allowClear
+                style={{ width: 300 }}
+                value={selectedAgent}
+                onChange={setSelectedAgent}
+              >
+                {agents.map((agent: AgentInfo) => (
+                  <Option key={agent.id} value={agent.id}>
+                    {(agent as any).username || agent.app_username || '未命名代理商'}
+                  </Option>
+                ))}
+              </Select>
+              <div style={{ color: '#666', fontSize: '12px' }}>
+                {selectedAgent ? '当前显示所选代理商的价格' : '当前显示全局价格'}
+              </div>
+            </Space>
+            <Space>
+              <PriceImportExport 
+                onImportSuccess={loadPrices}
+                currentData={prices}
+              />
+            </Space>
+            <Table
+              columns={columns}
+              dataSource={prices}
+              loading={loading}
+              pagination={false}
+              scroll={{ y: 500 }}
+            />
+          </Space>
         </Card>
       )}
 

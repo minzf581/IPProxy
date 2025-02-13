@@ -91,10 +91,7 @@ export const API_ROUTES = {
 
   SETTINGS: {
     AGENT: {
-      PRICES: {
-        GET: (id: string) => `/settings/agent/${id}/prices`,
-        UPDATE: (id: string) => `/settings/agent/${id}/prices`
-      }
+      // 移除价格相关路由
     },
     PRODUCT: {
       PRICES: {
@@ -110,11 +107,7 @@ export const API_ROUTES = {
     CREATE: `${API_PREFIX.OPEN}/proxy/user/v2`,
     UPDATE: `${API_PREFIX.OPEN}/agent/{id}`,
     DELETE: `${API_PREFIX.OPEN}/agent/{id}`,
-    ORDERS: `${API_PREFIX.OPEN}/agent-orders/v2`,
-    PRICES: {
-      GET: (id: string) => `${API_PREFIX.ADMIN}/agent/${id}/prices`,
-      UPDATE: (id: string) => `${API_PREFIX.ADMIN}/agent/${id}/prices`
-    }
+    ORDERS: `${API_PREFIX.OPEN}/agent-orders/v2`
   },
 } as const;
 

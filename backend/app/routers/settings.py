@@ -77,11 +77,9 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.resource_type import ResourceType
-from app.models.agent_price import AgentPrice
 from app.models.user import User
+from typing import Dict, Any, List
 from app.services.auth import get_current_user
-from typing import Dict, List, Any
-from decimal import Decimal
 import logging
 
 # 设置日志记录器

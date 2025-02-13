@@ -44,50 +44,6 @@ class UserService(IPIPVBaseAPI):
             logger.error(f"[UserService] 获取用户信息失败: {str(e)}")
             return None
             
-    async def create_user(
-        self, 
-        db: Session,
-        username: str, 
-        password: str, 
-        email: str,
-        is_admin: bool = False,
-        is_agent: bool = False
-    ) -> Optional[User]:
-        """创建新用户"""
-        try:
-            logger.info(f"[UserService] 创建新用户: username={username}")
-            
-            # 检查用户名是否已存在
-            existing_user = db.query(User).filter(User.username == username).first()
-            if existing_user:
-                logger.warning(f"[UserService] 用户名已存在: {username}")
-                return None
-                
-            # 创建新用户
-            hashed_password = get_password_hash(password)
-            new_user = User(
-                username=username,
-                password=hashed_password,
-                email=email,
-                is_admin=is_admin,
-                is_agent=is_agent,
-                status=1,  # 1=正常
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
-            )
-            
-            db.add(new_user)
-            db.commit()
-            db.refresh(new_user)
-            
-            logger.info(f"[UserService] 用户创建成功: id={new_user.id}")
-            return new_user
-            
-        except Exception as e:
-            logger.error(f"[UserService] 创建用户失败: {str(e)}")
-            db.rollback()
-            return None
-            
     async def update_user(
         self,
         user_id: int,

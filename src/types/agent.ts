@@ -7,19 +7,9 @@ export interface AgentInfo {
   limit_flow: number;
   main_account: string;
   remark?: string;
-  contact?: string;
+  phone?: string;
   created_at: string;
   updated_at?: string;
-  price_config?: {
-    dynamic: {
-      [key: string]: number; // 动态资源单价配置，key为资源ID
-    };
-    static: {
-      [key: string]: {
-        [region: string]: number; // 静态资源单价配置，key为区域ID
-      };
-    };
-  };
 }
 
 export interface AgentStatistics {
@@ -34,12 +24,13 @@ export interface AgentStatistics {
 }
 
 export interface CreateAgentForm {
-  username?: string;
-  password?: string;
-  balance: number;
-  contact?: string;
+  username: string;
+  password: string;
+  email?: string;
+  balance?: number;
+  phone?: string;
   remark?: string;
-  status: boolean;
+  status?: 'active' | 'disabled';
 }
 
 export interface UpdatePasswordForm {
@@ -60,16 +51,6 @@ export interface UpdateAgentForm {
   balance?: number;
   app_username?: string;
   contact?: string;
-  price_config?: {
-    dynamic: {
-      [key: string]: number; // 动态资源单价配置，key为资源ID
-    };
-    static: {
-      [key: string]: {
-        [region: string]: number; // 静态资源单价配置，key为区域ID
-      };
-    };
-  };
 }
 
 export interface AgentOrder {

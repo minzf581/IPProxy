@@ -1,7 +1,8 @@
 import React from 'react';
-import { Modal, Form, Input, InputNumber, Switch, message } from 'antd';
+import { Modal, Form, Input, InputNumber, message } from 'antd';
 import { createAgent } from '@/services/agentService';
 import type { CreateAgentForm } from '@/types/agent';
+import { debug } from '@/utils/debug';
 
 interface Props {
   visible: boolean;
@@ -18,111 +19,141 @@ const CreateAgentModal: React.FC<Props> = ({ visible, onCancel, onSuccess }) => 
       const values = await form.validateFields();
       setLoading(true);
 
-      await createAgent({
-        username: values.username,
-        password: values.password,
-        balance: values.balance,
-        contact: values.contact,
-        remark: values.remark,
-        status: values.status
+      debug.log('Form values:', {
+        ...values,
+        password: '******'
       });
 
-      message.success('创建代理商成功');
-      form.resetFields();
-      onSuccess();
-      onCancel();
-    } catch (error) {
-      console.error('创建代理商失败:', error);
-      message.error('创建代理商失败');
+      // 准备请求数据
+      const requestData: CreateAgentForm = {
+        username: values.username,
+        password: values.password,
+        email: values.email?.trim() || undefined,  // 如果为空字符串，则设为undefined
+        balance: values.balance || 1000.0,  // 使用默认值1000
+        phone: values.phone?.trim() || undefined,  // 修改为 phone
+        remark: values.remark?.trim() || undefined,
+        status: 'active'
+      };
+
+      debug.log('Request data:', {
+        ...requestData,
+        password: '******'
+      });
+
+      const response = await createAgent(requestData);
+      debug.log('API response:', response);
+
+      if (response.code === 0 && response.data) {
+        message.success('创建代理商成功');
+        form.resetFields();
+        onSuccess();
+        onCancel();
+      } else {
+        message.error(response.msg || '创建代理商失败');
+      }
+    } catch (error: any) {
+      debug.error('创建代理商失败:', error);
+      if (error.response?.data?.msg) {
+        message.error(error.response.data.msg);
+      } else {
+        message.error(error.message || '创建代理商失败，请重试');
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  // 当弹窗显示时，设置默认值
+  React.useEffect(() => {
+    if (visible) {
+      form.setFieldsValue({
+        balance: 1000.0  // 设置默认余额
+      });
+    }
+  }, [visible, form]);
+
   return (
     <Modal
-      title="新增代理商"
+      title="创建代理商"
       open={visible}
-      onCancel={onCancel}
       onOk={handleSubmit}
+      onCancel={() => {
+        form.resetFields();
+        onCancel();
+      }}
       confirmLoading={loading}
-      width={600}
+      maskClosable={false}
+      destroyOnClose
     >
-      <Form
-        form={form}
-        layout="vertical"
-        initialValues={{
-          status: true
-        }}
-      >
+      <Form form={form} layout="vertical">
         <Form.Item
-          label="账号"
           name="username"
+          label="用户名"
           rules={[
-            { required: true, message: '请输入账号' },
-            { min: 4, message: '账号长度不能小于4位' },
-            { max: 20, message: '账号长度不能大于20位' },
-            { pattern: /^[a-zA-Z0-9_]+$/, message: '账号只能包含字母、数字和下划线' }
+            { required: true, message: '请输入用户名' },
+            { min: 3, message: '用户名至少3个字符' },
+            { max: 20, message: '用户名最多20个字符' },
+            { pattern: /^[a-zA-Z0-9_-]+$/, message: '用户名只能包含字母、数字、下划线和连字符' }
           ]}
         >
-          <Input placeholder="请输入账号" />
+          <Input placeholder="请输入用户名" />
         </Form.Item>
 
         <Form.Item
-          label="密码"
           name="password"
+          label="密码"
           rules={[
             { required: true, message: '请输入密码' },
-            { min: 6, message: '密码长度不能小于6位' },
-            { max: 20, message: '密码长度不能大于20位' }
+            { min: 6, message: '密码至少6个字符' }
           ]}
         >
           <Input.Password placeholder="请输入密码" />
         </Form.Item>
 
         <Form.Item
-          label="初始额度"
-          name="balance"
+          name="email"
+          label="邮箱"
           rules={[
-            { required: true, message: '请输入初始额度' },
-            { type: 'number', min: 0, message: '初始额度不能小于0' }
+            { type: 'email', message: '请输入有效的邮箱地址' }
+          ]}
+        >
+          <Input placeholder="请输入邮箱（选填，默认使用系统生成）" allowClear />
+        </Form.Item>
+
+        <Form.Item
+          name="balance"
+          label="初始余额"
+          rules={[
+            { type: 'number', min: 0, message: '余额不能小于0' }
           ]}
         >
           <InputNumber
             style={{ width: '100%' }}
-            placeholder="请输入初始额度"
             min={0}
-            step={100}
             precision={2}
-            prefix="¥"
+            placeholder="请输入初始余额（默认1000）"
           />
         </Form.Item>
 
         <Form.Item
+          name="phone"
           label="联系方式"
-          name="contact"
+          rules={[
+            { pattern: /^[\d\-+() ]{5,20}$/, message: '请输入有效的联系方式' }
+          ]}
         >
-          <Input placeholder="请输入联系方式（选填）" />
+          <Input placeholder="请输入联系方式（选填）" allowClear />
         </Form.Item>
 
         <Form.Item
-          label="备注"
           name="remark"
+          label="备注"
         >
           <Input.TextArea
             rows={4}
             placeholder="请输入备注信息（选填）"
-            maxLength={200}
-            showCount
+            allowClear
           />
-        </Form.Item>
-
-        <Form.Item
-          label="状态"
-          name="status"
-          valuePropName="checked"
-        >
-          <Switch checkedChildren="启用" unCheckedChildren="禁用" />
         </Form.Item>
       </Form>
     </Modal>

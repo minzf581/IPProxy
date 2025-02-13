@@ -1,11 +1,11 @@
 import request from '@/utils/request';
-import type { ProductPrice, ProductPriceParams } from '@/types/product';
+import type { ProductPrice, ProductPriceParams, ProductPriceUpdate } from '@/types/product';
 import type { ApiResponse } from '@/types/api';
 import axios from 'axios';
 
 // 创建价格服务专用的 axios 实例
 const priceApi = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL}/api`,
+  baseURL: `${import.meta.env.VITE_API_URL}`,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -25,7 +25,7 @@ priceApi.interceptors.request.use((config) => {
 export async function getProductPrices(params: ProductPriceParams): Promise<ApiResponse<ProductPrice[]>> {
   try {
     console.log('发送请求参数:', params);
-    const response = await priceApi.get<ApiResponse<ProductPrice[]>>('/product/prices', { params });
+    const response = await priceApi.get<ApiResponse<ProductPrice[]>>('/api/product/prices', { params });
     console.log('原始API响应:', JSON.stringify(response.data, null, 2));
     
     // 确保响应数据符合预期格式
@@ -43,31 +43,45 @@ export async function getProductPrices(params: ProductPriceParams): Promise<ApiR
   }
 }
 
-export async function updateProductPrice(id: number, data: Partial<ProductPrice>): Promise<ApiResponse<ProductPrice>> {
-  const response = await priceApi.put<ApiResponse<ProductPrice>>(`/product/prices/${id}`, data);
-  return response.data;
+export async function updateProductPrice(
+  id: number,
+  data: ProductPriceUpdate
+): Promise<void> {
+  const response = await priceApi.put<ApiResponse<void>>(
+    `/api/products/${id}/price`,
+    data
+  );
+  
+  if (response.data.code !== 0) {
+    throw new Error(response.data.msg || '更新价格失败');
+  }
 }
 
 export async function createProductPrice(data: Omit<ProductPrice, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<ProductPrice>> {
-  const response = await priceApi.post<ApiResponse<ProductPrice>>('/product/prices', data);
+  const response = await priceApi.post<ApiResponse<ProductPrice>>('/api/product/prices', data);
   return response.data;
 }
 
 export async function deleteProductPrice(id: number): Promise<ApiResponse<void>> {
-  const response = await priceApi.delete<ApiResponse<void>>(`/product/prices/${id}`);
+  const response = await priceApi.delete<ApiResponse<void>>(`/api/product/prices/${id}`);
   return response.data;
 }
 
 export async function updateProductPrices(data: { 
-  is_global: boolean;
-  agent_id?: number;
+  isGlobal: boolean;
+  agentId?: number;
   prices: Array<{ id: number; price: number; }>;
 }): Promise<ApiResponse<void>> {
-  const response = await priceApi.post<ApiResponse<void>>('/product/prices', data);
+  const apiData = {
+    is_global: data.isGlobal,
+    agent_id: data.agentId,
+    prices: data.prices
+  };
+  const response = await priceApi.post<ApiResponse<void>>('/api/product/prices', apiData);
   return response.data;
 }
 
 export async function syncProductPrices(): Promise<ApiResponse<void>> {
-  const response = await priceApi.post<ApiResponse<void>>('/product/prices/sync');
+  const response = await priceApi.post<ApiResponse<void>>('/api/product/prices/sync');
   return response.data;
 } 

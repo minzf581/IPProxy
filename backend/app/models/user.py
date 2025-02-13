@@ -9,10 +9,12 @@ class User(Base, TimestampMixin):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
+    app_username = Column(String(50), unique=True, nullable=True)  # 添加 app_username 字段
+    platform_account = Column(String(50), unique=True, nullable=True)  # 添加 platform_account 字段
     password = Column(String(255), nullable=False)
-    email = Column(String(255), index=True, nullable=True)  # 允许重复邮箱
+    email = Column(String(255), index=True, nullable=True)  # 允许为空的邮箱字段
     phone = Column(String(20), unique=True, nullable=True)
-    status = Column(Integer, nullable=False, default=1)  # 1=正常 0=禁用
+    status = Column(Integer, nullable=False, default=1, server_default='1')  # 1=正常 0=禁用
     is_admin = Column(Boolean, default=False)
     is_agent = Column(Boolean, default=False)
     balance = Column(Float, nullable=False, default=0.0)
@@ -41,6 +43,8 @@ class User(Base, TimestampMixin):
         return {
             "id": self.id,
             "username": self.username,
+            "app_username": self.app_username,  # 添加 app_username
+            "platform_account": self.platform_account,  # 添加 platform_account
             "email": self.email,
             "phone": self.phone,
             "status": self.status,

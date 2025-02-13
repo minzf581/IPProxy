@@ -41,13 +41,22 @@ interface AgentOrder {
   updated_at: string;
 }
 
-export async function getAgentList(params: { page: number; pageSize: number; status?: string }) {
+export async function getAgentList(params: { page: number; pageSize: number; status?: string }): Promise<{ list: AgentInfo[]; total: number }> {
   debugAgent.info('Getting agent list with params:', params);
   const response = await agentApi.get<ApiResponse<{ list: AgentInfo[]; total: number }>>(
     '/open/app/agent/list',
-    { params }
+    { 
+      params: {
+        page_no: params.page,
+        page_size: params.pageSize,
+        status: params.status
+      } 
+    }
   );
   debugAgent.info('Agent list response:', response.data);
+  if (response.data.code !== 0) {
+    throw new Error(response.data.msg || '获取代理商列表失败');
+  }
   return response.data.data;
 }
 
@@ -72,19 +81,50 @@ export async function getAgentStatistics(agentId: number): Promise<AgentStatisti
   return response.data.data;
 }
 
-export async function createAgent(params: CreateAgentForm): Promise<AgentInfo> {
-  debugAgent.info('Creating new agent:', params);
-  const response = await agentApi.post<ApiResponse<AgentInfo>>(API_ROUTES.AGENT.CREATE, {
-    appUsername: params.username,
-    password: params.password,
-    balance: params.balance,
-    contact: params.contact,
-    remark: params.remark,
-    status: 'active',
-    limitFlow: 1000
-  });
-  debugAgent.info('Create agent response:', response.data);
-  return response.data.data;
+export async function createAgent(params: CreateAgentForm): Promise<ApiResponse<AgentInfo>> {
+  try {
+    debugAgent.info('Creating agent with params:', {
+      ...params,
+      password: '******' // 隐藏密码
+    });
+
+    // 准备请求数据
+    const requestData = {
+      username: params.username,
+      password: params.password,
+      ...(params.email ? { email: params.email } : {}),
+      ...(params.remark ? { remark: params.remark } : {}),
+      ...(params.balance ? { balance: params.balance } : { balance: 1000.0 }),
+      ...(params.phone ? { phone: params.phone } : {}),
+      status: params.status ? (params.status === 'active' ? 1 : 0) : 1  // 默认为 1（active）
+    };
+    
+    debugAgent.info('Sending create agent request:', {
+      ...requestData,
+      password: '******'
+    });
+
+    const response = await agentApi.post<ApiResponse<AgentInfo>>(
+      '/open/app/proxy/user/v2',
+      requestData
+    );
+    
+    debugAgent.info('Create agent response:', response.data);
+
+    // 检查响应格式
+    if (!response.data) {
+      throw new Error('API返回数据格式错误');
+    }
+
+    return response.data;
+  } catch (error: any) {
+    debugAgent.error('Failed to create agent:', error);
+    if (error.response?.data) {
+      debugAgent.error('API error response:', error.response.data);
+      throw new Error(error.response.data.msg || '创建代理商失败');
+    }
+    throw error;
+  }
 }
 
 export async function updateAgent(agentId: number, params: UpdateAgentForm): Promise<void> {

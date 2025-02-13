@@ -29,29 +29,11 @@ export interface PriceSettings {
   };
 }
 
-// 默认价格配置
-export const DEFAULT_PRICES: PriceSettings = {
-  dynamic: {
-    pool1: 100,
-    pool2: 200
-  },
-  static: {
-    residential: 300,
-    datacenter: 400
-  }
-};
-
 // 获取资源价格设置
-export async function getResourcePrices(agentId: number): Promise<PriceSettings> {
+export async function getResourcePrices(): Promise<PriceSettings> {
   try {
-    // 确保 agentId 是有效的数字
-    if (!agentId || isNaN(Number(agentId))) {
-      debug.warn('无效的代理商ID，使用默认价格');
-      return DEFAULT_PRICES;
-    }
-
-    debug.log(`开始获取代理商 ${agentId} 的价格设置`);
-    const response = await api.get<ApiResponse<PriceSettings>>(`/api/settings/agent/${agentId}/prices`);
+    debug.log('获取资源价格设置');
+    const response = await api.get<ApiResponse<PriceSettings>>('/api/settings/price');
     
     if (!response.data || response.data.code !== 0) {
       throw new Error(response.data?.msg || '获取价格设置失败');
@@ -61,18 +43,6 @@ export async function getResourcePrices(agentId: number): Promise<PriceSettings>
     return response.data.data;
   } catch (error: any) {
     debug.error('获取价格设置失败:', error);
-    
-    if (error.response?.status === 403) {
-      debug.warn('没有权限查看价格设置，使用默认价格');
-      return DEFAULT_PRICES;
-    }
-    
-    // 如果是 422 错误（参数验证失败），返回默认价格
-    if (error.response?.status === 422) {
-      debug.warn('参数验证失败，使用默认价格');
-      return DEFAULT_PRICES;
-    }
-    
     throw error;
   }
 }

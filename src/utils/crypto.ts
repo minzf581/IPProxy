@@ -22,6 +22,17 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 /**
+ * 验证密码是否匹配
+ * @param password 原始密码
+ * @param hashedPassword 哈希后的密码
+ * @returns 是否匹配
+ */
+export function verifyPassword(password: string, hashedPassword: string): boolean {
+  const hash = CryptoJS.SHA256(password).toString();
+  return hash === hashedPassword;
+}
+
+/**
  * 加密
  * @param text 要加密的文本
  * @param key 密钥

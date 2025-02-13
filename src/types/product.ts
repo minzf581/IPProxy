@@ -12,9 +12,14 @@ export interface ProductPrice {
   updatedAt: string;  // 更新时间
 }
 
+export interface ProductPriceUpdate {
+  price: number;
+  agentId?: number | null;
+}
+
 export interface ProductPriceParams {
-  isGlobal?: boolean;
-  agentId?: number;
+  is_global?: boolean;
+  agent_id?: number;
   type?: string;
   area?: string;
   country?: string;

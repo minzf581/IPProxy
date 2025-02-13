@@ -1,4 +1,4 @@
- import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Input, Select, Form, message, Card, Divider } from 'antd';
 import type { TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
@@ -14,7 +14,6 @@ import './index.less';
 import { PlusOutlined } from '@ant-design/icons';
 import UpdateRemarkModal from '@/components/Agent/UpdateRemarkModal';
 import UpdateQuotaModal from '@/components/Agent/UpdateQuotaModal';
-import PriceConfigModal from '@/components/Agent/PriceConfigModal';
 import { useNavigate } from 'react-router-dom';
 
 const { Option } = Select;
@@ -43,7 +42,6 @@ const AgentListPage: React.FC = () => {
   const [createModalVisible, setCreateModalVisible] = React.useState(false);
   const [remarkModalVisible, setRemarkModalVisible] = React.useState(false);
   const [quotaModalVisible, setQuotaModalVisible] = React.useState(false);
-  const [priceConfigModalVisible, setPriceConfigModalVisible] = React.useState(false);
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -153,20 +151,28 @@ const AgentListPage: React.FC = () => {
       ),
     },
     {
-      title: '创建时间',
-      dataIndex: 'created_at',
-      key: 'created_at',
-      width: 160,
-      align: 'center',
-      render: (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm:ss'),
-    },
-    {
       title: '备注',
       dataIndex: 'remark',
       key: 'remark',
       width: 200,
       align: 'center',
       render: (remark: string) => remark || '-',
+    },
+    {
+      title: '联系方式',
+      dataIndex: 'phone',
+      key: 'phone',
+      width: 120,
+      align: 'center',
+      render: (phone: string) => phone || '-',
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'created_at',
+      key: 'created_at',
+      width: 160,
+      align: 'center',
+      render: (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm:ss'),
     },
     {
       title: '操作',
@@ -197,16 +203,6 @@ const AgentListPage: React.FC = () => {
                 }}
               >
                 调整额度
-              </Button>
-              <Button 
-                type="link" 
-                size="small"
-                onClick={() => {
-                  setSelectedAgent(record);
-                  setPriceConfigModalVisible(true);
-                }}
-              >
-                单价设置
               </Button>
             </Space>
             <Space size="small">
@@ -340,18 +336,6 @@ const AgentListPage: React.FC = () => {
             }}
             onClose={() => {
               setQuotaModalVisible(false);
-              setSelectedAgent(null);
-              loadAgents();
-            }}
-          />
-          <PriceConfigModal
-            visible={priceConfigModalVisible}
-            agent={{
-              id: Number(selectedAgent.id),
-              price_config: selectedAgent.price_config
-            }}
-            onClose={() => {
-              setPriceConfigModalVisible(false);
               setSelectedAgent(null);
               loadAgents();
             }}

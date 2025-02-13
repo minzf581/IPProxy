@@ -29,34 +29,98 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from .ipipv_base_api import IPIPVBaseAPI
+from sqlalchemy.orm import Session
+from app.models.user import User
+from app.core.security import get_password_hash
+import json
+import traceback
 
 logger = logging.getLogger(__name__)
 
 class UserService(IPIPVBaseAPI):
     """用户服务类，处理所有用户相关的操作"""
     
-    async def create_user(self, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def create_user(
+        self,
+        username: str,
+        password: str,
+        email: Optional[str] = None,
+        is_admin: bool = False,
+        is_agent: bool = False,
+        balance: Optional[float] = None,
+        remark: Optional[str] = None,
+        phone: Optional[str] = None
+    ) -> Optional[User]:
         """
         创建用户
         
         Args:
-            params: 用户创建参数，包括：
-                - username: 用户名
-                - password: 密码
-                - email: 可选，邮箱
-                - phone: 可选，电话
-                - authType: 认证类型
-                - status: 状态
-                
+            username: 用户名（必填）
+            password: 密码（必填）
+            email: 邮箱（选填）
+            is_admin: 是否管理员（默认False）
+            is_agent: 是否代理商（默认False）
+            balance: 初始余额（选填，默认0.0）
+            remark: 备注（选填）
+            phone: 联系方式（选填）
+            
         Returns:
-            dict: 创建成功的用户信息
+            User: 创建成功的用户对象
             None: 创建失败
         """
         try:
-            logger.info(f"开始创建用户: {params.get('username')}")
-            return await self._make_request("api/open/app/user/create/v2", params)
+            logger.info(f"[UserService.create_user] 开始创建用户: username={username}, is_agent={is_agent}")
+            
+            # 检查必填参数
+            if not username or not password:
+                logger.error("[UserService.create_user] 缺少必填参数: 用户名和密码是必需的")
+                return None
+            
+            # 获取数据库会话
+            from app.database import SessionLocal
+            db = SessionLocal()
+            try:
+                # 检查用户名是否已存在
+                existing_user = db.query(User).filter(User.username == username).first()
+                if existing_user:
+                    logger.warning(f"[UserService.create_user] 用户名已存在: {username}")
+                    return None
+                
+                # 创建新用户
+                try:
+                    hashed_password = get_password_hash(password)
+                    new_user = User(
+                        username=username,
+                        password=hashed_password,
+                        email=email,
+                        phone=phone,
+                        is_admin=is_admin,
+                        is_agent=is_agent,
+                        balance=balance if balance is not None else 0.0,
+                        remark=remark,
+                        status=1,  # 默认状态为正常
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    
+                    db.add(new_user)
+                    db.commit()
+                    db.refresh(new_user)
+                    
+                    logger.info(f"[UserService.create_user] 用户创建成功: id={new_user.id}")
+                    return new_user
+                    
+                except Exception as e:
+                    logger.error(f"[UserService.create_user] 创建用户失败: {str(e)}")
+                    db.rollback()
+                    return None
+                
+            finally:
+                db.close()
+            
         except Exception as e:
-            logger.error(f"创建用户失败: {str(e)}")
+            logger.error(f"[UserService.create_user] 创建用户失败: {str(e)}")
+            logger.error(f"[UserService.create_user] 错误堆栈: {traceback.format_exc()}")
             return None
     
     async def update_user(self, user_id: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:

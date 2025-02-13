@@ -78,14 +78,45 @@ export async function getUserList(params: UserListParams): Promise<ApiResponse<U
   }
 }
 
-export async function createUser(data: any): Promise<ApiResponse<User>> {
+export interface CreateUserParams {
+  username: string;
+  password: string;
+  email?: string;  // 可选字段
+  remark?: string;  // 可选字段
+  authType?: number;  // 可选字段，用于区分用户类型
+  status?: string;  // 可选字段
+}
+
+export async function createUser(data: CreateUserParams): Promise<ApiResponse<User>> {
   try {
-    debug.log('Creating user:', data);
-    const response = await userApi.post<ApiResponse<User>>('/open/app/user/create/v2', data);
-    debug.log('Create user response:', response.data);
+    debug.log('Creating user with data:', {
+      ...data,
+      password: '******' // 隐藏密码
+    });
+
+    // 移除空值参数
+    const cleanData = Object.fromEntries(
+      Object.entries(data).filter(([_, v]) => v != null && v !== '')
+    );
+    debug.log('Cleaned data:', {
+      ...cleanData,
+      password: '******' // 隐藏密码
+    });
+
+    const response = await userApi.post<ApiResponse<User>>('/open/app/user/create/v2', cleanData);
+    debug.log('Create user API response:', response.data);
+
+    if (response.data.code !== 0) {
+      debug.error('API error:', response.data.msg);
+      throw new Error(response.data.msg || '创建用户失败');
+    }
+
     return response.data;
   } catch (error: any) {
-    debug.error('API error:', error);
+    debug.error('Failed to create user:', error);
+    if (error.response) {
+      debug.error('API error response:', error.response.data);
+    }
     throw error;
   }
 }

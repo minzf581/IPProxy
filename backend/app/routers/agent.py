@@ -63,7 +63,7 @@ from app.database import get_db
 from app.models.user import User
 from app.models.transaction import Transaction
 from typing import Dict, Any, List
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, validator
 from typing import Optional
 from app.services import UserService, ProxyService, AreaService
 from app.models.main_user import MainUser
@@ -79,6 +79,7 @@ from app.core.deps import get_user_service, get_proxy_service, get_area_service
 from app.models.dynamic_order import DynamicOrder
 from app.models.static_order import StaticOrder
 from sqlalchemy import or_
+import re
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -86,12 +87,42 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 class CreateAgentRequest(BaseModel):
-    username: Optional[str] = None
-    password: Optional[str] = None
-    email: Optional[str] = None
-    remark: Optional[str] = None
-    status: str = "active"  # 默认状态为active
-    balance: float = 1000.0  # 默认额度1000元
+    """创建代理商请求"""
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=6, max_length=50)
+    email: Optional[str] = Field(None, max_length=255)
+    phone: Optional[str] = Field(None, max_length=20)  # 添加联系方式字段
+    remark: Optional[str] = Field(None, max_length=255)
+    status: Optional[int] = Field(1, description="状态：1=正常，0=禁用")
+    balance: Optional[float] = Field(0.0, ge=0)
+
+    @validator('username')
+    def validate_username(cls, v):
+        """验证用户名"""
+        if not re.match(r'^[a-zA-Z0-9_-]+$', v):
+            raise ValueError('用户名只能包含字母、数字、下划线和连字符')
+        return v
+
+    @validator('email')
+    def validate_email(cls, v):
+        """验证邮箱"""
+        if v is not None and not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v):
+            raise ValueError('邮箱格式不正确')
+        return v
+
+    @validator('phone')
+    def validate_phone(cls, v):
+        """验证联系方式"""
+        if v is not None and not re.match(r'^[\d\-+() ]{5,20}$', v):
+            raise ValueError('联系方式格式不正确')
+        return v
+
+    @validator('status')
+    def validate_status(cls, v):
+        """验证状态"""
+        if v not in [0, 1]:
+            raise ValueError('状态只能是 0 或 1')
+        return v
 
 class UpdateAgentRequest(BaseModel):
     """更新代理商请求"""
@@ -111,60 +142,57 @@ async def create_agent(
 ) -> Dict[str, Any]:
     """创建代理商"""
     try:
+        logger.info(f"[AgentRouter] 开始创建代理商: {request.dict()}")
+        
+        # 检查必需参数
+        if not request.username or not request.password:
+            logger.error("[AgentRouter] 缺少必需的参数：username 或 password")
+            raise HTTPException(status_code=400, detail="用户名和密码是必需的")
+
+        # 检查用户名是否已存在
+        existing_user = db.query(User).filter(User.username == request.username).first()
+        if existing_user:
+            logger.error(f"[AgentRouter] 用户名已存在: {request.username}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"用户名 '{request.username}' 已存在，请使用其他用户名"
+            )
+
         # 准备用户参数
         user_params = {
             "username": request.username,
             "password": request.password,
             "email": request.email,
-            "authType": 2,  # 代理商类型
-            "status": "active",  # 强制设置为active
+            "phone": request.phone,  # 添加联系方式
+            "is_agent": True,  # 标识为代理商
+            "balance": float(request.balance) if request.balance is not None else 0.0,
             "remark": request.remark
         }
+            
+        # 记录日志时排除敏感信息
+        log_params = user_params.copy()
+        log_params.pop("password", None)
+        logger.info(f"[AgentRouter] 调用 create_user 的参数: {json.dumps(log_params, ensure_ascii=False)}")
         
         # 调用用户服务创建用户
-        response = await user_service.create_user(user_params)
-        if not response:
-            raise HTTPException(status_code=400, detail="创建代理商失败")
-            
-        # 生成交易号
-        transaction_no = generate_transaction_no()
+        response = await user_service.create_user(**user_params)
         
-        try:
-            # 创建本地数据库记录
-            agent = MainUser(
-                username=request.username,
-                email=request.email,
-                status="active",  # 强制设置为active
-                balance=request.balance,
-                remark=request.remark,
-                transaction_no=transaction_no
-            )
-            db.add(agent)
-            db.commit()
+        if not response:
+            error_msg = "创建代理商失败：用户服务返回空响应"
+            logger.error(f"[AgentRouter] {error_msg}")
+            raise HTTPException(status_code=400, detail=error_msg)
             
-            return {
-                "code": 0,
-                "message": "代理商创建成功",
-                "data": {
-                    "id": agent.id,
-                    "username": agent.username,
-                    "email": agent.email,
-                    "status": agent.status,
-                    "balance": agent.balance,
-                    "created_at": agent.created_at.isoformat(),
-                    "updated_at": agent.updated_at.isoformat() if agent.updated_at else None
-                }
-            }
-            
-        except Exception as e:
-            db.rollback()
-            logger.error(f"创建代理商数据库记录失败: {str(e)}")
-            raise HTTPException(status_code=500, detail="创建代理商数据库记录失败")
-            
+        return {
+            "code": 0,
+            "message": "代理商创建成功",
+            "data": response.to_dict()
+        }
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"创建代理商失败: {str(e)}")
+        logger.error(f"[AgentRouter] 创建代理商失败: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/open/app/agent/list")
@@ -194,11 +222,14 @@ async def get_agent_list(
         agent_list = []
         for agent in agents:
             agent_list.append({
-                "id": agent.id,
+                "id": str(agent.id),  # 转换为字符串以匹配前端类型
                 "username": agent.username,
+                "app_username": agent.app_username or agent.username,  # 使用 app_username 或 username
+                "platform_account": agent.platform_account or agent.ipipv_username or agent.username,  # 使用 platform_account 或 ipipv_username 或 username
                 "email": agent.email,
-                "balance": agent.balance,
-                "status": agent.status,
+                "phone": agent.phone,  # 添加联系方式
+                "balance": float(agent.balance) if agent.balance is not None else 0.0,  # 确保是浮点数
+                "status": "active" if agent.status == 1 else "disabled",  # 转换状态格式
                 "remark": agent.remark,
                 "created_at": agent.created_at.isoformat() if agent.created_at else None,
                 "updated_at": agent.updated_at.isoformat() if agent.updated_at else None
