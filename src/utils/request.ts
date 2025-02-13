@@ -10,13 +10,25 @@ class ApiError extends Error {
 }
 
 const request = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',  // 使用环境变量或默认为 /api
+  baseURL: (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, ''),  // 移除末尾的斜杠
   timeout: 30000,  // 增加超时时间到 30 秒
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json'
   }
 });
+
+// Debug 函数
+const debug = {
+  log: (...args: any[]) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Request Debug]', ...args);
+    }
+  },
+  error: (...args: any[]) => {
+    console.error('[Request Error]', ...args);
+  }
+};
 
 // 请求拦截器
 request.interceptors.request.use(
@@ -26,10 +38,18 @@ request.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // 处理重复的api前缀
+    if (config.url?.startsWith('/api/api/')) {
+      debug.log('检测到重复的api前缀:', config.url);
+      config.url = config.url.replace('/api/api/', '/api/');
+      debug.log('处理后的URL:', config.url);
+    }
+
     return config;
   },
   (error) => {
-    console.error('Request interceptor error:', error);
+    debug.error('Request interceptor error:', error);
     return Promise.reject(error);
   }
 );

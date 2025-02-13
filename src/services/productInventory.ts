@@ -1,20 +1,31 @@
 import request from '@/utils/request';
 import type { ProductPrice, ProductPriceParams } from '@/types/product';
 import type { ApiResponse } from '@/types/api';
+import axios from 'axios';
+
+// 创建价格服务专用的 axios 实例
+const priceApi = axios.create({
+  baseURL: `${import.meta.env.VITE_API_URL}/api`,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  }
+});
+
+// 添加认证拦截器
+priceApi.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
 export async function getProductPrices(params: ProductPriceParams): Promise<ApiResponse<ProductPrice[]>> {
-  const apiParams = {
-    is_global: params.isGlobal,
-    agent_id: params.agentId,
-    type: params.type,
-    area: params.area,
-    country: params.country,
-    city: params.city
-  };
-  
   try {
-    console.log('发送请求参数:', apiParams);
-    const response = await request.get<ApiResponse<ProductPrice[]>>('/product/prices', { params: apiParams });
+    console.log('发送请求参数:', params);
+    const response = await priceApi.get<ApiResponse<ProductPrice[]>>('/product/prices', { params });
     console.log('原始API响应:', JSON.stringify(response.data, null, 2));
     
     // 确保响应数据符合预期格式
@@ -33,17 +44,17 @@ export async function getProductPrices(params: ProductPriceParams): Promise<ApiR
 }
 
 export async function updateProductPrice(id: number, data: Partial<ProductPrice>): Promise<ApiResponse<ProductPrice>> {
-  const response = await request.put<ApiResponse<ProductPrice>>(`/product/prices/${id}`, data);
+  const response = await priceApi.put<ApiResponse<ProductPrice>>(`/product/prices/${id}`, data);
   return response.data;
 }
 
 export async function createProductPrice(data: Omit<ProductPrice, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<ProductPrice>> {
-  const response = await request.post<ApiResponse<ProductPrice>>('/product/prices', data);
+  const response = await priceApi.post<ApiResponse<ProductPrice>>('/product/prices', data);
   return response.data;
 }
 
 export async function deleteProductPrice(id: number): Promise<ApiResponse<void>> {
-  const response = await request.delete<ApiResponse<void>>(`/product/prices/${id}`);
+  const response = await priceApi.delete<ApiResponse<void>>(`/product/prices/${id}`);
   return response.data;
 }
 
@@ -52,11 +63,11 @@ export async function updateProductPrices(data: {
   agent_id?: number;
   prices: Array<{ id: number; price: number; }>;
 }): Promise<ApiResponse<void>> {
-  const response = await request.post<ApiResponse<void>>('/product/prices', data);
+  const response = await priceApi.post<ApiResponse<void>>('/product/prices', data);
   return response.data;
 }
 
 export async function syncProductPrices(): Promise<ApiResponse<void>> {
-  const response = await request.post<ApiResponse<void>>('/product/prices/sync');
+  const response = await priceApi.post<ApiResponse<void>>('/product/prices/sync');
   return response.data;
 } 

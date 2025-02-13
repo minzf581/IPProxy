@@ -14,11 +14,11 @@ export const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
 // API 模块前缀
 export const API_PREFIX = {
-  OPEN: 'open/app',
-  AUTH: 'auth',
-  USER: 'user',
-  ADMIN: 'admin',
-  PROXY: 'proxy'
+  OPEN: '/open/app',
+  AUTH: '/api/auth',
+  USER: '/user',
+  ADMIN: '/admin',
+  PROXY: '/proxy'
 } as const;
 
 // 打印调试信息的函数
@@ -104,6 +104,18 @@ export const API_ROUTES = {
       }
     }
   },
+
+  AGENT: {
+    LIST: `${API_PREFIX.OPEN}/agent/list`,
+    CREATE: `${API_PREFIX.OPEN}/proxy/user/v2`,
+    UPDATE: `${API_PREFIX.OPEN}/agent/{id}`,
+    DELETE: `${API_PREFIX.OPEN}/agent/{id}`,
+    ORDERS: `${API_PREFIX.OPEN}/agent-orders/v2`,
+    PRICES: {
+      GET: (id: string) => `${API_PREFIX.ADMIN}/agent/${id}/prices`,
+      UPDATE: (id: string) => `${API_PREFIX.ADMIN}/agent/${id}/prices`
+    }
+  },
 } as const;
 
 // 调试日志
@@ -186,6 +198,17 @@ API_ROUTES = {
                 "BATCH_IMPORT": "/product/prices/batch-import",
                 "EXPORT": "/product/prices/export"
             }
+        }
+    },
+    "AGENT": {
+        "LIST": f"{API_PREFIX['OPEN']}/agent/list",
+        "CREATE": f"{API_PREFIX['OPEN']}/proxy/user/v2",
+        "UPDATE": f"{API_PREFIX['OPEN']}/agent/{{id}}",
+        "DELETE": f"{API_PREFIX['OPEN']}/agent/{{id}}",
+        "ORDERS": f"{API_PREFIX['OPEN']}/agent-orders/v2",
+        "PRICES": {
+            "GET": lambda id: f"{API_PREFIX['ADMIN']}/agent/{id}/prices",
+            "UPDATE": lambda id: f"{API_PREFIX['ADMIN']}/agent/{id}/prices"
         }
     }
 }

@@ -41,7 +41,7 @@ async def create_static_order(
         logger.error(f"创建静态代理订单失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/open/app/static/order/list/v2")
+@router.get("/list/v2")
 async def list_static_orders(
     request: Request,
     page: int = 1,

@@ -7,11 +7,11 @@ import type {
 } from '@/types/staticOrder';
 
 export async function createStaticOrder(data: StaticOrderFormData) {
-  return request.post<StaticOrderResponse>(API_ROUTES.ORDER.STATIC.CREATE, data);
+  return request.post<StaticOrderResponse>('/api/open/app/static/order/create/v2', data);
 }
 
 export async function getStaticOrder(orderNo: string) {
-  return request.get<StaticOrderResponse>(`${API_ROUTES.ORDER.STATIC.DETAIL}/${orderNo}`);
+  return request.get<StaticOrderResponse>(`/api/open/app/static/order/detail/v2/${orderNo}`);
 }
 
 export async function getStaticOrders(params: {
@@ -28,7 +28,7 @@ export async function getStaticOrders(params: {
       total: number;
       list: StaticOrder[];
     };
-  }>(API_ROUTES.ORDER.STATIC.LIST, {
+  }>('/api/open/app/static/order/list/v2', {
     params,
   });
 }
@@ -38,7 +38,7 @@ export async function updateStaticOrderStatus(
   status: string,
   remark?: string
 ) {
-  return request.put<StaticOrderResponse>(`${API_ROUTES.ORDER.STATIC.STATUS}/${orderNo}`, {
+  return request.put<StaticOrderResponse>(`/api/open/app/static/order/status/v2/${orderNo}`, {
     status,
     remark,
   });

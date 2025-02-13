@@ -1,7 +1,50 @@
-import { api } from '@/utils/request';
+import axios from 'axios';
 import type { ApiResponse } from '@/types/api';
 import type { DashboardData as DashboardDataType, AgentListResponse } from '@/types/dashboard';
 import type { AxiosError } from 'axios';
+
+// 创建仪表盘服务专用的 axios 实例
+const dashboardApi = axios.create({
+  baseURL: `${import.meta.env.VITE_API_URL}/api`,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  }
+});
+
+// 添加认证拦截器
+dashboardApi.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// 添加响应拦截器
+dashboardApi.interceptors.response.use(
+  response => {
+    const { data } = response;
+    if (data.code === 0 || data.code === 200 || (data.data && !data.code)) {
+      response.data = {
+        code: 0,
+        message: data.message || data.msg || '操作成功',
+        data: data.data
+      };
+      return response;
+    }
+    throw new Error(data.message || data.msg || '请求失败');
+  },
+  error => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+      return Promise.reject(new Error('登录已过期，请重新登录'));
+    }
+    throw new Error(error.response?.data?.message || error.response?.data?.msg || '请求失败');
+  }
+);
 
 // 统计数据接口
 export interface Statistics {
@@ -54,7 +97,7 @@ export async function getDashboardData(agentId?: string | number): Promise<Dashb
     console.log('[Dashboard Service] Request URL:', url);
     console.log('[Dashboard Service] Request params:', params);
     
-    const response = await api.get<ApiResponse<DashboardDataType>>(url, { params });
+    const response = await dashboardApi.get<ApiResponse<DashboardDataType>>(url, { params });
     const { data } = response.data;
     console.log('[Dashboard Service] Dashboard data:', JSON.stringify(data, null, 2));
 
@@ -222,7 +265,7 @@ export async function getDashboardData(agentId?: string | number): Promise<Dashb
 export async function getAgentList(params: { page: number; pageSize: number }): Promise<AgentListResponse> {
   try {
     console.log('[Dashboard Service] Getting agent list with params:', params);
-    const response = await api.get<ApiResponse<AgentListResponse>>('/open/app/agent/list', { params });
+    const response = await dashboardApi.get<ApiResponse<AgentListResponse>>('/open/app/agent/list', { params });
     console.log('[Dashboard Service] Agent list response:', response);
     return response.data.data;
   } catch (error) {

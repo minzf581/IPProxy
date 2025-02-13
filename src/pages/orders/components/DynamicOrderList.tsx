@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { api } from '@/utils/request';
 import dayjs from 'dayjs';
 import styles from './DynamicOrderList.module.less';
+import { API_ROUTES } from '@/shared/routes';
 
 // 调试日志函数
 const debug = {
@@ -68,16 +69,18 @@ const DynamicOrderList: React.FC = () => {
   });
 
   const fetchOrders = async (params: any) => {
+    setLoading(true);
     try {
       debug.log('Fetching orders with params:', params);
-      setLoading(true);
-      const response = await api.get('/dynamic', { 
+      const response = await api.get('/api/dynamic', {
         params: {
           page: params.current || 1,
           page_size: params.pageSize || 10,
-          orderNo: params.orderNo,
-          username: params.userId,  // 使用 username 参数
-          poolType: params.poolType
+          order_no: params.orderNo,
+          user_id: params.userId,
+          pool_type: params.poolType,
+          start_date: params.startTime,
+          end_date: params.endTime
         }
       });
       
