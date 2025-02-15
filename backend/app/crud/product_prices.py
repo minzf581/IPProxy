@@ -125,9 +125,17 @@ def update_prices(
                 if product:
                     old_price = product.global_price
                     product.global_price = price_update.price
-                    if price_update.min_agent_price is not None:
+                    if hasattr(price_update, 'min_agent_price') and price_update.min_agent_price is not None:
                         product.min_agent_price = price_update.min_agent_price
-                    logger.info(f"全局价格更新成功: product_id={price_update.id}, old_price={old_price}, new_price={price_update.price}, min_agent_price={price_update.min_agent_price}")
+                        # 检查并更新所有低于最低代理商价格的用户价格
+                        user_prices = db.query(UserPrice).filter(
+                            UserPrice.product_id == price_update.id,
+                            UserPrice.price < price_update.min_agent_price
+                        ).all()
+                        for user_price in user_prices:
+                            user_price.price = price_update.min_agent_price
+                            logger.info(f"更新用户价格到最低代理商价格: user_id={user_price.user_id}, product_id={price_update.id}, new_price={price_update.min_agent_price}")
+                    logger.info(f"全局价格更新成功: product_id={price_update.id}, old_price={old_price}, new_price={price_update.price}, min_agent_price={price_update.min_agent_price if hasattr(price_update, 'min_agent_price') else None}")
                 else:
                     logger.warning(f"未找到产品: product_id={price_update.id}")
         

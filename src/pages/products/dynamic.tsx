@@ -135,12 +135,12 @@ const DynamicProductPage: React.FC = () => {
 
   // 处理价格变更
   const handlePriceChange = (id: string, value: number, field: 'price' | 'minAgentPrice') => {
+    console.log('价格变更:', { id, value, field });
     const newPrices = { ...modifiedPrices };
-    if (field === 'price') {
-      newPrices[id] = { ...newPrices[id], price: value };
-    } else {
-      newPrices[id] = { ...newPrices[id], minAgentPrice: value };
+    if (!newPrices[id]) {
+      newPrices[id] = { price: 0, minAgentPrice: 0 };
     }
+    newPrices[id][field] = value;
     setModifiedPrices(newPrices);
     setHasChanges(true);
   };
@@ -151,22 +151,33 @@ const DynamicProductPage: React.FC = () => {
       const updates = Object.entries(modifiedPrices).map(([id, values]) => {
         const productId = Number(id);
         const product = prices.find(p => p.id === productId);
+        if (!product) {
+          console.warn(`未找到产品信息: ${id}`);
+          return null;
+        }
+        
+        console.log('构建更新数据:', {
+          productId,
+          product,
+          values
+        });
+
         return {
           product_id: productId,
-          type: product?.type || '',
-          proxy_type: product?.proxyType || 0,
+          type: product.type,
+          proxy_type: product.proxyType,
           price: values.price,
-          min_agent_price: values.minAgentPrice,
-          is_global: !selectedAgent
+          min_agent_price: values.minAgentPrice
         };
-      });
+      }).filter(Boolean);
 
       const requestData = {
         prices: updates,
-        agent_id: selectedAgent ? selectedAgent.id : undefined
+        agent_id: selectedAgent ? selectedAgent.id : undefined,
+        is_global: !selectedAgent
       };
 
-      console.log('发送价格更新请求:', requestData);
+      console.log('发送更新请求数据:', JSON.stringify(requestData, null, 2));
       await batchUpdateProductPriceSettings(requestData);
       message.success('价格更新成功');
       setModifiedPrices({});

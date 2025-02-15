@@ -27,6 +27,12 @@ class ProductPriceBase(BaseModel):
 class ProductPriceUpdate(BaseModel):
     id: int
     price: condecimal(max_digits=10, decimal_places=4)
+    min_agent_price: Optional[condecimal(max_digits=10, decimal_places=4)] = None
+    type: Optional[str] = None
+    proxy_type: Optional[int] = None
+
+    class Config:
+        from_attributes = True
 
 class ProductPriceUpdateRequest(BaseModel):
     is_global: bool

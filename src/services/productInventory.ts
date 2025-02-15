@@ -85,20 +85,24 @@ interface BatchUpdateRequest {
 
 export async function batchUpdateProductPriceSettings(data: BatchUpdateRequest): Promise<ApiResponse<void>> {
   try {
-    console.log('批量更新价格数据(原始):', data);
+    console.log('批量更新价格数据(原始):', JSON.stringify(data, null, 2));
     
-    // 修改请求数据，确保当有agent_id时设置is_global为false
+    // 确保所有必要字段都存在
     const modifiedData = {
-      ...data,
       prices: data.prices.map(item => ({
-        ...item,
-        is_global: !data.agent_id,
-        agent_id: data.agent_id
-      }))
+        product_id: item.product_id,
+        price: Number(item.price),
+        min_agent_price: Number(item.min_agent_price || 0),
+        type: item.type,
+        proxy_type: Number(item.proxy_type)
+      })),
+      is_global: !data.agent_id,
+      agent_id: data.agent_id ? Number(data.agent_id) : undefined
     };
     
-    console.log('批量更新价格数据(修改后):', modifiedData);
-    const response = await request.post('/api/settings/prices/batch', modifiedData);
+    console.log('发送到后端的数据:', JSON.stringify(modifiedData, null, 2));
+    const response = await request.post<ApiResponse<void>>('/api/settings/prices/batch', modifiedData);
+    console.log('后端响应:', response.data);
     return response.data;
   } catch (error) {
     console.error('批量更新价格失败:', error);

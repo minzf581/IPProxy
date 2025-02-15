@@ -78,10 +78,11 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.resource_type import ResourceType
 from app.models.user import User
+from app.models.prices import AgentPrice
+from app.models.product_inventory import ProductInventory
 from typing import Dict, Any, List, Optional
 from app.services.auth import get_current_user
-from app.models.product_inventory import ProductInventory
-from app.crud.product_prices import get_prices
+from app.crud import product_prices
 import logging
 
 # 设置日志记录器
@@ -115,7 +116,7 @@ async def get_resource_prices(
                 detail="只有管理员可以查看价格设置"
             )
             
-        prices = await get_prices(db, is_global=True)
+        prices = await product_prices.get_prices(db, is_global=True)
         return {
             "code": 0,
             "msg": "success",
@@ -244,21 +245,30 @@ async def batch_update_prices(
         logger.info(f"收到价格更新请求数据: {request_data}")
         
         # 权限检查
-        if not current_user.is_admin:
-            raise HTTPException(status_code=403, detail="只有管理员可以修改价格设置")
+        if not current_user.is_admin and not current_user.is_agent:
+            raise HTTPException(status_code=403, detail="没有权限修改价格设置")
         
-        # 获取价格列表
+        # 验证请求数据
         if not isinstance(request_data, dict) or 'prices' not in request_data:
+            logger.error(f"无效的请求数据格式: {request_data}")
             raise HTTPException(status_code=400, detail="无效的请求数据格式")
         
         prices = request_data['prices']
+        is_global = request_data.get('is_global', True)
+        agent_id = request_data.get('agent_id')
+        
         if not isinstance(prices, list):
+            logger.error("价格数据必须是数组格式")
             raise HTTPException(status_code=400, detail="价格数据必须是数组格式")
         
         if not prices:
+            logger.error("没有需要更新的数据")
             raise HTTPException(status_code=400, detail="没有需要更新的数据")
         
         logger.info(f"开始处理 {len(prices)} 条价格数据")
+        logger.info(f"更新模式: {'全局价格' if is_global else '代理商价格'}")
+        if agent_id:
+            logger.info(f"代理商ID: {agent_id}")
         
         # 处理价格更新
         total = len(prices)
@@ -267,11 +277,12 @@ async def batch_update_prices(
         
         for price_data in prices:
             try:
-                product_id = str(price_data.get('product_id'))
-                is_global = price_data.get('is_global', True)
-                agent_id = price_data.get('agent_id')
-                
-                logger.info(f"开始处理产品 {product_id} 的价格更新请求: is_global={is_global}, agent_id={agent_id}")
+                logger.info(f"处理价格数据: {price_data}")
+                product_id = price_data.get('product_id')
+                if not product_id:
+                    logger.warning(f"缺少产品ID: {price_data}")
+                    failed += 1
+                    continue
                 
                 product = db.query(ProductInventory).filter(
                     ProductInventory.id == product_id
@@ -283,38 +294,37 @@ async def batch_update_prices(
                     continue
                 
                 if is_global:
-                    # 更新全局价格
-                    if 'price' in price_data:
-                        new_global_price = float(price_data['price'])
-                        old_price = product.global_price
-                        product.global_price = new_global_price
-                        logger.info(f"更新全局价格: product_id={product_id}, old_price={old_price}, new_price={new_global_price}")
+                    old_price = product.global_price
+                    new_price = float(price_data['price'])
+                    product.global_price = new_price
+                    logger.info(f"更新全局价格: product_id={product_id}, old={old_price}, new={new_price}")
                     
-                    # 更新最低代理商价格
                     if 'min_agent_price' in price_data:
-                        new_min_agent_price = float(price_data['min_agent_price'])
-                        old_min_price = product.min_agent_price
-                        product.min_agent_price = new_min_agent_price
-                        logger.info(f"更新最低代理商价格: product_id={product_id}, old_price={old_min_price}, new_price={new_min_agent_price}")
+                        old_min = product.min_agent_price
+                        new_min = float(price_data['min_agent_price'])
+                        product.min_agent_price = new_min
+                        logger.info(f"更新最低代理商价格: product_id={product_id}, old={old_min}, new={new_min}")
                 
-                elif agent_id:  # 代理商价格更新
+                elif agent_id:
                     agent_price = db.query(AgentPrice).filter(
                         AgentPrice.agent_id == agent_id,
                         AgentPrice.product_id == product_id
                     ).first()
                     
+                    new_price = float(price_data['price'])
+                    
                     if agent_price:
                         old_price = agent_price.price
-                        agent_price.price = float(price_data['price'])
-                        logger.info(f"更新代理商价格: agent_id={agent_id}, product_id={product_id}, old_price={old_price}, new_price={price_data['price']}")
+                        agent_price.price = new_price
+                        logger.info(f"更新代理商价格: agent_id={agent_id}, product_id={product_id}, old={old_price}, new={new_price}")
                     else:
                         agent_price = AgentPrice(
                             agent_id=agent_id,
                             product_id=product_id,
-                            price=float(price_data['price'])
+                            price=new_price
                         )
                         db.add(agent_price)
-                        logger.info(f"创建代理商价格记录: agent_id={agent_id}, product_id={product_id}, price={price_data['price']}")
+                        logger.info(f"创建代理商价格记录: agent_id={agent_id}, product_id={product_id}, price={new_price}")
                 
                 success += 1
                 
@@ -326,20 +336,19 @@ async def batch_update_prices(
         try:
             db.commit()
             logger.info(f"价格更新完成: 总数={total}, 成功={success}, 失败={failed}")
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "total": total,
+                    "success": success,
+                    "failed": failed
+                }
+            }
         except Exception as e:
             db.rollback()
             logger.error(f"提交数据库更改失败: {str(e)}")
             raise HTTPException(status_code=500, detail="数据库更新失败")
-        
-        return {
-            "code": 0,
-            "msg": "success",
-            "data": {
-                "total": total,
-                "success": success,
-                "failed": failed
-            }
-        }
         
     except HTTPException:
         raise
