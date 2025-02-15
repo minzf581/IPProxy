@@ -73,13 +73,15 @@
    - 并发控制
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.resource_type import ResourceType
 from app.models.user import User
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from app.services.auth import get_current_user
+from app.models.product_inventory import ProductInventory
+from app.crud.product_prices import get_prices
 import logging
 
 # 设置日志记录器
@@ -100,26 +102,27 @@ def get_resource_types(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/settings/price")
-async def get_resource_prices(db: Session = Depends(get_db)):
+@router.get("/settings/prices")
+async def get_resource_prices(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     """获取所有资源价格"""
     try:
-        # 返回固定的价格配置
-        prices = {
-            "dynamic": {
-                "pool1": 0.1,  # 动态代理池1的价格
-                "pool2": 0.2   # 动态代理池2的价格
-            },
-            "static": {
-                "residential": 0.3,  # 住宅代理价格
-                "datacenter": 0.4    # 数据中心代理价格
-            }
-        }
+        if not current_user.is_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="只有管理员可以查看价格设置"
+            )
+            
+        prices = await get_prices(db, is_global=True)
         return {
             "code": 0,
             "msg": "success",
             "data": prices
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"获取价格配置失败: {str(e)}")
         raise HTTPException(
@@ -228,4 +231,118 @@ async def update_agent_prices(
         raise
     except Exception as e:
         logger.error(f"更新代理商价格设置失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/settings/prices/batch")
+async def batch_update_prices(
+    request_data: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """批量更新价格设置"""
+    try:
+        logger.info(f"收到价格更新请求数据: {request_data}")
+        
+        # 权限检查
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="只有管理员可以修改价格设置")
+        
+        # 获取价格列表
+        if not isinstance(request_data, dict) or 'prices' not in request_data:
+            raise HTTPException(status_code=400, detail="无效的请求数据格式")
+        
+        prices = request_data['prices']
+        if not isinstance(prices, list):
+            raise HTTPException(status_code=400, detail="价格数据必须是数组格式")
+        
+        if not prices:
+            raise HTTPException(status_code=400, detail="没有需要更新的数据")
+        
+        logger.info(f"开始处理 {len(prices)} 条价格数据")
+        
+        # 处理价格更新
+        total = len(prices)
+        success = 0
+        failed = 0
+        
+        for price_data in prices:
+            try:
+                product_id = str(price_data.get('product_id'))
+                is_global = price_data.get('is_global', True)
+                agent_id = price_data.get('agent_id')
+                
+                logger.info(f"开始处理产品 {product_id} 的价格更新请求: is_global={is_global}, agent_id={agent_id}")
+                
+                product = db.query(ProductInventory).filter(
+                    ProductInventory.id == product_id
+                ).first()
+                
+                if not product:
+                    logger.warning(f"未找到产品: {product_id}")
+                    failed += 1
+                    continue
+                
+                if is_global:
+                    # 更新全局价格
+                    if 'price' in price_data:
+                        new_global_price = float(price_data['price'])
+                        old_price = product.global_price
+                        product.global_price = new_global_price
+                        logger.info(f"更新全局价格: product_id={product_id}, old_price={old_price}, new_price={new_global_price}")
+                    
+                    # 更新最低代理商价格
+                    if 'min_agent_price' in price_data:
+                        new_min_agent_price = float(price_data['min_agent_price'])
+                        old_min_price = product.min_agent_price
+                        product.min_agent_price = new_min_agent_price
+                        logger.info(f"更新最低代理商价格: product_id={product_id}, old_price={old_min_price}, new_price={new_min_agent_price}")
+                
+                elif agent_id:  # 代理商价格更新
+                    agent_price = db.query(AgentPrice).filter(
+                        AgentPrice.agent_id == agent_id,
+                        AgentPrice.product_id == product_id
+                    ).first()
+                    
+                    if agent_price:
+                        old_price = agent_price.price
+                        agent_price.price = float(price_data['price'])
+                        logger.info(f"更新代理商价格: agent_id={agent_id}, product_id={product_id}, old_price={old_price}, new_price={price_data['price']}")
+                    else:
+                        agent_price = AgentPrice(
+                            agent_id=agent_id,
+                            product_id=product_id,
+                            price=float(price_data['price'])
+                        )
+                        db.add(agent_price)
+                        logger.info(f"创建代理商价格记录: agent_id={agent_id}, product_id={product_id}, price={price_data['price']}")
+                
+                success += 1
+                
+            except Exception as e:
+                logger.error(f"更新产品价格失败: {str(e)}")
+                failed += 1
+                continue
+        
+        try:
+            db.commit()
+            logger.info(f"价格更新完成: 总数={total}, 成功={success}, 失败={failed}")
+        except Exception as e:
+            db.rollback()
+            logger.error(f"提交数据库更改失败: {str(e)}")
+            raise HTTPException(status_code=500, detail="数据库更新失败")
+        
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "total": total,
+                "success": success,
+                "failed": failed
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"批量更新价格失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e)) 

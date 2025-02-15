@@ -1,6 +1,330 @@
-# IPProxy API 文档
+# IP代理管理系统 API 文档
 
-## IPIPV API 集成
+## 目录
+1. [基础说明](#基础说明)
+2. [认证相关](#认证相关)
+3. [用户管理](#用户管理)
+4. [代理商管理](#代理商管理)
+5. [订单管理](#订单管理)
+6. [资源管理](#资源管理)
+7. [系统设置](#系统设置)
+8. [回调接口](#回调接口)
+9. [IPIPV API集成](#ipipv-api集成)
+
+## 基础说明
+
+### 接口规范
+- 基础路径: `/api`
+- 请求方式: REST
+- 数据格式: JSON
+- 认证方式: Bearer Token
+
+### 通用响应格式
+```json
+{
+  "code": 0,       // 状态码，0表示成功
+  "message": "",   // 响应消息
+  "data": {}       // 响应数据
+}
+```
+
+### 错误码说明
+- 0: 成功
+- 400: 请求参数错误
+- 401: 未认证
+- 403: 无权限
+- 404: 资源不存在
+- 422: 请求参数验证失败
+- 500: 服务器内部错误
+
+## 认证相关
+
+### 1. 用户登录
+- **接口**: `/api/auth/login`
+- **方法**: POST
+- **请求体**:
+  ```json
+  {
+    "username": "string",
+    "password": "string"
+  }
+  ```
+- **响应**:
+  ```json
+  {
+    "code": 0,
+    "message": "success",
+    "data": {
+      "token": "string",
+      "user": {
+        "id": "number",
+        "username": "string",
+        "email": "string",
+        "is_admin": "boolean",
+        "is_agent": "boolean"
+      }
+    }
+  }
+  ```
+
+### 2. 获取当前用户信息
+- **接口**: `/api/auth/current-user`
+- **方法**: GET
+- **请求头**: 
+  ```
+  Authorization: Bearer <token>
+  ```
+- **响应**:
+  ```json
+  {
+    "code": 0,
+    "message": "success",
+    "data": {
+      "id": "number",
+      "username": "string",
+      "email": "string",
+      "is_admin": "boolean",
+      "is_agent": "boolean"
+    }
+  }
+  ```
+
+## 用户管理
+
+### 1. 创建用户
+- **接口**: `/api/users`
+- **方法**: POST
+- **请求体**:
+  ```json
+  {
+    "username": "string",
+    "password": "string",
+    "agentId": "number",
+    "remark": "string?"
+  }
+  ```
+
+### 2. 获取用户列表
+- **接口**: `/api/users`
+- **方法**: GET
+- **参数**:
+  - page: 页码
+  - pageSize: 每页数量
+  - status: 状态筛选
+  - agentId: 代理商ID
+  - username: 用户名搜索
+- **响应**:
+  ```json
+  {
+    "code": 0,
+    "message": "success",
+    "data": {
+      "list": [
+        {
+          "id": "number",
+          "username": "string",
+          "email": "string",
+          "status": "string",
+          "created_at": "string"
+        }
+      ],
+      "total": "number"
+    }
+  }
+  ```
+
+## 代理商管理
+
+### 1. 创建代理商
+- **接口**: `/api/agents`
+- **方法**: POST
+- **请求体**:
+  ```json
+  {
+    "username": "string",
+    "password": "string",
+    "parentAgentId": "number?",
+    "initialBalance": "number"
+  }
+  ```
+
+### 2. 代理商充值
+- **接口**: `/api/agents/{id}/recharge`
+- **方法**: POST
+- **请求体**:
+  ```json
+  {
+    "amount": "number",
+    "remark": "string?"
+  }
+  ```
+
+### 3. 获取代理商列表
+- **接口**: `/api/agents`
+- **方法**: GET
+- **参数**:
+  - page: 页码
+  - pageSize: 每页数量
+  - status: 状态筛选
+  - username: 用户名搜索
+
+### 4. 获取代理商统计信息
+- **接口**: `/api/agents/{id}/statistics`
+- **方法**: GET
+- **响应**:
+  ```json
+  {
+    "code": 0,
+    "message": "success",
+    "data": {
+      "total_orders": "number",
+      "total_amount": "number",
+      "balance": "number"
+    }
+  }
+  ```
+
+## 订单管理
+
+### 1. 创建动态代理订单
+- **接口**: `/api/orders/dynamic`
+- **方法**: POST
+- **请求体**:
+  ```json
+  {
+    "userId": "number",
+    "resourceId": "number",
+    "traffic": "number",
+    "remark": "string?"
+  }
+  ```
+
+### 2. 创建静态代理订单
+- **接口**: `/api/orders/static`
+- **方法**: POST
+- **请求体**:
+  ```json
+  {
+    "userId": "number",
+    "ipId": "number",
+    "duration": "number",
+    "unit": "enum(day|week|month|year)"
+  }
+  ```
+
+### 3. 获取订单列表
+- **接口**: `/api/orders/{type}`
+- **方法**: GET
+- **参数**:
+  - type: dynamic | static | agent
+  - page: 页码
+  - pageSize: 每页数量
+  - status: 状态筛选
+  - userId: 用户ID
+  - agentId: 代理商ID
+  - orderNo: 订单号搜索
+  - dateRange: 日期范围
+
+## 资源管理
+
+### 1. 获取动态资源列表
+- **接口**: `/api/resources/dynamic`
+- **方法**: GET
+- **参数**:
+  - page: 页码
+  - pageSize: 每页数量
+  - status: 状态筛选
+
+### 2. 获取静态IP资源列表
+- **接口**: `/api/resources/static-ip`
+- **方法**: GET
+- **参数**:
+  - page: 页码
+  - pageSize: 每页数量
+  - status: 状态筛选
+  - location: 位置筛选
+  - type: 资源类型
+  - ip: IP地址搜索
+
+### 3. 资源使用统计
+- **接口**: `/api/resources/usage-stats`
+- **方法**: GET
+- **参数**:
+  - userId: 用户ID
+  - resourceType: dynamic|static
+  - dateRange: 统计日期范围
+
+## 系统设置
+
+### 1. 修改密码
+- **接口**: `/api/settings/password`
+- **方法**: PUT
+- **请求体**:
+  ```json
+  {
+    "oldPassword": "string",
+    "newPassword": "string",
+    "confirmPassword": "string"
+  }
+  ```
+
+### 2. 系统参数配置
+- **接口**: `/api/settings/params`
+- **方法**: PUT
+- **请求体**:
+  ```json
+  {
+    "paramKey": "string",
+    "paramValue": "string"
+  }
+  ```
+
+### 3. 批量更新价格
+- **接口**: `/api/settings/prices/batch`
+- **方法**: POST
+- **请求体**:
+  ```json
+  {
+    "prices": [
+      {
+        "product_id": "string",
+        "type": "string",
+        "proxy_type": "number",
+        "price": "number",
+        "min_agent_price": "number",
+        "is_global": "boolean"
+      }
+    ]
+  }
+  ```
+
+## 回调接口
+
+### 1. 订单状态回调
+- **接口**: `/api/callback/order`
+- **方法**: GET
+- **参数**:
+  - type: order
+  - no: 订单号
+  - op: 1(创建)|2(续费)|3(释放)
+
+### 2. 实例状态回调
+- **接口**: `/api/callback/instance`
+- **方法**: GET
+- **参数**:
+  - type: instance
+  - no: 实例编号
+  - op: 状态码
+
+### 3. 产品状态回调
+- **接口**: `/api/callback/product`
+- **方法**: GET
+- **参数**:
+  - type: product
+  - no: 产品编号
+  - op: 状态码
+
+## IPIPV API集成
 
 ### 基础配置
 - 基础URL: `https://sandbox.ipipv.com`
@@ -37,7 +361,7 @@
    - 拼接字符串：`appKey={appKey}&params={encrypted_params}&timestamp={timestamp}&key={app_secret}`
    - 对拼接字符串进行 MD5 加密并转大写
 
-### 已测试的API端点
+### 主要API端点
 
 1. 区域管理
    - `api/open/app/area/v2`: 获取区域列表
@@ -51,1103 +375,37 @@
    - `api/open/app/proxy/info/v2`: 获取代理信息
    - `api/open/app/product/query/v2`: 查询产品信息
 
-### 测试进展
-- [x] 区域列表获取
-- [x] 城市列表获取
-- [x] 用户创建
-- [x] 代理信息查询
-- [x] IP段列表查询
+4. 订单管理
+   - `api/open/app/instance/open/v2`: 创建订单
+   - `api/open/app/instance/renew/v2`: 续费订单
+   - `api/open/app/instance/release/v2`: 释放订单
 
-## 后端 API
+5. 资源管理
+   - `api/open/app/proxy/draw/api/v2`: API提取代理
+   - `api/open/app/proxy/draw/pwd/v2`: 账密提取代理
+   - `api/open/app/proxy/return/v2`: 动态代理流量回收
 
-### 基础配置
-- 基础URL: `http://localhost:8000/api`
-- API版本: `v2`
-- 请求超时: 30000ms
-- 内容类型: `application/json`
+## 注意事项
 
-### API调用规范
-1. URL路径格式：
-   - 基础URL: `http://localhost:8000/api`
-   - 业务路径: `open/app/{module}/{action}/v2`
-   - 完整示例: `http://localhost:8000/api/open/app/product/query/v2`
-
-2. 认证方式：
-   - 请求头携带Bearer Token
+1. 所有需要认证的接口都需要在请求头中携带token：
    ```
    Authorization: Bearer <token>
    ```
 
-### 响应格式
-所有API响应都遵循以下格式：
-```json
-{
-    "code": 200/400/401/500,
-    "message": "success/error message",
-    "data": {}
-}
-```
-
-## 路由对应关系
-
-### 1. 认证相关 (auth.py)
-前端路由：
-- `/login`：登录页面
-- `/register`：注册页面
-
-后端路由：
-- `POST /api/auth/login`：用户登录
-- `POST /api/auth/register`：用户注册
-
-### 2. 用户相关 (user.py)
-前端路由：
-- `/user/profile`：用户信息页面
-- `/user/settings`：用户设置页面
-- `/user/list`：用户列表页面
-
-后端路由：
-- `GET /api/user/profile`：获取用户信息
-- `PUT /api/user/profile`：更新用户信息
-- `POST /api/user/{user_id}/change-password`：修改密码
-- `POST /api/open/app/user/create`：创建用户
-
-请求参数说明：
-1. 创建用户：
-   ```json
-   {
-       "username": "string",  // 必填，用户名
-       "password": "string",  // 必填，密码
-       "email": "string",    // 可选，邮箱
-       "remark": "string",   // 可选，备注
-       "agent_id": "number"  // 可选，代理商ID。如果不提供，则根据当前登录用户角色处理：
-                            // - 如果当前用户是管理员，创建的用户不属于任何代理商
-                            // - 如果当前用户是代理商，创建的用户自动关联到当前代理商
-   }
-   ```
-   响应格式：
-   ```json
-   {
-       "code": 0,
-       "msg": "success",
-       "data": {
-           "id": "number",
-           "username": "string",
-           "email": "string",
-           "status": "string",
-           "agent_id": "number",
-           "created_at": "string",
-           "updated_at": "string"
-       }
-   }
-   ```
-   错误码：
-   - 400：用户名已存在
-   - 401：未授权
-   - 403：无权操作（例如代理商尝试指定其他代理商ID）
-   - 404：指定的代理商不存在
-   - 500：服务器错误
-
-### 3. 代理商相关 (agent.py)
-前端路由：
-- `/agent/dashboard`：代理商仪表盘
-- `/agent/list`：代理商列表管理
-- `/agent/detail`：代理商详情
-
-后端路由：
-- `GET /api/open/app/agent/list`：获取代理商列表
-- `GET /api/open/app/agent/{agent_id}`：获取代理商详情
-- `GET /api/open/app/agent/{agent_id}/statistics`：获取代理商统计信息
-- `POST /api/open/app/proxy/user/v2`：创建代理商
-- `PUT /api/open/app/agent/{agent_id}`：更新代理商信息
-- `PUT /api/open/app/agent/{agent_id}/status`：更新代理商状态
-
-请求参数说明：
-1. 获取代理商列表：
-   - page: 页码，默认1
-   - pageSize: 每页数量，默认100
-   - username: 可选，按用户名筛选
-   - status: 可选，按状态筛选
-
-2. 创建代理商：
-   ```json
-   {
-       "username": "string",
-       "password": "string",
-       "email": "string",
-       "remark": "string",
-       "status": "active",
-       "balance": 1000.0
-   }
-   ```
-
-3. 更新代理商：
-   ```json
-   {
-       "status": "string",
-       "remark": "string",
-       "balance": 0.0
-   }
-   ```
-
-响应格式：
-```json
-{
-    "code": 0,
-    "message": "success",
-    "data": {
-        "total": 0,
-        "list": [],
-        "page": 1,
-        "pageSize": 100
-    }
-}
-```
-
-### 4. 仪表盘相关 (dashboard.py)
-前端路由：
-- `/dashboard`：系统仪表盘
-
-后端路由：
-- `GET /api/dashboard/stats`：获取统计数据
-- `GET /api/dashboard/revenue`：获取收入数据
-- `GET /api/dashboard/users`：获取用户统计
-
-### 5. 订单相关 (order.py)
-前端路由：
-- `/orders`：订单列表页面
-- `/order/:id`：订单详情页面
-
-后端路由：
-- `GET /api/order/list`：获取订单列表
-- `GET /api/order/{order_id}`：获取订单详情
-- `POST /api/order/create`：创建订单
-
-### 6. 交易相关 (transaction.py)
-前端路由：
-- `/transactions`：交易记录页面
-
-后端路由：
-- `GET /api/transaction/list`：获取交易记录
-- `POST /api/transaction/create`：创建交易记录
-
-### 7. 设置相关 (settings.py)
-前端路由：
-- `/settings`：系统设置页面
-
-后端路由：
-- `GET /api/settings`：获取系统设置
-- `PUT /api/settings`：更新系统设置
-
-### 8. 区域和IP管理 (location.py)
-
-前端路由：
-- `/regions`：区域管理页面
-- `/ip-ranges`：IP段管理页面
-
-后端路由：
-- 前缀：`/api/open/app`
-- 区域管理：
-  - `POST /area/v2`：获取区域列表，返回预定义的6个区域
-  - `POST /city/list/v2`：获取指定国家的城市列表
-  - `POST /product/query/v2`：获取IP段列表
-
-请求参数说明：
-1. 区域列表：无需参数，返回预定义的6个区域
-   ```json
-   {
-       "code": 200,
-       "msg": "success",
-       "data": [
-           {"code": "EU", "name": "欧洲"},
-           {"code": "AS", "name": "亚洲"},
-           {"code": "NA", "name": "北美"},
-           {"code": "SA", "name": "南美"},
-           {"code": "AF", "name": "非洲"},
-           {"code": "OC", "name": "大洋洲"}
-       ]
-   }
-   ```
-
-2. 城市列表：
-   - 参数：
-     ```json
-     {
-         "countryCode": "string"  // 国家代码
-     }
-     ```
-   - 响应：
-     ```json
-     {
-         "code": 200,
-         "msg": "success",
-         "data": [
-             {
-                 "code": "string",
-                 "name": "string",
-                 "cname": "string"
-             }
-         ]
-     }
-     ```
-
-3. IP段列表：
-   - 参数：
-     ```json
-     {
-         "proxyType": [103],  // 静态国外家庭
-         "countryCode": "string",  // 国家代码
-         "cityCode": "string",     // 城市代码
-         "unit": "string",         // 时长单位
-         "duration": "string",     // 时长
-         "supplierCode": "string", // 供应商代码
-         "ispType": "string"       // isp类型
-     }
-     ```
-   - 响应：
-     ```json
-     {
-         "code": 200,
-         "msg": "success",
-         "data": {
-             "ranges": [
-                 {
-                     "ipStart": "string",
-                     "ipEnd": "string",
-                     "ipCount": 0,
-                     "stock": 0,
-                     "staticType": "string"
-                 }
-             ]
-         }
-     }
-     ```
-
-注意事项：
-1. 所有API都需要认证，使用 `get_current_user` 依赖
-2. 错误响应统一使用 HTTP 状态码和详细的错误信息
-3. IP段查询支持按国家、城市和静态类型筛选
-4. 所有响应数据都包含状态码和消息
-
-### 9. IPIPV API相关 (api.py)
-前端路由：
-- 无独立页面，后端服务间调用
-
-后端路由：
-- 前缀：`/api/ipipv/`
-- 区域管理：
-  - `GET /api/ipipv/regions/sync`：同步区域数据
-  - `POST /api/ipipv/open/app/area/v2`：获取区域列表
-- 国家管理：
-  - `GET /api/ipipv/regions/{region_code}/countries/sync`：同步指定区域的国家数据
-  - `GET /api/ipipv/regions/{region_code}/countries`：获取区域下的国家列表
-- 城市管理：
-  - `GET /api/ipipv/countries/{country_code}/cities/sync`：同步指定国家的城市数据
-  - `GET /api/ipipv/countries/{country_code}/cities`：获取国家下的城市列表
-
-请求参数说明：
-1. 区域代码 (region_code)：
-   - EU：欧洲
-   - AS：亚洲
-   - NA：北美
-   - SA：南美
-   - AF：非洲
-   - OC：大洋洲
-
-2. 国家代码 (country_code)：
-   - 遵循ISO 3166-1标准的两字母国家代码
-   - 例如：CN（中国）、US（美国）、JP（日本）等
-
-3. 城市代码：
-   - 使用城市的英文名称或代码
-   - 例如：Shanghai、Beijing、Tokyo等
-
-响应数据格式：
-```json
-{
-    "code": 0,
-    "msg": "success",
-    "data": [
-        {
-            "code": "string",
-            "name": "string",
-            "region_code": "string"  // 仅在国家列表中返回
-        }
-    ]
-}
-```
-
-特别说明：
-1. 所有同步接口都需要认证
-2. 同步操作会先检查本地数据库，如果数据不存在则从IPIPV服务获取
-3. 支持数据缓存和定时更新机制
-4. 所有接口都有完整的错误处理和日志记录
-
-### 10. 实例相关 (instance.py)
-前端路由：
-- `/instances`：实例管理页面
-
-后端路由：
-- `GET /api/instance/list`：获取实例列表
-- `POST /api/instance/sync`：同步实例信息
-
-## 特别说明
-
-1. 所有后端API路由都有统一的错误处理和认证中间件
-2. 在 `main.py` 中统一注册路由
-3. 除了 `location.router` 外，其他路由都添加了 `/api` 前缀
-4. `location.py` 的路由前缀是 `/api/open/app`
-5. `api.py` 的路由前缀是 `/api/ipipv`
-6. 其他路由都是 `/api/[module-name]` 的形式
-
-## 请求处理流程
-
-1. 请求预处理：
-   - 生成请求ID (MD5加密时间戳)
-   - 准备基础参数 (version, encrypt, appKey等)
-   - 添加认证头 (如果有token)
-
-2. 参数处理：
-   - 业务参数JSON序列化
-   - AES加密业务参数
-   - 生成签名
-
-3. URL处理：
-   - 基础URL: `http://localhost:8000/api`
-   - 移除URL开头的斜杠（如果存在）
-   - 拼接完整URL
-
-4. 响应处理：
-   - 验证响应状态码
-   - 解析响应数据
-   - 处理错误情况
-
-5. 错误处理：
-   - HTTP错误 (404, 500等)
-   - 业务错误 (code !== 0)
-   - 网络错误
-   - 超时处理
-
-## 调用示例
-
-### 产品查询API
-```typescript
-// 接口说明：查询指定地区和类型的代理产品信息
-// 请求URL: http://localhost:8000/api/open/app/product/query/v2
-// 请求方法: POST
-
-// 完整请求示例:
-const requestConfig = {
-  method: 'post',
-  url: 'http://localhost:8000/api/open/app/product/query/v2',
-  headers: {
-    'Content-Type': 'application/json',
-    'Authorization': 'Bearer <token>' // 如果需要认证
-  },
-  data: {
-    version: "v2",
-    encrypt: "AES",
-    appKey: "AK20241120145620",
-    reqId: "md5生成的请求ID",
-    timestamp: "1234567890",
-    params: "AES加密后的业务参数", // 下面参数的加密结果
-    sign: "md5签名"
-  }
-}
-
-// 业务参数(加密前):
-{
-  "proxyType": [103],  // 静态国外家庭
-  "countryCode": "JP", // 国家代码
-  "cityCode": "TYO",   // 城市代码
-  "unit": 3,           // 可选，时长单位：1=天 2=周 3=月
-  "duration": 1,       // 可选，时长
-  "supplierCode": "",  // 可选，供应商代码
-  "ispType": 1        // 可选，ISP类型：1=单ISP 2=双ISP
-}
-
-// 成功响应示例:
-{
-  "code": 0,
-  "msg": "success",
-  "data": [
-    {
-      "productNo": "jp_static_103",     // 产品编号
-      "productName": "日本静态IP",      // 产品名称
-      "inventory": 100,                 // 库存数量
-      "price": 100.00,                 // 价格
-      "cidrBlocks": [                  // IP网段信息
-        {
-          "startIp": "1.1.1.1",        // 起始IP
-          "endIp": "1.1.1.255",        // 结束IP
-          "count": 255                  // IP数量
-        }
-      ],
-      "unit": 3,                       // 时长单位
-      "duration": 1,                   // 时长
-      "ispType": 1,                    // ISP类型
-      "status": 1                      // 状态：1=正常 0=下架
-    }
-  ]
-}
-
-// 错误响应示例:
-{
-  "code": 404,
-  "msg": "Product not found",
-  "data": null
-}
-
-// 请求参数说明:
-1. proxyType: 代理类型
-   - 101 = 静态云平台
-   - 102 = 静态国内家庭
-   - 103 = 静态国外家庭
-   - 104 = 动态国外
-   - 105 = 动态国内
-
-2. countryCode: 国家代码
-   - 使用ISO 3166-1标准的两字母代码
-   - JP = 日本
-   - US = 美国
-   - GB = 英国
-   等
-
-3. cityCode: 城市代码
-   - TYO = 东京
-   - OSA = 大阪
-   - NYC = 纽约
-   等
-
-4. unit: 时长单位
-   - 1 = 天
-   - 2 = 周(7天)
-   - 3 = 月(自然月)
-   - 4 = 年(365/366天)
-   - 10 = 无限制
-
-5. ispType: ISP类型
-   - 1 = 单ISP
-   - 2 = 双ISP
-
-// 错误处理:
-1. 404: 产品不存在
-2. 400: 参数错误
-3. 401: 未授权
-4. 500: 服务器错误
-
-// 注意事项:
-1. 所有请求必须包含完整的认证信息
-2. 业务参数必须经过AES加密
-3. 时间戳使用秒级时间戳
-4. 签名算法必须严格按照规范生成
-```
-
-server.js：ipipv api 参数修改
-ippr
-
-## 路由配置
-
-为了确保前后端路由的一致性，我们采用了共享路由配置的方案。主要包含以下几个部分：
-
-### 1. 前端路由配置
-
-位置：`src/shared/routes.ts`
-
-使用 TypeScript 定义的路由配置，包含了所有 API 端点的定义：
-
-```typescript
-export const API_ROUTES = {
-  AREA: {
-    /** 获取区域列表 */
-    LIST: 'open/app/area/v2',
-    /** 获取区域库存 */
-    STOCK: 'open/app/area/stock/v2'
-  },
-  COUNTRY: {
-    /** 获取国家列表 */
-    LIST: 'open/app/country/list/v2'
-  },
-  CITY: {
-    /** 获取城市列表 */
-    LIST: 'open/app/city/list/v2'
-  },
-  PRODUCT: {
-    /** 查询产品列表 */
-    QUERY: 'open/app/product/query/v2',
-    /** 查询产品库存 */
-    STOCK: 'open/app/product/stock/v2'
-  },
-  AUTH: {
-    /** 登录 */
-    LOGIN: 'auth/login',
-    /** 登出 */
-    LOGOUT: 'auth/logout'
-  },
-  USER: {
-    /** 获取用户信息 */
-    INFO: 'user/info',
-    /** 更新用户信息 */
-    UPDATE: 'user/update'
-  },
-  PROXY: {
-    /** 获取代理信息 */
-    INFO: 'proxy/info',
-    /** 获取代理余额 */
-    BALANCE: 'proxy/balance',
-    /** 获取流量使用记录 */
-    FLOW_USE_LOG: 'proxy/flow/use/log'
-  }
-} as const;
-```
-
-### 2. 后端路由配置
-
-位置：`backend/app/core/routes.py`
-
-使用 Python 字典定义的路由配置，与前端保持一致：
-
-```python
-API_ROUTES: Dict[str, Dict[str, str]] = {
-    "AREA": {
-        "LIST": "open/app/area/v2",
-        "STOCK": "open/app/area/stock/v2"
-    },
-    "COUNTRY": {
-        "LIST": "open/app/country/list/v2"
-    },
-    "CITY": {
-        "LIST": "open/app/city/list/v2"
-    },
-    "PRODUCT": {
-        "QUERY": "open/app/product/query/v2",
-        "STOCK": "open/app/product/stock/v2"
-    },
-    "AUTH": {
-        "LOGIN": "auth/login",
-        "LOGOUT": "auth/logout"
-    },
-    "USER": {
-        "INFO": "user/info",
-        "UPDATE": "user/update"
-    },
-    "PROXY": {
-        "INFO": "proxy/info",
-        "BALANCE": "proxy/balance",
-        "FLOW_USE_LOG": "proxy/flow/use/log"
-    }
-}
-```
-
-同时提供了两个辅助函数：
-
-```python
-def get_route(module: str, action: str) -> str:
-    """获取指定模块和动作的路由"""
-    return API_ROUTES[module][action]
-
-def get_full_route(module: str, action: str) -> str:
-    """获取完整的路由路径（包含 /api 前缀）"""
-    return f"/api/{get_route(module, action)}"
-```
-
-### 3. 使用方式
-
-#### 前端使用示例
-
-```typescript
-// 在 API 调用中使用
-const response = await this.request<ApiResponseData<ApiArea[]>>(
-  API_ROUTES.AREA.LIST, 
-  requestParams
-);
-```
-
-#### 后端使用示例
-
-```python
-@router.post("/" + API_ROUTES["AREA"]["LIST"])
-async def get_areas_v2(params: Dict[str, Any] = Body(...)):
-    """获取区域列表"""
-    # ... 处理逻辑 ...
-
-# 或者使用辅助函数
-@router.post(get_full_route("AREA", "LIST"))
-async def get_areas_v2(params: Dict[str, Any] = Body(...)):
-    """获取区域列表"""
-    # ... 处理逻辑 ...
-```
-
-### 4. 优点
-
-1. **路由定义集中管理**：避免前后端不一致
-2. **类型安全**：TypeScript 提供类型检查，减少拼写错误
-3. **易于维护和更新**：修改一处即可同步更新
-4. **清晰的文档**：路由定义即文档
-5. **IDE 支持**：支持自动完成功能
-
-### 5. 维护方式
-
-当需要添加新的路由或修改现有路由时：
-
-1. 在 `src/shared/routes.ts` 中添加或修改路由定义
-2. 更新 `backend/app/core/routes.py` 中的路由配置
-3. 前后端代码中使用 `API_ROUTES` 或 `get_route()` 来引用路由
-
-这样可以确保前后端的路由始终保持同步。
-
-## 新架构设计
-
-### 系统架构
-
-1. 前端层
-- 只与后端 API 通信
-- 通过定义好的路由访问后端服务
-- 不直接与 IPIPV API 通信
-
-2. 后端层
-- 提供 RESTful API 接口给前端
-- 管理数据库的读写操作
-- 封装 IPIPV API 的调用
-- 实现数据同步逻辑
-
-3. 数据库层
-- 存储区域、国家、城市等基础数据
-- 记录数据同步时间
-- 缓存 IPIPV API 的响应数据
-
-4. IPIPV API 层
-- 作为外部服务提供数据源
-- 通过后端服务异步调用
-- 数据定期同步到数据库
-
-### 数据流向
-```
-前端 <-> 后端 API <-> 数据库
-                  ↑
-                  |
-              IPIPV API
-```
-
-### 主要功能模块
-
-1. 数据同步模块
-```typescript
-class DataSyncService {
-  // 同步区域列表
-  async syncAreas(): Promise<void>;
-  
-  // 同步指定区域的国家列表
-  async syncCountries(regionCode: string): Promise<void>;
-  
-  // 同步指定国家的城市列表
-  async syncCities(countryCode: string): Promise<void>;
-  
-  // 同步IP范围数据
-  async syncIpRanges(params: IpRangeParams): Promise<void>;
-}
-```
-
-2. 数据访问模块
-```typescript
-class ProxyService {
-  // 获取区域列表
-  async getAreaList(): Promise<Area[]>;
-  
-  // 获取国家列表
-  async getCountryList(regionCode: string): Promise<Country[]>;
-  
-  // 获取城市列表
-  async getCityList(countryCode: string): Promise<City[]>;
-  
-  // 获取IP范围
-  async getIpRanges(params: IpRangeParams): Promise<IpRange[]>;
-}
-```
-
-3. 数据模型
-```typescript
-interface Area {
-  code: string;
-  name: string;
-  lastSync?: Date;
-}
-
-interface Country {
-  code: string;
-  name: string;
-  regionCode: string;
-  lastSync?: Date;
-}
-
-interface City {
-  code: string;
-  name: string;
-  countryCode: string;
-  lastSync?: Date;
-}
-
-interface IpRange {
-  ipStart: string;
-  ipEnd: string;
-  ipCount: number;
-  stock: number;
-  type: string;
-}
-```
-
-### API 路由
-
-1. 区域管理
-- `GET /api/areas`：获取所有区域
-- `GET /api/areas/sync`：触发区域数据同步
-
-2. 国家管理
-- `GET /api/regions/:regionCode/countries`：获取区域下的国家
-- `GET /api/regions/:regionCode/countries/sync`：触发国家数据同步
-
-3. 城市管理
-- `GET /api/countries/:countryCode/cities`：获取国家下的城市
-- `GET /api/countries/:countryCode/cities/sync`：触发城市数据同步
-
-4. IP范围管理
-- `GET /api/ip-ranges`：获取IP范围列表
-- `GET /api/ip-ranges/sync`：触发IP范围数据同步
-
-### 优点
-
-1. 解耦
-- 前端只需要关心与后端的通信
-- 后端负责数据的存储和同步
-- IPIPV API 的复杂性被封装在后端
-
-2. 性能
-- 前端可以快速从后端获取数据
-- 数据同步在后台异步进行
-- 可以实现数据缓存
-
-3. 可维护性
-- API 密钥等敏感信息保存在后端
-- 可以统一管理数据同步策略
-- 便于监控和错误处理
-
-4. 可扩展性
-- 可以轻松添加新的数据源
-- 可以实现数据转换和清洗
-- 可以添加缓存层
-
-## 前端代码结构
-
-前端代码主要位于 `src` 目录下，关键文件和目录如下：
-
-1. API 配置相关：
-   - `src/config/api.ts`: API 基础配置，包含基础URL、版本、超时等
-   - `src/services/`: API 服务实现目录
-   - `src/utils/request.ts`: 封装的 axios 请求工具
-
-2. API 配置示例 (src/config/api.ts):
-```typescript
-export const API_BASE_URL = 'http://localhost:8000/api';
-export const API_VERSION = 'v2';
-
-export const API_PATHS = {
-  AUTH: {
-    LOGIN: 'auth/login',
-    LOGOUT: 'auth/logout'
-  },
-  APP: {
-    INFO: 'open/app/info/v2',
-    PRODUCT: 'open/app/product/v2'
-  },
-  PROXY: {
-    INFO: 'settings/proxy/info',
-    BALANCE: 'settings/proxy/balance'
-  }
-  // ... 其他路径配置
-};
-
-export const API_CONFIG = {
-  baseURL: API_BASE_URL,
-  TIMEOUT: 30000,
-  HEADERS: {
-    'Content-Type': 'application/json'
-  },
-  APP_KEY: 'AK20241120145620',
-  APP_SECRET: 'bf3ffghlt0hpc4omnvc2583jt0fag6a4',
-  version: 'v2',
-  encrypt: 'AES'
-};
-```
-
-3. 目录结构：
-```
-src/
-├── api/          # API 类型定义
-├── config/       # 配置文件
-│   └── api.ts    # API 配置
-├── services/     # API 服务实现
-│   ├── auth.ts
-│   ├── user.ts
-│   └── ...
-├── types/        # TypeScript 类型定义
-├── utils/
-│   └── request.ts # 请求工具
-└── ...
-```
-
-## 获取产品信息 (GetOrder)
-
-#### 请求路径
-```
-POST /api/open/app/product/query/v2
-```
-
-#### 请求参数
-
-| 参数名 | 类型 | 必填 | 说明 |
-|--------|------|------|------|
-| proxyType | number | 是 | 代理类型 (101=静态云平台, 102=静态国内家庭, 103=静态国外家庭) |
-| regionCode | string | 否 | 区域代码 |
-| countryCode | string | 否 | 国家代码 |
-| cityCode | string | 否 | 城市代码 |
-| staticType | string | 否 | 静态代理类型 |
-| version | string | 否 | API版本，默认v2 |
-
-#### 响应参数
-| 参数名 | 类型 | 说明 |
-|-------|------|------|
-| code | number | 响应码，0表示成功 |
-| msg | string | 响应消息 |
-| data | array | 产品列表 |
-
-#### 产品信息字段
-| 字段名 | 类型 | 说明 |
-|-------|------|------|
-| productNo | string | 产品编号 |
-| productName | string | 产品名称 |
-| proxyType | number | 代理类型 |
-| useType | string | 使用类型 |
-| protocol | string | 协议 |
-| useLimit | number | 使用限制 |
-| sellLimit | number | 销售限制 |
-| areaCode | string | 区域代码 |
-| countryCode | string | 国家代码 |
-| stateCode | string | 州省代码 |
-| cityCode | string | 城市代码 |
-| detail | string | 商品描述 |
-| costPrice | number | 价格 |
-| inventory | number | 库存 |
-| ipType | number | ip类型 |
-| ispType | number | isp类型 |
-| netType | number | 网络类型 |
-| duration | number | 时长 |
-| unit | number | 单位 |
-| bandWidth | number | 带宽 |
-| bandWidthPrice | number | 额外带宽价格 |
-| maxBandWidth | number | 最大带宽 |
-| flow | number | 流量包大小 |
-| cpu | number | CPU数量 |
-| memory | number | 内存容量 |
-| enable | number | 是否可购买 |
-| supplierCode | string | 供应商代码 |
-| ipCount | number | IP数量 |
-| ipDuration | number | IP时长 |
-| assignIp | number | 是否支持指定IP |
-| cidrStatus | number | 是否支持网段 |
-
-### 示例
-请求：
-```json
-{
-  "proxyType": 101,
-  "countryCode": "CN",
-  "cityCode": "CN000SHA"
-}
-```
-
-响应：
-```json
-{
-  "code": 0,
-  "msg": "success",
-  "data": [
-    {
-      "productNo": "ipideash_598",
-      "productName": "上海静态云代理",
-      "proxyType": 101,
-      "useType": "1",
-      "protocol": "1",
-      "useLimit": 1,
-      "sellLimit": 1,
-      "areaCode": "1",
-      "countryCode": "CN",
-      "stateCode": "SH",
-      "cityCode": "CN000SHA",
-      "detail": "上海静态云代理",
-      "costPrice": 100,
-      "inventory": 100,
-      "ipType": 1,
-      "ispType": 1,
-      "netType": 1,
-      "duration": 30,
-      "unit": 3,
-      "bandWidth": 100,
-      "bandWidthPrice": 10,
-      "maxBandWidth": 1000,
-      "flow": 1000,
-      "cpu": 1,
-      "memory": 1,
-      "enable": 1,
-      "supplierCode": "SP001",
-      "ipCount": 1,
-      "ipDuration": 30,
-      "assignIp": 1,
-      "cidrStatus": -1
-    }
-  ]
-}
-```
-
-# API 路由配置文档
-
-## 区域相关 (AREA)
-
-### 获取区域列表
-- 路径: `/api/open/app/area/v2`
-- 方法: POST
-- 参数:
-  - codes: 获取地域代码对应列表，为null获取全部
-- 返回:
-  - code: 地域代码
-  - name: 地域名称
-  - cname: 地域中文名
-  - children: 下级地域
-
-### 获取区域库存
-- 路径: `/api/open/app/area/stock/v2`
-- 方法: POST
-- 参数: 待补充
-- 返回: 待补充
-
-### 获取IP段列表
-- 路径: `/api/open/app/area/ip-ranges/v2`
-- 方法: POST
-- 参数:
-  - proxyType: 代理类型 (101=静态云平台, 102=静态国内家庭, 103=静态国外家庭)
-  - regionCode: 区域代码（可选）
-  - countryCode: 国家代码（可选）
-  - cityCode: 城市代码（可选）
-  - staticType: 静态代理类型（可选）
-  - version: API版本（可选）
-- 返回:
-  - ipStart: 起始IP
-  - ipEnd: 结束IP
-  - ipCount: IP数量
-  - stock: 库存数量
-  - staticType: 静态代理类型
-
-## 国家相关 (COUNTRY)
-
-### 获取国家列表
-- 路径: `/api/open/app/country/list/v2`
-- 方法: POST
-- 参数: 待补充
-- 返回: 待补充
-
-## 城市相关 (CITY)
-
-### 获取城市列表
-- 路径: `/api/open/app/city/list/v2`
-- 方法: POST
-- 参数:
-  - countryCode: 国家代码
-  - appUsername: 用户名
-- 返回:
-  - cityCode: 城市代码
-  - cityName: 城市中文名称
-  - stateCode: 省、州代码
-  - stateName: 省、州中文名称
-  - countryCode: 国家代码
-  - countryName: 国家中文名称
-  - areaCode: 洲代码
-  - areaName: 洲中文名称
-  - status: 状态 1=正常
-
-## 产品相关 (PRODUCT)
-
-### 查询产品列表
-- 路径: `/api/open/app/product/query/v2`
-- 方法: POST
-- 参数: 待补充
-- 返回: 待补充
-
-### 查询产品库存
-- 路径: `/api/open/app/product/stock/v2`
-- 方法: POST
-- 参数: 待补充
-- 返回: 待补充
-
-## 认证相关 (AUTH)
-
-### 登录
-- 路径: `/api/auth/login`
-- 方法: POST
-- 参数: 待补充
-- 返回: 待补充
-
-### 登出
-- 路径: `/api/auth/logout`
-- 方法: POST
-- 参数: 待补充
-- 返回: 待补充
-
-## 用户相关 (USER)
-
-### 获取用户信息
-- 路径: `/api/user/info`
-- 方法: GET
-- 参数: 待补充
-- 返回: 待补充
-
-### 更新用户信息
-- 路径: `/api/user/update`
-- 方法: POST
-- 参数: 待补充
-- 返回: 待补充
-
-## 代理相关 (PROXY)
-
-### 获取代理信息
-- 路径: `/api/proxy/info`
-- 方法: GET
-- 参数: 待补充
-- 返回: 待补充
-
-### 获取代理余额
-- 路径: `/api/proxy/balance`
-- 方法: GET
-- 参数: 待补充
-- 返回: 待补充
-
-### 获取流量使用记录
-- 路径: `/api/proxy/flow/use/log`
-- 方法: GET
-- 参数: 待补充
-- 返回: 待补充
-
-## 注意事项
-
-1. 所有接口都需要在请求头中携带认证信息
-2. 所有POST请求的Content-Type应为application/json
-3. 所有接口的响应格式统一为：
-   ```json
-   {
-     "code": 0,          // 状态码，0表示成功
-     "msg": "success",   // 状态信息
-     "data": {}         // 具体数据
-   }
-   ```
-4. 错误处理：
-   - 401: 未认证或认证失败
-   - 403: 无权限
-   - 404: 资源不存在
-   - 500: 服务器内部错误
+2. 分页相关的接口统一使用以下参数：
+   - page: 页码，从1开始
+   - pageSize: 每页数量，默认10
+
+3. 时间相关的字段使用以下格式：
+   - 请求参数中的日期格式：YYYY-MM-DD
+   - 响应中的日期时间格式：YYYY-MM-DD HH:mm:ss
+
+4. 所有金额相关的字段都使用 number 类型，单位为元，精确到小数点后两位
+
+5. 接口调用注意事项：
+   - 所有接口都需要进行认证（除了登录接口）
+   - 接口访问需要根据用户角色进行权限控制
+   - 涉及金额的接口需要使用事务处理
+   - 敏感数据传输需要加密
+   - 接口调用需要做频率限制
+   - 重要操作需要记录日志

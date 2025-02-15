@@ -219,24 +219,31 @@ export interface CityResponse {
 }
 
 export interface ProductPrice {
-  id: number;
-  type: 'dynamic' | 'static';
-  area: string;
-  country: string;
-  city: string;
-  ipRange: string;
-  price: number;
-  isGlobal: boolean;
-  createdAt: string;
-  updatedAt: string;
+  id: string;
+  type: string;  // 产品编号，例如：STATIC_USA_LAX_1
+  proxyType: number;  // 代理类型 (101=静态云平台, 102=静态国内家庭, 103=静态国外家庭, 104=动态国外代理, 105=动态国内代理, 201=其他动态代理)
+  area: string;  // 区域代码，对应 AREA_MAP 中的键
+  country?: string;  // 国家代码，对应 COUNTRY_MAP 中的键
+  city?: string;  // 城市代码
+  ipRange: string;  // IP段范围，格式：起始IP-结束IP
+  price: number;  // 价格，精确到小数点后1位
+  isGlobal: boolean;  // 是否为全局价格
+  stock: number;
+  minAgentPrice: number;  // 最低代理价格
+  globalPrice: number;  // 全局价格
+  updatedAt: string;  // 更新时间
+  createdAt: string;  // 创建时间
 }
 
 export interface ProductPriceParams {
-  isGlobal?: boolean;
-  agentId?: number;
+  is_global?: boolean;
+  agent_id?: number;
   type?: string;
   area?: string;
   country?: string;
   city?: string;
+  types?: string[];
+  price_type?: 'min_agent' | 'global';
+  proxy_types?: number[];  // 代理类型过滤参数
   sync?: boolean;  // 是否同步产品库存
 }

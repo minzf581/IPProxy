@@ -24,10 +24,10 @@ export const getStaticOrderDetail = (id: string) =>
 export const getStatistics = () => api.get<StatisticsData>('/statistics');
 
 // 价格相关
-export async function getPrices(params: ProductPriceParams) {
-  return api.get('/v1/product/prices', { params });
+export async function getProductPrices(params: ProductPriceParams) {
+  return api.get('/api/product/prices', { params });
 }
 
-export async function syncPrices() {
-  return api.post('/v1/product/prices/sync');
+export async function syncProductPrices() {
+  return api.post('/api/product/prices/sync');
 }

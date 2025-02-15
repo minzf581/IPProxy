@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DECIMAL, TIMESTAMP, SmallInteger, Text, Float
+from sqlalchemy import Column, Integer, String, DECIMAL, TIMESTAMP, SmallInteger, Text, Float, CheckConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.models.base import Base
@@ -21,6 +21,7 @@ class ProductInventory(Base):
     detail = Column(Text, comment='商品描述')
     cost_price = Column(DECIMAL(10,4), nullable=False, comment='成本价格')
     global_price = Column(DECIMAL(10,4), comment='全局销售价格')
+    min_agent_price = Column(DECIMAL(10,4), comment='最低代理商价格')
     inventory = Column(Integer, nullable=False, default=0, comment='库存')
     ip_type = Column(SmallInteger, default=1, comment='ip类型(1=ipv4,2=ipv6,3=随机)')
     isp_type = Column(SmallInteger, default=0, comment='isp类型(1=单isp,2=双isp,0=未知)')
@@ -46,6 +47,9 @@ class ProductInventory(Base):
     ip_start = Column(String(15), comment='IP段起始地址')
     ip_end = Column(String(15), comment='IP段结束地址')
 
+    # 移除原有的价格约束
+    __table_args__ = ()
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -63,6 +67,7 @@ class ProductInventory(Base):
             'detail': self.detail,
             'cost_price': float(self.cost_price) if self.cost_price else None,
             'global_price': float(self.global_price) if self.global_price else None,
+            'min_agent_price': float(self.min_agent_price) if self.min_agent_price else None,
             'inventory': self.inventory,
             'ip_type': self.ip_type,
             'isp_type': self.isp_type,

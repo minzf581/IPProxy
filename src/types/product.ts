@@ -1,20 +1,25 @@
 export interface ProductPrice {
-  id: number;
-  type: string;  // 产品编号，对应 PRODUCT_NO_MAP 中的键
-  proxyType: number;  // 代理类型 (101=静态云平台, 102=静态国内家庭, 103=静态国外家庭, 104=动态国外代理, 105=动态国内代理)
+  id: string;
+  type: string;  // 产品编号，例如：STATIC_USA_LAX_1
+  proxyType: number;  // 代理类型 (101=静态云平台, 102=静态国内家庭, 103=静态国外家庭, 104=动态国外代理, 105=动态国内代理, 201=其他动态代理)
   area: string;  // 区域代码，对应 AREA_MAP 中的键
-  country: string;  // 国家代码，对应 COUNTRY_MAP 中的键
-  city: string;  // 城市代码
+  country?: string;  // 国家代码，对应 COUNTRY_MAP 中的键
+  city?: string;  // 城市代码
   ipRange: string;  // IP段范围，格式：起始IP-结束IP
   price: number;  // 价格，精确到小数点后1位
   isGlobal: boolean;  // 是否为全局价格
-  createdAt: string;  // 创建时间
+  stock: number;
+  minAgentPrice: number;
+  globalPrice: number;
   updatedAt: string;  // 更新时间
+  createdAt: string;  // 创建时间
+  key?: number;  // 表格渲染用的key
 }
 
 export interface ProductPriceUpdate {
   price: number;
   agentId?: number | null;
+  proxyType?: number;
 }
 
 export interface ProductPriceParams {
@@ -24,13 +29,15 @@ export interface ProductPriceParams {
   area?: string;
   country?: string;
   city?: string;
+  types?: string[];
+  price_type?: 'min_agent' | 'global';
+  proxy_types?: number[];  // 添加代理类型过滤参数
 }
 
 export interface ProductStock {
-  productNo: string;
-  productName: string;
+  productId: string;
   stock: number;
-  price: number;
+  updatedAt: string;
 }
 
 export interface Product {
@@ -65,4 +72,11 @@ export interface Product {
   ipDuration: number;  // IP时长
   assignIp: number;  // 是否支持指定IP
   cidrStatus: number;  // 是否支持网段
+}
+
+export interface ProductPriceSettings {
+  productId: string;
+  minAgentPrice: number;
+  globalPrice: number;
+  type: string;
 } 

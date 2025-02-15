@@ -1,7 +1,8 @@
 import React from 'react';
 import { Modal, Form, InputNumber, Descriptions, message } from 'antd';
-import { updateProductPrice } from '@/services/productInventory';
+import { updateProductPriceSettings } from '@/services/settingsService';
 import type { ProductPrice } from '@/types/product';
+import { debug } from '@/utils/debug';
 
 interface PriceSettingsModalProps {
   visible: boolean;
@@ -32,21 +33,23 @@ const PriceSettingsModal: React.FC<PriceSettingsModalProps> = ({
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      if (!initialData) {
+      if (!initialData?.id) {
         message.error('数据错误');
         return;
       }
 
       setLoading(true);
-      await updateProductPrice(initialData.id, {
-        price: values.price
+      await updateProductPriceSettings(initialData.id, {
+        globalPrice: values.price,
+        type: initialData.type,
+        minAgentPrice: initialData.minAgentPrice
       });
 
       message.success('价格更新成功');
       onSuccess();
-    } catch (error) {
-      console.error('更新价格失败:', error);
-      message.error('更新价格失败，请重试');
+    } catch (error: any) {
+      debug.error('更新价格失败:', error);
+      message.error(error.message || '更新价格失败，请重试');
     } finally {
       setLoading(false);
     }

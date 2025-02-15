@@ -1,15 +1,17 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal, Form, InputNumber, Descriptions, message, Select } from 'antd';
-import { updateProductPrice } from '@/services/productInventory';
+import { updateProductPriceSettings } from '@/services/settingsService';
 import { getAgentList } from '@/services/agentService';
 import { useRequest } from 'ahooks';
 import type { ProductPrice } from '@/types/product';
 import type { AgentInfo } from '@/types/agent';
 import { getMappedValue, PRODUCT_NO_MAP, AREA_MAP, COUNTRY_MAP, CITY_MAP } from '@/constants/mappings';
+import { debug } from '@/utils/debug';
 
 interface PriceSettingsModalProps {
   visible: boolean;
   initialData: ProductPrice | null;
+  minAgentPrice: number;  // 添加最低代理价格属性
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -17,67 +19,68 @@ interface PriceSettingsModalProps {
 const PriceSettingsModal: React.FC<PriceSettingsModalProps> = ({
   visible,
   initialData,
+  minAgentPrice,
   onSuccess,
   onCancel,
 }) => {
   const [form] = Form.useForm();
-  const [loading, setLoading] = React.useState(false);
-  const [selectedAgent, setSelectedAgent] = React.useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<number | null>(null);
 
   const { data: agentData } = useRequest(() => getAgentList({ page: 1, pageSize: 1000 }));
   const agents = agentData?.list || [];
 
-  // 当弹窗显示时，设置表单初始值
-  React.useEffect(() => {
+  useEffect(() => {
     if (visible && initialData) {
       form.setFieldsValue({
-        price: selectedAgent ? Number((initialData.price * 1.2).toFixed(1)) : initialData.price
+        price: initialData.price,
+        minAgentPrice: initialData.minAgentPrice || minAgentPrice,
       });
     }
-  }, [visible, initialData, form, selectedAgent]);
+  }, [visible, initialData, form, minAgentPrice]);
 
-  // 处理表单提交
-  const handleSubmit = async () => {
+  const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      if (!initialData) {
-        message.error('数据错误');
-        return;
+      setLoading(true);
+
+      if (!initialData?.id) {
+        throw new Error('无效的产品ID');
       }
 
-      setLoading(true);
-      await updateProductPrice(initialData.id, {
+      await updateProductPriceSettings(initialData.id, {
         price: values.price,
-        agentId: selectedAgent
+        minAgentPrice: values.minAgentPrice,
+        proxyType: initialData.proxyType
       });
 
-      message.success('价格更新成功');
       onSuccess();
-    } catch (error) {
-      console.error('更新价格失败:', error);
-      message.error('更新价格失败，请重试');
+      message.success('更新成功');
+    } catch (error: any) {
+      debug.error('更新价格失败:', error);
+      message.error(error.message || '更新失败');
     } finally {
       setLoading(false);
     }
   };
 
-  // 处理取消
   const handleCancel = () => {
     form.resetFields();
     setSelectedAgent(null);
     onCancel();
   };
 
-  // 处理代理商选择
   const handleAgentChange = (value: number | null) => {
     setSelectedAgent(value);
     if (value && initialData) {
       // 如果选择了代理商，默认设置为全局价格的120%
+      const suggestedPrice = Number((initialData.price * 1.2).toFixed(1));
+      // 确保建议价格不低于最低代理价格
+      const finalPrice = Math.max(suggestedPrice, minAgentPrice);
       form.setFieldsValue({
-        price: Number((initialData.price * 1.2).toFixed(1))
+        price: finalPrice
       });
     } else if (initialData) {
-      // 如果取消选择代理商，恢复为全局价格
       form.setFieldsValue({
         price: initialData.price
       });
@@ -86,15 +89,13 @@ const PriceSettingsModal: React.FC<PriceSettingsModalProps> = ({
 
   return (
     <Modal
-      title="修改价格"
+      title="价格设置"
       open={visible}
-      onOk={handleSubmit}
+      onOk={handleOk}
       onCancel={handleCancel}
       confirmLoading={loading}
-      maskClosable={false}
-      destroyOnClose
     >
-      <Form 
+      <Form
         form={form}
         layout="vertical"
       >
@@ -132,23 +133,34 @@ const PriceSettingsModal: React.FC<PriceSettingsModalProps> = ({
               {initialData.ipRange}
             </Descriptions.Item>
           )}
+          <Descriptions.Item label="最低代理价格">
+            ¥{minAgentPrice}
+          </Descriptions.Item>
         </Descriptions>
 
         <Form.Item
-          name="price"
           label="价格"
-          rules={[
-            { required: true, message: '请输入价格' },
-            { type: 'number', min: 0.1, message: '价格必须大于0.1' },
-            { type: 'number', max: 999999.9, message: '价格超出范围' }
-          ]}
+          name="price"
+          rules={[{ required: true, message: '请输入价格' }]}
         >
           <InputNumber
             style={{ width: '100%' }}
+            min={0}
             precision={1}
-            step={0.1}
             prefix="¥"
-            placeholder="请输入价格"
+          />
+        </Form.Item>
+
+        <Form.Item
+          label="最低代理价格"
+          name="minAgentPrice"
+          rules={[{ required: true, message: '请输入最低代理价格' }]}
+        >
+          <InputNumber
+            style={{ width: '100%' }}
+            min={0}
+            precision={1}
+            prefix="¥"
           />
         </Form.Item>
       </Form>

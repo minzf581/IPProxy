@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
-from typing import List
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks, Query
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.schemas.product import (
     ProductPriceBase,
@@ -27,19 +27,28 @@ def check_price_permission(user: User, is_global: bool, agent_id: int = None) ->
 @router.get("/prices", response_model=ProductPriceResponse)
 async def get_prices(
     is_global: bool,
-    agent_id: int = None,
+    agent_id: Optional[int] = None,
+    proxy_types: List[int] = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """获取价格列表"""
-    if not check_price_permission(current_user, is_global, agent_id):
-        raise HTTPException(
-            status_code=403,
-            detail="没有权限访问价格信息"
-        )
-    
     try:
-        prices = product_prices.get_prices(db, is_global, agent_id)
+        logger.info(f"接收到请求参数: is_global={is_global}, agent_id={agent_id}, proxy_types={proxy_types}")
+        
+        if not check_price_permission(current_user, is_global, agent_id):
+            raise HTTPException(
+                status_code=403,
+                detail="没有权限访问价格信息"
+            )
+        
+        # 确保 proxy_types 是列表类型
+        if proxy_types and not isinstance(proxy_types, list):
+            proxy_types = [proxy_types]
+            
+        prices = product_prices.get_prices(db, is_global, agent_id, proxy_types)
+        logger.info(f"查询到 {len(prices)} 条价格记录")
+        
         return {
             "code": 200,
             "message": "success",
@@ -85,22 +94,55 @@ async def update_prices(
     current_user: User = Depends(get_current_user)
 ):
     """更新价格"""
-    if not check_price_permission(current_user, request.is_global, request.agent_id):
-        raise HTTPException(
-            status_code=403,
-            detail="没有权限修改价格"
-        )
-    
     try:
-        product_prices.update_prices(db, request)
-        return {
-            "code": 200,
-            "message": "价格更新成功"
-        }
+        logger.info(f"收到价格更新请求: {request.dict()}")
+        
+        # 权限检查
+        if not check_price_permission(current_user, request.is_global, request.agent_id):
+            logger.warning(f"用户无权限更新价格: user_id={current_user.id}, is_admin={current_user.is_admin}, is_global={request.is_global}, agent_id={request.agent_id}")
+            raise HTTPException(
+                status_code=403,
+                detail="没有权限修改价格"
+            )
+        
+        # 验证价格数据
+        if not request.prices:
+            logger.warning("没有提供要更新的价格数据")
+            raise HTTPException(
+                status_code=400,
+                detail="没有提供要更新的价格数据"
+            )
+        
+        try:
+            logger.info(f"开始更新价格: is_global={request.is_global}, agent_id={request.agent_id}")
+            success = product_prices.update_prices(db, request)
+            if success:
+                logger.info("价格更新成功")
+                return {
+                    "code": 200,
+                    "message": "价格更新成功"
+                }
+            else:
+                logger.warning("价格更新失败")
+                raise HTTPException(
+                    status_code=500,
+                    detail="价格更新失败"
+                )
+            
+        except Exception as e:
+            logger.error(f"更新价格失败: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"更新价格失败: {str(e)}"
+            )
+            
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"处理价格更新请求失败: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"更新价格失败: {str(e)}"
+            detail=str(e)
         )
 
 @router.post("/prices/import")

@@ -11,9 +11,11 @@ import AuthGuard, { PublicRoute } from '@/components/AuthGuard';
 import AgentTransactions from '@/pages/agent/transactions';
 import { Spin } from 'antd';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import SettingsPage from '@/pages/settings.tsx';
+import SettingsPage from '@/pages/settings';
 import StaticRenewalPage from '@/pages/static-renewal';
 import DynamicOrderList from '@/pages/orders/components/DynamicOrderList';
+import DynamicProductPage from '@/pages/products/dynamic';
+import StaticProductPage from '@/pages/products/static';
 
 // 路由配置选项
 const routerOptions = {
@@ -83,6 +85,19 @@ const createRoutes = () => {
         {
           path: 'agent',
           element: <AgentOrders />,
+        },
+      ],
+    },
+    {
+      path: 'products',
+      children: [
+        {
+          path: 'dynamic',
+          element: <DynamicProductPage />,
+        },
+        {
+          path: 'static',
+          element: <StaticProductPage />,
         },
       ],
     },

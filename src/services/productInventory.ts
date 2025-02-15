@@ -1,87 +1,107 @@
 import request from '@/utils/request';
-import type { ProductPrice, ProductPriceParams, ProductPriceUpdate } from '@/types/product';
+import type { ProductPrice, ProductPriceParams } from '@/types/product';
 import type { ApiResponse } from '@/types/api';
-import axios from 'axios';
 
-// 创建价格服务专用的 axios 实例
-const priceApi = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL}`,
-  timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
-  }
-});
+interface GetPricesParams {
+  is_global: boolean;
+  agent_id?: number | null;
+  proxy_types?: number[];
+}
 
-// 添加认证拦截器
-priceApi.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-export async function getProductPrices(params: ProductPriceParams): Promise<ApiResponse<ProductPrice[]>> {
+export async function getProductPrices(params: GetPricesParams): Promise<ApiResponse<ProductPrice[]>> {
   try {
     console.log('发送请求参数:', params);
-    const response = await priceApi.get<ApiResponse<ProductPrice[]>>('/api/product/prices', { params });
-    console.log('原始API响应:', JSON.stringify(response.data, null, 2));
+    const queryParams = new URLSearchParams();
     
-    // 确保响应数据符合预期格式
-    if (!response.data) {
-      console.error('API响应格式错误:', response);
-      throw new Error('API响应格式错误');
+    // 如果有代理商ID，则设置is_global为false
+    if (params.agent_id) {
+      queryParams.append('is_global', 'false');
+      queryParams.append('agent_id', String(params.agent_id));
+    } else {
+      queryParams.append('is_global', String(params.is_global));
     }
     
-    // 直接返回响应数据
-    return response.data;
+    // 添加代理类型数组
+    const proxyTypes = params.proxy_types || [104, 105, 201];
+    proxyTypes.forEach(type => {
+      queryParams.append('proxy_types', String(type));
+    });
     
-  } catch (error: any) {
-    console.error('获取价格数据失败:', error);
+    console.log('处理后的请求参数:', queryParams.toString());
+    
+    const response = await request.get('/api/product/prices', { 
+      params: queryParams
+    });
+    
+    console.log('API响应:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('获取价格列表失败:', error);
     throw error;
   }
 }
 
-export async function updateProductPrice(
-  id: number,
-  data: ProductPriceUpdate
-): Promise<void> {
-  const response = await priceApi.put<ApiResponse<void>>(
-    `/api/products/${id}/price`,
-    data
-  );
-  
-  if (response.data.code !== 0) {
-    throw new Error(response.data.msg || '更新价格失败');
-  }
-}
-
 export async function createProductPrice(data: Omit<ProductPrice, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<ProductPrice>> {
-  const response = await priceApi.post<ApiResponse<ProductPrice>>('/api/product/prices', data);
+  const response = await request.post<ApiResponse<ProductPrice>>('/api/settings/prices', data);
   return response.data;
 }
 
 export async function deleteProductPrice(id: number): Promise<ApiResponse<void>> {
-  const response = await priceApi.delete<ApiResponse<void>>(`/api/product/prices/${id}`);
-  return response.data;
-}
-
-export async function updateProductPrices(data: { 
-  isGlobal: boolean;
-  agentId?: number;
-  prices: Array<{ id: number; price: number; }>;
-}): Promise<ApiResponse<void>> {
-  const apiData = {
-    is_global: data.isGlobal,
-    agent_id: data.agentId,
-    prices: data.prices
-  };
-  const response = await priceApi.post<ApiResponse<void>>('/api/product/prices', apiData);
+  const response = await request.delete<ApiResponse<void>>(`/api/settings/prices/${id}`);
   return response.data;
 }
 
 export async function syncProductPrices(): Promise<ApiResponse<void>> {
-  const response = await priceApi.post<ApiResponse<void>>('/api/product/prices/sync');
+  const response = await request.post<ApiResponse<void>>('/api/settings/prices/sync');
   return response.data;
+}
+
+export async function syncProductStock(): Promise<ApiResponse<void>> {
+  try {
+    console.log('开始同步库存');
+    const response = await request.post<ApiResponse<void>>('/api/proxy/inventory/sync');
+    console.log('同步库存响应:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('同步库存失败:', error);
+    throw error;
+  }
+}
+
+export interface PriceUpdateItem {
+  product_id: number;
+  type: string;
+  proxy_type: number;
+  price: number;
+  min_agent_price: number;
+  is_global: boolean;
+  agent_id?: number;
+}
+
+interface BatchUpdateRequest {
+  prices: PriceUpdateItem[];
+  agent_id?: number;
+}
+
+export async function batchUpdateProductPriceSettings(data: BatchUpdateRequest): Promise<ApiResponse<void>> {
+  try {
+    console.log('批量更新价格数据(原始):', data);
+    
+    // 修改请求数据，确保当有agent_id时设置is_global为false
+    const modifiedData = {
+      ...data,
+      prices: data.prices.map(item => ({
+        ...item,
+        is_global: !data.agent_id,
+        agent_id: data.agent_id
+      }))
+    };
+    
+    console.log('批量更新价格数据(修改后):', modifiedData);
+    const response = await request.post('/api/settings/prices/batch', modifiedData);
+    return response.data;
+  } catch (error) {
+    console.error('批量更新价格失败:', error);
+    throw error;
+  }
 } 

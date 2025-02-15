@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Button, Upload, message, Space, Modal, Table, Typography } from 'antd';
 import { UploadOutlined, DownloadOutlined, FileExcelOutlined } from '@ant-design/icons';
-import type { UploadProps } from 'antd';
+import type { UploadProps } from 'antd/es/upload';
 import type { ProductPrice } from '@/types/product';
 import type { ApiResponse } from '@/types/api';
 import * as XLSX from 'xlsx';
 import request from '@/utils/request';
 import { API_ROUTES } from '@/shared/routes';
+import { debug } from '@/utils/debug';
+import { batchUpdateProductPriceSettings } from '@/services/settingsService';
 
 const { Text } = Typography;
 
@@ -45,38 +47,30 @@ const PriceImportExport: React.FC<PriceImportExportProps> = ({
     try {
       // 准备导出数据
       const exportData = currentData.map(item => ({
-        '资源类型': item.type === 'dynamic' ? '动态资源' : '静态资源',
-        '区域': item.area || '-',
-        '国家': item.country || '-',
-        '城市': item.city || '-',
-        'IP段': item.ipRange || '-',
-        '价格': item.price.toFixed(1)
+        productId: item.id,
+        type: item.type,
+        globalPrice: item.price,
+        minAgentPrice: item.minAgentPrice
       }));
 
-      // 创建工作簿
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(exportData);
-
-      // 设置列宽
-      const colWidths = [
-        { wch: 10 }, // 资源类型
-        { wch: 10 }, // 区域
-        { wch: 15 }, // 国家
-        { wch: 15 }, // 城市
-        { wch: 20 }, // IP段
-        { wch: 10 }, // 价格
-      ];
-      ws['!cols'] = colWidths;
-
-      // 添加工作表到工作簿
-      XLSX.utils.book_append_sheet(wb, ws, '价格配置');
-
-      // 导出文件
-      XLSX.writeFile(wb, `价格配置_${new Date().toISOString().split('T')[0]}.xlsx`);
+      // 创建 Blob 对象
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      // 创建下载链接
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `price_settings_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      
+      // 清理
+      URL.revokeObjectURL(url);
+      document.body.removeChild(link);
       message.success('导出成功');
     } catch (error) {
-      console.error('导出失败:', error);
-      message.error('导出失败，请重试');
+      debug.error('导出价格设置失败:', error);
+      message.error('导出失败');
     }
   };
 
@@ -185,78 +179,52 @@ const PriceImportExport: React.FC<PriceImportExportProps> = ({
 
   // 处理文件上传
   const uploadProps: UploadProps = {
-    name: 'file',
-    accept: '.xlsx,.xls',
+    accept: '.json',
     showUploadList: false,
-    beforeUpload: (file) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const data = new Uint8Array(e.target?.result as ArrayBuffer);
-          const workbook = XLSX.read(data, { type: 'array' });
-          const worksheet = workbook.Sheets[workbook.SheetNames[workbook.SheetNames.length - 1]];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet);
-          
-          // 验证数据
-          const validatedData = validateData(jsonData);
-          const validCount = validatedData.filter(item => !item.errors?.length).length;
-          
-          setPreviewData(validatedData);
-          setPreviewStats({
-            total: validatedData.length,
-            valid: validCount,
-            invalid: validatedData.length - validCount
-          });
-          setPreviewVisible(true);
-        } catch (error) {
-          console.error('解析文件失败:', error);
-          message.error('文件格式错误，请检查后重试');
-        }
-      };
-      reader.readAsArrayBuffer(file);
-      return false;
-    }
-  };
+    beforeUpload: async (file) => {
+      try {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            const content = e.target?.result as string;
+            const importData = JSON.parse(content);
+            
+            // 验证导入数据格式
+            if (!Array.isArray(importData)) {
+              throw new Error('导入文件格式错误');
+            }
 
-  // 确认导入
-  const handleConfirmImport = async () => {
-    if (previewStats.invalid > 0) {
-      message.error('存在无效数据，请修正后重试');
-      return;
-    }
+            // 验证每条记录的必要字段
+            const invalidRecords = importData.filter(item => 
+              !item.productId || 
+              !item.type ||
+              typeof item.globalPrice !== 'number' ||
+              typeof item.minAgentPrice !== 'number'
+            );
 
-    try {
-      setImporting(true);
-      const importData = previewData.map(item => ({
-        type: item.type === '动态资源' ? 'dynamic' : 'static',
-        area: item.area,
-        country: item.country,
-        city: item.city,
-        ipRange: item.ipRange,
-        price: item.price
-      }));
+            if (invalidRecords.length > 0) {
+              throw new Error('导入数据包含无效记录');
+            }
 
-      const response = await request.post<ApiResponse<ImportResult>>(API_ROUTES.SETTINGS.PRODUCT.PRICES.BATCH_IMPORT, {
-        prices: importData
-      });
-
-      const { code, msg, data } = response.data;
-      
-      if (code === 200 && data) {
-        const { total, success, failed } = data;
-        message.success(
-          `导入完成：共 ${total} 条数据，成功 ${success} 条，失败 ${failed} 条`
-        );
-        setPreviewVisible(false);
-        onImportSuccess();
-      } else {
-        throw new Error(msg || '导入失败');
+            // 更新价格
+            const response = await batchUpdateProductPriceSettings(importData);
+            if (response.code === 0) {
+              message.success('导入成功');
+              onImportSuccess();
+            } else {
+              throw new Error(response.msg || '导入失败');
+            }
+          } catch (error: any) {
+            debug.error('处理导入文件失败:', error);
+            message.error(error.message || '导入失败');
+          }
+        };
+        reader.readAsText(file);
+      } catch (error: any) {
+        debug.error('读取导入文件失败:', error);
+        message.error(error.message || '导入失败');
       }
-    } catch (error) {
-      console.error('导入失败:', error);
-      message.error('导入失败，请重试');
-    } finally {
-      setImporting(false);
+      return false;
     }
   };
 
@@ -336,7 +304,7 @@ const PriceImportExport: React.FC<PriceImportExportProps> = ({
         title="导入数据预览"
         open={previewVisible}
         width={1000}
-        onOk={handleConfirmImport}
+        onOk={handleExport}
         onCancel={() => setPreviewVisible(false)}
         confirmLoading={importing}
       >

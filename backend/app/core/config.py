@@ -32,20 +32,24 @@ class Settings(BaseSettings):
                 'format': '%(asctime)s [%(name)s] %(levelname)s: %(message)s',
                 'datefmt': '%Y-%m-%d %H:%M:%S'
             },
+            'detailed': {
+                'format': '%(asctime)s [%(name)s] %(levelname)s [%(filename)s:%(lineno)d]: %(message)s',
+                'datefmt': '%Y-%m-%d %H:%M:%S'
+            }
         },
         'handlers': {
             'console': {
                 'class': 'logging.StreamHandler',
-                'formatter': 'standard',
-                'level': 'INFO'
+                'formatter': 'detailed',
+                'level': 'DEBUG'
             },
             'file': {
                 'class': 'logging.handlers.RotatingFileHandler',
-                'filename': str(LOG_DIR / 'app.log'),  # 使用绝对路径
-                'formatter': 'standard',
+                'filename': str(LOG_DIR / 'app.log'),
+                'formatter': 'detailed',
                 'maxBytes': 10485760,  # 10MB
                 'backupCount': 5,
-                'level': 'INFO'
+                'level': 'DEBUG'
             }
         },
         'loggers': {
@@ -53,13 +57,23 @@ class Settings(BaseSettings):
                 'handlers': ['console', 'file'],
                 'level': 'INFO',
             },
+            'app': {  # 应用日志
+                'handlers': ['console', 'file'],
+                'level': 'DEBUG',
+                'propagate': False
+            },
+            'app.services': {  # 服务层日志
+                'handlers': ['console', 'file'],
+                'level': 'DEBUG',
+                'propagate': False
+            },
             'app.services.ipipv_base_api': {
-                'level': 'INFO',
+                'level': 'DEBUG',
                 'handlers': ['console', 'file'],
                 'propagate': False
             },
             'app.services.static_order_service': {
-                'level': 'INFO',
+                'level': 'DEBUG',
                 'handlers': ['console', 'file'],
                 'propagate': False
             }

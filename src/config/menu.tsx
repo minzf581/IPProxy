@@ -4,6 +4,7 @@ import {
   OrderedListOutlined,
   SettingOutlined,
   TeamOutlined,
+  AppstoreOutlined,
 } from '@ant-design/icons';
 
 // 管理员菜单配置
@@ -50,6 +51,23 @@ export const adminMenuConfig = [
         key: 'order/agent',
         label: '代理订单',
         path: '/order/agent'
+      }
+    ]
+  },
+  {
+    key: 'products',
+    label: '产品管理',
+    icon: <AppstoreOutlined />,
+    children: [
+      {
+        key: 'products/dynamic',
+        label: '动态代理',
+        path: '/products/dynamic'
+      },
+      {
+        key: 'products/static',
+        label: '静态代理',
+        path: '/products/static'
       }
     ]
   },

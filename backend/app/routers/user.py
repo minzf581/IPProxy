@@ -126,7 +126,7 @@ from app.models.user import User
 from app.models.transaction import Transaction
 from app.models.dynamic_order import DynamicOrder
 from app.models.static_order import StaticOrder
-from app.models.agent_price import AgentPrice
+from app.models.prices import AgentPrice, UserPrice
 from app.models.agent_statistics import AgentStatistics
 from typing import Dict, Any, List, Optional
 from sqlalchemy import or_

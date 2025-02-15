@@ -6,11 +6,13 @@ from decimal import Decimal
 class ProductPriceBase(BaseModel):
     id: int
     type: str  # 'dynamic' | 'static'
+    proxyType: int  # 代理类型 (101=静态云平台, 102=静态国内家庭, 103=静态国外家庭, 104=动态国外代理, 105=动态国内代理, 201=其他动态代理)
     area: Optional[str] = None
     country: Optional[str] = None
     city: Optional[str] = None
     ipRange: Optional[str] = None
     price: Decimal = Field(default=Decimal('0'), decimal_places=4)
+    minAgentPrice: Decimal = Field(default=Decimal('0'), decimal_places=4)
     isGlobal: bool = True
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
@@ -43,12 +45,15 @@ class ProductPriceResponse(BaseModel):
         from_attributes = True
 
 class ImportPriceItem(BaseModel):
-    type: str  # 'dynamic' | 'static'
-    area: str
-    country: str
-    city: str
-    ip_range: Optional[str]
+    product_id: str
+    type: str
+    proxy_type: int
     price: condecimal(max_digits=10, decimal_places=1)
+    min_agent_price: condecimal(max_digits=10, decimal_places=1)
+    is_global: bool = True
+
+    class Config:
+        from_attributes = True
 
 class BatchImportRequest(BaseModel):
     prices: List[ImportPriceItem]

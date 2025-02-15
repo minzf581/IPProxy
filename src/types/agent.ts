@@ -1,15 +1,10 @@
 export interface AgentInfo {
-  id: string;
-  app_username: string;
-  platform_account: string;
-  status: 'active' | 'disabled';
-  balance: number;
-  limit_flow: number;
-  main_account: string;
-  remark?: string;
-  phone?: string;
-  created_at: string;
+  id: number;
+  username?: string;
+  app_username?: string;
+  created_at?: string;
   updated_at?: string;
+  status?: number;
 }
 
 export interface AgentStatistics {
@@ -77,10 +72,5 @@ export interface AgentUser {
 
 export interface Agent {
   id: number;
-  username: string;
-  email: string;
-  balance: number;
-  status: string;
-  created_at: string;
-  updated_at: string;
+  name: string;
 }

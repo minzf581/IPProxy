@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 import logging
 from fastapi import HTTPException
 from app.services.ipipv_base_api import IPIPVBaseAPI
@@ -28,68 +28,57 @@ class IPIPVService(IPIPVBaseAPI):
         self.app_key = settings.IPPROXY_APP_KEY
         self.db = db
     
-    async def get_product_inventory(self, proxy_type: int = 105) -> Dict:
-        """
-        查询产品库存
-        
-        Args:
-            proxy_type: 代理类型，默认105表示动态代理
-            支持的类型：
-            - 104: 动态国外代理
-            - 105: 动态混合代理
-            - 201: 动态住宅代理
-            
-        Returns:
-            Dict: 产品库存信息
-        """
+    async def get_product_inventory(self, proxy_type: int) -> List[Dict]:
+        """获取产品库存信息"""
         try:
-            logger.info(f"[IPIPVService] 开始查询产品库存: proxy_type={proxy_type}")
+            self.logger.debug(f"[IPIPVService] 开始查询产品库存, proxy_type={proxy_type}")
             
-            request_params = {
-                "appOrderNo": f"INV{datetime.now().strftime('%Y%m%d%H%M%S')}",
-                "proxyType": [proxy_type]  # 使用数组格式
+            # 构建请求参数
+            params = {
+                "proxyType": proxy_type,
+                "appUsername": self.app_username
             }
             
-            response = await self._make_request(
-                "api/open/app/product/query/v2",
-                request_params
-            )
+            # 发送请求
+            response = await self._make_request("api/open/app/product/query/v2", params)
             
             if not response:
-                logger.error("[IPIPVService] 查询产品库存失败: 无响应数据")
-                raise HTTPException(500, "查询产品库存失败: 无响应数据")
+                self.logger.warning(f"[IPIPVService] 代理类型 {proxy_type} 无响应数据")
+                return []
             
-            # 处理API响应数据
-            if isinstance(response, dict):
-                # 检查是否有解密后的数据
-                if 'decrypted_data' in response:
-                    product_list = response['decrypted_data']
-                    if isinstance(product_list, list):
-                        return {"list": product_list}
-                    else:
-                        logger.error("[IPIPVService] 解密后的数据不是列表格式")
-                        raise HTTPException(500, "产品数据格式错误")
-                # 如果没有解密数据，检查data字段
-                elif 'data' in response:
-                    product_list = response['data']
-                    if isinstance(product_list, str):
-                        try:
-                            product_list = json.loads(product_list)
-                        except json.JSONDecodeError:
-                            logger.error("[IPIPVService] 无法解析产品数据")
-                            raise HTTPException(500, "无法解析产品数据")
-                    if isinstance(product_list, list):
-                        return {"list": product_list}
-                    else:
-                        logger.error("[IPIPVService] 产品数据不是列表格式")
-                        raise HTTPException(500, "产品数据格式错误")
+            if response.get("code") not in [0, 200]:
+                self.logger.error(f"[IPIPVService] 获取产品库存失败: {response.get('msg')}")
+                return []
             
-            logger.error(f"[IPIPVService] 无效的响应格式: {response}")
-            raise HTTPException(500, "无效的响应格式")
+            data = response.get("data", [])
+            # 如果data为None或空列表，直接返回空列表
+            if not data:
+                self.logger.info(f"[IPIPVService] 代理类型 {proxy_type} 没有可用产品")
+                return []
+            
+            # 如果data是字符串，尝试解析为JSON
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError:
+                    self.logger.error("[IPIPVService] 产品库存数据格式错误")
+                    return []
+                
+            # 如果data不是列表，但是一个有效的响应，将其转换为列表
+            if not isinstance(data, list):
+                if isinstance(data, dict):
+                    data = [data]
+                else:
+                    self.logger.error(f"[IPIPVService] 产品库存数据类型错误: {type(data)}")
+                    return []
+            
+            self.logger.info(f"[IPIPVService] 成功获取代理类型 {proxy_type} 的产品库存: {len(data)} 个产品")
+            return data
             
         except Exception as e:
-            logger.error(f"[IPIPVService] 查询产品库存失败: {str(e)}")
-            raise HTTPException(500, f"查询产品库存失败: {str(e)}")
+            self.logger.error(f"[IPIPVService] 获取产品库存异常: {str(e)}")
+            self.logger.error(traceback.format_exc())
+            return []
 
     async def activate_dynamic_proxy(
         self,

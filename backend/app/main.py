@@ -67,7 +67,7 @@ import uvicorn
 import logging
 import asyncio
 from app.models.user import User
-from app.models.agent_price import AgentPrice
+from app.models.prices import AgentPrice, UserPrice
 from decimal import Decimal
 from app.core.security import get_password_hash, SECRET_KEY, ALGORITHM
 from app.api.endpoints import product, static_order
@@ -80,61 +80,12 @@ from fastapi import status
 import jwt
 from app.api.v1.api import api_router
 
-# 配置日志
-LOGGING_CONFIG = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "default": {
-            "format": "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
-        }
-    },
-    "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "default",
-            "stream": "ext://sys.stdout",
-            "level": "INFO",
-        },
-        "file": {
-            "class": "logging.FileHandler",
-            "formatter": "default",
-            "filename": "app.log",
-            "mode": "a",
-            "level": "INFO",
-        }
-    },
-    "loggers": {
-        "app.services.product_inventory_service": {
-            "level": "INFO",
-            "handlers": ["console", "file"],
-            "propagate": False
-        },
-        "app.services.ipipv_base_api": {
-            "level": "INFO",
-            "handlers": ["console", "file"],
-            "propagate": False
-        },
-        "httpx": {
-            "level": "WARNING",
-            "handlers": ["console"],
-            "propagate": False
-        },
-        "asyncio": {
-            "level": "WARNING",
-            "handlers": ["console"],
-            "propagate": False
-        }
-    },
-    "root": {
-        "level": "INFO",
-        "handlers": ["console"]
-    }
-}
+# 使用core/config.py中的配置
+from app.core.config import settings
+import logging.config
 
 # 应用日志配置
-logging.config.dictConfig(LOGGING_CONFIG)
+logging.config.dictConfig(settings.LOGGING_CONFIG)
 
 # 获取应用的日志记录器
 logger = logging.getLogger(__name__)
