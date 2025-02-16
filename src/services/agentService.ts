@@ -56,7 +56,7 @@ interface AgentOrder {
 export interface AgentListParams {
   page?: number;
   pageSize?: number;
-  status?: string;
+  status?: 1 | 0;  // 使用数字类型
 }
 
 export interface AgentListResponse {
@@ -64,23 +64,29 @@ export interface AgentListResponse {
   list: AgentInfo[];
 }
 
-export async function getAgentList(params: AgentListParams): Promise<ApiResponse<AgentListResponse>> {
+export async function getAgentList(params: AgentListParams): Promise<AgentListResponse> {
   try {
     console.log('获取代理商列表, 参数:', params);
     const response = await request.get('/api/open/app/agent/list', { 
       params: {
         page: params.page || 1,
-        pageSize: params.pageSize || 100,  // 默认获取100条记录
-        status: params.status || 'active'   // 默认只获取激活状态的代理商
+        pageSize: Math.min(params.pageSize || 20, 100),  // 限制最大为100条
+        status: 1  // 固定为1，表示获取激活状态的代理商
       }
     });
-    console.log('代理商列表响应:', response);
     
-    // 直接返回响应数据，因为response已经被request拦截器处理过
-    return response.data;
+    // 确保响应数据格式正确
+    if (response?.data?.code === 0 && response?.data?.data) {
+      const { list, total } = response.data.data;
+      console.log('代理商列表数据:', { list, total });
+      return { list, total };
+    } else {
+      console.error('代理商列表响应格式错误:', response);
+      return { list: [], total: 0 };  // 返回空列表
+    }
   } catch (error) {
     console.error('获取代理商列表失败:', error);
-    throw error;
+    return { list: [], total: 0 };  // 出错时返回空列表
   }
 }
 
