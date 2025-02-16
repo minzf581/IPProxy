@@ -1,5 +1,5 @@
 export interface ProductPrice {
-  id: string;
+  id: number;
   type: string;  // 产品编号，例如：STATIC_USA_LAX_1
   proxyType: number;  // 代理类型 (101=静态云平台, 102=静态国内家庭, 103=静态国外家庭, 104=动态国外代理, 105=动态国内代理, 201=其他动态代理)
   area: string;  // 区域代码，对应 AREA_MAP 中的键

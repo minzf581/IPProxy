@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, Form, InputNumber, message } from 'antd';
-import { adjustAgentQuota } from '@/services/agent';
+import { adjustAgentQuota } from '@/services/agentService';
 
 interface AdjustQuotaModalProps {
   visible: boolean;

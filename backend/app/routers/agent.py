@@ -130,6 +130,11 @@ class UpdateAgentRequest(BaseModel):
     remark: Optional[str] = None
     balance: Optional[float] = None
 
+class AgentBalanceAdjustRequest(BaseModel):
+    """代理商额度调整请求"""
+    amount: float = Field(..., description="调整金额，正数为增加，负数为减少")
+    remark: Optional[str] = Field(None, max_length=255, description="调整备注")
+
 def generate_transaction_no() -> str:
     """生成交易号"""
     return f"TRX{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
@@ -204,38 +209,44 @@ async def get_agent_list(
 ):
     """获取代理商列表"""
     try:
-        logger.info(f"获取代理商列表: page={page}, pageSize={pageSize}")
+        logger.info(f"[AgentRouter] 开始获取代理商列表")
+        logger.info(f"[AgentRouter] 请求参数: page={page}, pageSize={pageSize}")
         
         # 构建查询条件
         query = db.query(User).filter(User.is_agent == True)
+        logger.info(f"[AgentRouter] 构建查询条件: {query.statement}")
         
         # 计算总数
         total = query.count()
+        logger.info(f"[AgentRouter] 总记录数: {total}")
         
         # 分页查询
         agents = query.order_by(User.created_at.desc()) \
             .offset((page - 1) * pageSize) \
             .limit(pageSize) \
             .all()
+        logger.info(f"[AgentRouter] 查询到 {len(agents)} 条记录")
             
         # 转换为响应格式
         agent_list = []
         for agent in agents:
-            agent_list.append({
-                "id": str(agent.id),  # 转换为字符串以匹配前端类型
+            agent_data = {
+                "id": str(agent.id),
                 "username": agent.username,
-                "app_username": agent.app_username or agent.username,  # 使用 app_username 或 username
-                "platform_account": agent.platform_account or agent.ipipv_username or agent.username,  # 使用 platform_account 或 ipipv_username 或 username
+                "app_username": agent.app_username or agent.username,
+                "platform_account": agent.platform_account or agent.ipipv_username or agent.username,
                 "email": agent.email,
-                "phone": agent.phone,  # 添加联系方式
-                "balance": float(agent.balance) if agent.balance is not None else 0.0,  # 确保是浮点数
-                "status": "active" if agent.status == 1 else "disabled",  # 转换状态格式
+                "phone": agent.phone,
+                "balance": float(agent.balance) if agent.balance is not None else 0.0,
+                "status": "active" if agent.status == 1 else "disabled",
                 "remark": agent.remark,
                 "created_at": agent.created_at.isoformat() if agent.created_at else None,
                 "updated_at": agent.updated_at.isoformat() if agent.updated_at else None
-            })
+            }
+            agent_list.append(agent_data)
+            logger.info(f"[AgentRouter] 处理代理商数据: {agent_data}")
             
-        return {
+        response_data = {
             "code": 0,
             "message": "获取代理商列表成功",
             "data": {
@@ -243,9 +254,12 @@ async def get_agent_list(
                 "total": total
             }
         }
+        logger.info(f"[AgentRouter] 返回响应: {response_data}")
+        return response_data
         
     except Exception as e:
-        logger.error(f"获取代理商列表失败: {str(e)}")
+        logger.error(f"[AgentRouter] 获取代理商列表失败: {str(e)}")
+        logger.error(f"[AgentRouter] 错误详情: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/open/app/agent/{agent_id}")
@@ -824,3 +838,159 @@ async def get_agent_orders(
                 "message": str(e)
             }
         )
+
+@router.post("/agent/{agent_id}/balance/adjust")
+async def adjust_agent_balance(
+    agent_id: int,
+    request: AgentBalanceAdjustRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """调整代理商额度"""
+    try:
+        logger.info(f"[AgentRouter] 开始调整代理商额度: agent_id={agent_id}, amount={request.amount}")
+        
+        # 权限检查
+        if not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="只有管理员可以调整代理商额度")
+            
+        # 查找代理商
+        agent = db.query(User).filter(
+            User.id == agent_id,
+            User.is_agent == True
+        ).first()
+        
+        if not agent:
+            raise HTTPException(status_code=404, detail="代理商不存在")
+            
+        # 生成订单号
+        order_no = f"BAL{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
+        
+        # 创建额度调整订单
+        order = AgentOrder(
+            order_no=order_no,
+            agent_id=agent_id,
+            amount=abs(request.amount),  # 使用绝对值
+            type="increase" if request.amount > 0 else "decrease",
+            status="completed",
+            remark=request.remark or f"{'增加' if request.amount > 0 else '减少'}额度 {abs(request.amount)}",
+            operator_id=current_user.id,
+            created_at=datetime.now()
+        )
+        
+        # 更新代理商余额
+        old_balance = agent.balance
+        new_balance = float(old_balance) + request.amount
+        
+        if new_balance < 0:
+            raise HTTPException(status_code=400, detail="调整后余额不能小于0")
+            
+        agent.balance = new_balance
+        
+        # 创建交易记录
+        transaction = Transaction(
+            transaction_no=generate_transaction_no(),
+            user_id=agent_id,
+            agent_id=agent_id,
+            order_no=order_no,
+            amount=abs(request.amount),
+            balance=new_balance,
+            type="recharge" if request.amount > 0 else "deduct",
+            status="success",
+            remark=request.remark or f"{'增加' if request.amount > 0 else '减少'}额度 {abs(request.amount)}"
+        )
+        
+        try:
+            db.add(order)
+            db.add(transaction)
+            db.commit()
+            
+            logger.info(f"[AgentRouter] 代理商额度调整成功: agent_id={agent_id}, old_balance={old_balance}, new_balance={new_balance}")
+            
+            return {
+                "code": 0,
+                "message": "额度调整成功",
+                "data": {
+                    "order_no": order_no,
+                    "old_balance": float(old_balance),
+                    "new_balance": float(new_balance),
+                    "amount": request.amount
+                }
+            }
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"[AgentRouter] 保存额度调整记录失败: {str(e)}")
+            raise HTTPException(status_code=500, detail="保存额度调整记录失败")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[AgentRouter] 调整代理商额度失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/agent/{agent_id}/balance/orders")
+async def get_agent_balance_orders(
+    agent_id: int,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(10, ge=1, le=100),
+    startDate: Optional[str] = None,
+    endDate: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """获取代理商额度调整订单列表"""
+    try:
+        logger.info(f"[AgentRouter] 获取代理商额度订单: agent_id={agent_id}")
+        
+        # 权限检查
+        if not current_user.is_admin and current_user.id != agent_id:
+            raise HTTPException(status_code=403, detail="没有权限查看此代理商的额度订单")
+            
+        # 构建查询
+        query = db.query(AgentOrder).filter(AgentOrder.agent_id == agent_id)
+        
+        # 添加日期过滤
+        if startDate:
+            query = query.filter(AgentOrder.created_at >= startDate)
+        if endDate:
+            query = query.filter(AgentOrder.created_at <= endDate)
+            
+        # 计算总数
+        total = query.count()
+        
+        # 获取分页数据
+        orders = query.order_by(AgentOrder.created_at.desc()) \
+            .offset((page - 1) * pageSize) \
+            .limit(pageSize) \
+            .all()
+            
+        # 转换为响应格式
+        order_list = []
+        for order in orders:
+            order_list.append({
+                "id": order.id,
+                "order_no": order.order_no,
+                "amount": float(order.amount),
+                "type": order.type,
+                "status": order.status,
+                "remark": order.remark,
+                "created_at": order.created_at.isoformat() if order.created_at else None
+            })
+            
+        return {
+            "code": 0,
+            "message": "获取额度订单列表成功",
+            "data": {
+                "list": order_list,
+                "total": total
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[AgentRouter] 获取代理商额度订单失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))

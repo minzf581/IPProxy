@@ -13,7 +13,6 @@ import dayjs from 'dayjs';
 import './index.less';
 import { PlusOutlined } from '@ant-design/icons';
 import UpdateRemarkModal from '@/components/Agent/UpdateRemarkModal';
-import UpdateQuotaModal from '@/components/Agent/UpdateQuotaModal';
 import { useNavigate } from 'react-router-dom';
 
 const { Option } = Select;
@@ -30,7 +29,7 @@ interface SearchParams {
 const AgentListPage: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = React.useState(false);
-  const [data, setData] = React.useState<{ list: AgentInfo[]; total: number }>({ list: [], total: 0 });
+  const [agents, setAgents] = React.useState<AgentInfo[]>([]);
   const [pagination, setPagination] = React.useState<TablePaginationConfig>({
     current: 1,
     pageSize: 10,
@@ -41,7 +40,6 @@ const AgentListPage: React.FC = () => {
   const [balanceModalVisible, setBalanceModalVisible] = React.useState(false);
   const [createModalVisible, setCreateModalVisible] = React.useState(false);
   const [remarkModalVisible, setRemarkModalVisible] = React.useState(false);
-  const [quotaModalVisible, setQuotaModalVisible] = React.useState(false);
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -49,27 +47,29 @@ const AgentListPage: React.FC = () => {
   }, [pagination.current, pagination.pageSize]);
 
   const loadAgents = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      debugAgent.info('Loading agents list');
+      console.log('开始加载代理商列表');
+      const response = await getAgentList({
+        page: pagination.current || 1,
+        pageSize: pagination.pageSize || 10,
+        status: form.getFieldValue('status')
+      });
       
-      const params: SearchParams = {
-        page: Number(pagination.current) || 1,
-        pageSize: Number(pagination.pageSize) || 10,
-        ...form.getFieldsValue()
-      };
+      console.log('代理商列表响应:', response);
       
-      const result = await getAgentList(params);
-      debugAgent.info('Agents list loaded successfully', result);
-      
-      setData(result);
-      setPagination(prev => ({
-        ...prev,
-        total: result.total
-      }));
+      if (response.code === 0 && response.data) {
+        setAgents(response.data.list);
+        setPagination(prev => ({
+          ...prev,
+          total: response.data.total
+        }));
+      } else {
+        message.error(response.msg || '获取代理商列表失败');
+      }
     } catch (error) {
-      debugAgent.error('Failed to load agents:', error);
-      message.error('加载代理商列表失败');
+      console.error('加载代理商列表失败:', error);
+      message.error('获取代理商列表失败，请稍后重试');
     } finally {
       setLoading(false);
     }
@@ -77,18 +77,12 @@ const AgentListPage: React.FC = () => {
 
   const handleUpdateStatus = async (agent: AgentInfo) => {
     try {
-      debugAgent.info('Updating agent status', agent);
-      const newStatus = agent.status === 'active' ? 'disabled' : 'active';
-      const response = await updateAgentStatus(Number(agent.id), newStatus);
-      if (response.code === 0) {
-        message.success('状态更新成功');
-        loadAgents();
-      } else {
-        message.error(response.msg || '更新代理商状态失败');
-      }
+      await updateAgentStatus(agent.id, agent.status);
+      message.success('状态更新成功');
+      loadAgents();
     } catch (error) {
-      debugAgent.error('Failed to update agent status:', error);
-      message.error('更新代理商状态失败');
+      console.error('更新代理商状态失败:', error);
+      message.error('状态更新失败');
     }
   };
 
@@ -117,123 +111,72 @@ const AgentListPage: React.FC = () => {
 
   const columns: ColumnType<AgentInfo>[] = [
     {
-      title: 'ID',
+      title: '代理商ID',
       dataIndex: 'id',
       key: 'id',
-      width: 60,
-      align: 'center',
     },
     {
-      title: '账号',
-      dataIndex: 'app_username',
-      key: 'app_username',
-      width: 120,
-      align: 'center',
+      title: '用户名',
+      dataIndex: 'username',
+      key: 'username',
     },
     {
       title: '余额',
       dataIndex: 'balance',
       key: 'balance',
-      width: 120,
-      align: 'center',
       render: (balance: number) => `¥${balance.toFixed(2)}`,
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 80,
-      align: 'center',
-      render: (status: string) => (
-        <span className={status === 'active' ? 'statusActive' : 'statusDisabled'}>
-          {status === 'active' ? '正常' : '禁用'}
-        </span>
+      render: (status: string, record: AgentInfo) => (
+        <Select
+          value={status === 'active' ? 1 : 0}
+          style={{ width: 100 }}
+          onChange={(value: number) => handleUpdateStatus({ 
+            ...record, 
+            status: value === 1 ? 'active' : 'disabled' 
+          })}
+        >
+          <Option value={1}>正常</Option>
+          <Option value={0}>禁用</Option>
+        </Select>
       ),
-    },
-    {
-      title: '备注',
-      dataIndex: 'remark',
-      key: 'remark',
-      width: 200,
-      align: 'center',
-      render: (remark: string) => remark || '-',
-    },
-    {
-      title: '联系方式',
-      dataIndex: 'phone',
-      key: 'phone',
-      width: 120,
-      align: 'center',
-      render: (phone: string) => phone || '-',
     },
     {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 160,
-      align: 'center',
       render: (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm:ss'),
     },
     {
       title: '操作',
       key: 'action',
-      fixed: 'right',
-      width: 200,
-      align: 'center',
-      render: (_: unknown, record: AgentInfo) => (
-        <div className="actionButtons">
-          <Space direction="vertical" size="small">
-            <Space size="small">
-              <Button 
-                type="link" 
-                size="small"
-                onClick={() => {
-                  setSelectedAgent(record);
-                  setRemarkModalVisible(true);
-                }}
-              >
-                备注
-              </Button>
-              <Button 
-                type="link" 
-                size="small"
-                onClick={() => {
-                  setSelectedAgent(record);
-                  setQuotaModalVisible(true);
-                }}
-              >
-                调整额度
-              </Button>
-            </Space>
-            <Space size="small">
-              <Button 
-                type="link" 
-                size="small"
-                onClick={() => {
-                  setSelectedAgent(record);
-                  setPasswordModalVisible(true);
-                }}
-              >
-                修改密码
-              </Button>
-              <Button 
-                type="link"
-                size="small"
-                onClick={() => handleViewDashboard(record)}
-              >
-                查看仪表盘
-              </Button>
-              <Button 
-                type="link"
-                size="small"
-                className={record.status === 'active' ? 'dangerButton' : 'enableButton'}
-                onClick={() => handleUpdateStatus(record)}
-              >
-                {record.status === 'active' ? '停用' : '启用'}
-              </Button>
-            </Space>
-          </Space>
-        </div>
+      render: (_, record: AgentInfo) => (
+        <Space size="middle">
+          <Button type="link" onClick={() => {
+            setSelectedAgent(record);
+            setBalanceModalVisible(true);
+          }}>
+            调整额度
+          </Button>
+          <Button type="link" onClick={() => {
+            setSelectedAgent(record);
+            setPasswordModalVisible(true);
+          }}>
+            修改密码
+          </Button>
+          <Button type="link" onClick={() => {
+            setSelectedAgent(record);
+            setRemarkModalVisible(true);
+          }}>
+            修改备注
+          </Button>
+          <Button type="link" onClick={() => handleViewDashboard(record)}>
+            查看仪表盘
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -241,40 +184,46 @@ const AgentListPage: React.FC = () => {
   return (
     <div className="agentListPage">
       <Card className="searchCard">
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <Form form={form} layout="inline">
           <Space>
-            <Search
-              placeholder="请输入代理商账户"
-              style={{ width: 200 }}
-              onSearch={handleSearch}
-            />
-            <Select
-              placeholder="全部"
-              style={{ width: 120 }}
-              allowClear
-              onChange={() => handleSearch()}
-            >
-              <Option value="active">正常</Option>
-              <Option value="disabled">禁用</Option>
-            </Select>
-            <Button type="primary" onClick={handleSearch}>查询</Button>
-            <Button onClick={handleReset}>重置</Button>
+            <Form.Item name="account">
+              <Search
+                placeholder="请输入代理商账户"
+                style={{ width: 200 }}
+                onSearch={handleSearch}
+              />
+            </Form.Item>
+            <Form.Item name="status">
+              <Select
+                placeholder="全部"
+                style={{ width: 120 }}
+                allowClear
+                onChange={() => handleSearch()}
+              >
+                <Option value="active">正常</Option>
+                <Option value="disabled">禁用</Option>
+              </Select>
+            </Form.Item>
+            <Form.Item>
+              <Button type="primary" onClick={handleSearch}>查询</Button>
+              <Button onClick={handleReset}>重置</Button>
+            </Form.Item>
           </Space>
-          <Button 
-            type="primary" 
-            onClick={() => setCreateModalVisible(true)}
-            icon={<PlusOutlined />}
-          >
-            新增代理商
-          </Button>
-        </div>
+        </Form>
+        <Button 
+          type="primary" 
+          onClick={() => setCreateModalVisible(true)}
+          icon={<PlusOutlined />}
+        >
+          新增代理商
+        </Button>
       </Card>
 
       <Card className="tableCard">
         <Table
           className="agentTable"
           columns={columns}
-          dataSource={data.list}
+          dataSource={agents}
           rowKey="id"
           loading={loading}
           pagination={{
@@ -324,18 +273,6 @@ const AgentListPage: React.FC = () => {
             }}
             onClose={() => {
               setRemarkModalVisible(false);
-              setSelectedAgent(null);
-              loadAgents();
-            }}
-          />
-          <UpdateQuotaModal
-            visible={quotaModalVisible}
-            agent={{
-              id: Number(selectedAgent.id),
-              balance: selectedAgent.balance
-            }}
-            onClose={() => {
-              setQuotaModalVisible(false);
               setSelectedAgent(null);
               loadAgents();
             }}

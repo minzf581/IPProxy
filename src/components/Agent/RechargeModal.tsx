@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, Form, InputNumber, message } from 'antd';
-import { rechargeAgent } from '@/services/agent';
+import { rechargeAgent } from '@/services/agentService';
 
 interface RechargeModalProps {
   visible: boolean;

@@ -2,16 +2,16 @@ import React from 'react';
 import { Modal, Form, Input, message } from 'antd';
 import { updateAgent } from '@/services/agentService';
 
-interface Props {
+interface UpdateRemarkModalProps {
   visible: boolean;
   agent: {
     id: number;
-    remark?: string;
+    remark: string | null | undefined;
   };
   onClose: () => void;
 }
 
-const UpdateRemarkModal: React.FC<Props> = ({ visible, agent, onClose }) => {
+const UpdateRemarkModal: React.FC<UpdateRemarkModalProps> = ({ visible, agent, onClose }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = React.useState(false);
 

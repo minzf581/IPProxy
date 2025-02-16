@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Input, Select, Form, message, Card, Alert, Divider, InputNumber, Tooltip, Modal } from 'antd';
+import { Table, Button, Space, Input, Select, Form, message, Card, Alert, Divider, InputNumber, Tooltip } from 'antd';
 import { SyncOutlined, InfoCircleOutlined } from '@ant-design/icons';
-import { getProductPrices, syncProductStock } from '@/services/productInventory';
+import { getProductPrices, syncProductStock, batchUpdateProductPriceSettings, type PriceUpdateItem } from '@/services/productInventory';
 import { getAgentList } from '@/services/agentService';
-import { batchUpdateProductPriceSettings } from '@/services/settingsService';
 import type { ProductPrice } from '@/types/product';
 import type { ColumnsType } from 'antd/es/table';
-import type { AgentInfo } from '@/types/agent';
+import type { Agent } from '@/types/agent';
 import { getMappedValue, getUniqueValues, PRODUCT_NO_MAP, AREA_MAP, COUNTRY_MAP, CITY_MAP } from '@/constants/mappings';
 import PriceSettingsModal from '@/components/PriceSettings/PriceSettingsModal';
 import PriceImportExport from '@/components/PriceSettings/PriceImportExport';
@@ -15,10 +14,17 @@ import './index.less';
 
 const { Option } = Select;
 
+interface ModifiedPrice {
+  product_id: number;
+  price: number;
+  minAgentPrice?: number;
+}
+
 const StaticProductPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
+  const [isGlobal, setIsGlobal] = useState(true);
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [prices, setPrices] = useState<ProductPrice[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<number | null>(null);
   const [visible, setVisible] = useState(false);
   const [selectedPrice, setSelectedPrice] = useState<ProductPrice | null>(null);
   const [filterOptions, setFilterOptions] = useState<{
@@ -32,7 +38,7 @@ const StaticProductPage: React.FC = () => {
     countries: [],
     cities: [],
   });
-  const [modifiedPrices, setModifiedPrices] = useState<Record<string, { price: number; minAgentPrice: number }>>({});
+  const [modifiedPrices, setModifiedPrices] = useState<ModifiedPrice[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
 
   // 获取代理商列表
@@ -46,39 +52,23 @@ const StaticProductPage: React.FC = () => {
   const loadPrices = async () => {
     try {
       setLoading(true);
-      console.log('加载静态代理价格数据...');
       const response = await getProductPrices({ 
-        is_global: true,  // 添加必需的 is_global 参数
-        agent_id: selectedAgent || undefined,
+        is_global: isGlobal,
+        agent_id: selectedAgent?.id,
         proxy_types: [101, 102, 103]  // 静态代理类型
       });
       
-      if (response.code === 0 || response.code === 200) {
-        console.log('API返回的数据:', response.data);
-        console.log('数据结构示例:', JSON.stringify(response.data[0], null, 2));
-        
-        // 过滤静态代理类型的数据
-        const filteredData = response.data.filter(item => {
-          return [101, 102, 103].includes(item.proxyType); // 静态代理类型
-        });
-        
-        console.log('过滤后的静态代理数据长度:', filteredData.length);
-        
-        // 处理数据，设置默认最低价
-        const formattedData = filteredData.map((item, index) => ({
+      if ((response.code === 200 || response.code === 0) && response.data) {
+        const priceData = response.data.map(item => ({
           ...item,
-          key: index,
-          minAgentPrice: item.minAgentPrice || (item.price * 0.8)
+          key: Number(item.id),
+          minAgentPrice: Number(item.minAgentPrice || 0),
         }));
-        
-        setPrices(formattedData);
-        message.success('加载产品数据成功');
-      } else {
-        message.error(response.message || '加载产品数据失败');
+        setPrices(priceData);
       }
     } catch (error) {
-      console.error('加载产品数据失败:', error);
-      message.error('加载产品数据失败');
+      message.error('加载价格数据失败');
+      console.error('加载失败:', error);
     } finally {
       setLoading(false);
     }
@@ -141,75 +131,97 @@ const StaticProductPage: React.FC = () => {
   };
 
   // 处理价格变更
-  const handlePriceChange = (id: string, value: number, field: 'price' | 'minAgentPrice') => {
-    const currentItem = prices.find(p => p.id === id);
-    if (!currentItem) return;
+  const handlePriceChange = (id: number, value: string, field: 'price' | 'minAgentPrice' = 'price') => {
+    const numericValue = parseFloat(value);
+    if (isNaN(numericValue)) {
+      return;
+    }
 
-    setModifiedPrices(prev => ({
-      ...prev,
-      [id]: {
-        ...prev[id],
-        [field]: value
-      }
-    }));
-    setHasChanges(true);
+    const productId = id;
+    const newPrices = [...prices];
+    const index = newPrices.findIndex((item) => item.id === productId);
+    if (index !== -1) {
+      newPrices[index] = { ...newPrices[index], [field]: numericValue };
+      setPrices(newPrices);
+
+      setModifiedPrices((prev) => {
+        const existingIndex = prev.findIndex((item) => item.product_id === productId);
+        if (existingIndex !== -1) {
+          const newModifiedPrices = [...prev];
+          newModifiedPrices[existingIndex] = {
+            ...newModifiedPrices[existingIndex],
+            [field]: numericValue,
+          };
+          setHasChanges(true);
+          return newModifiedPrices;
+        }
+        setHasChanges(true);
+        return [...prev, { product_id: productId, price: 0, [field]: numericValue }];
+      });
+    }
   };
 
   // 应用价格变更
   const handleApplyChanges = async () => {
     try {
-      // 验证最低价不能高于价格
-      const invalidPrices = Object.entries(modifiedPrices).filter(([id, priceData]) => {
-        const item = prices.find(p => p.id === id);
-        if (!item) return false;
-        const finalPrice = priceData.price ?? item.price;
-        const finalMinPrice = priceData.minAgentPrice ?? item.minAgentPrice;
-        return finalMinPrice > finalPrice;
-      });
+      const validUpdates = modifiedPrices
+        .map((item) => {
+          const product = prices.find(p => p.id === item.product_id);
+          if (!product) {
+            console.warn(`未找到产品信息: ${item.product_id}`);
+            return null;
+          }
+          
+          return {
+            product_id: item.product_id,
+            type: product.type,
+            proxy_type: product.proxyType,
+            price: item.price,
+            min_agent_price: item.minAgentPrice || 0,
+            is_global: !selectedAgent,
+            agent_id: selectedAgent?.id
+          };
+        })
+        .filter(Boolean) as PriceUpdateItem[];
 
-      if (invalidPrices.length > 0) {
-        const invalidItems = invalidPrices.map(([id]) => {
-          const item = prices.find(p => p.id === id);
-          return item ? item.type : id;
-        });
-        message.error(`以下产品的最低代理商价格高于全局价格，请重新设置：${invalidItems.join(', ')}`);
-        return;
-      }
+      const requestData = {
+        prices: validUpdates,
+        agent_id: selectedAgent?.id
+      };
 
-      setLoading(true);
-      const updates = Object.entries(modifiedPrices).map(([id, priceData]) => {
-        const item = prices.find(p => p.id === id);
-        if (!item) return null;
-        return {
-          productId: id,
-          type: item.type,
-          proxyType: item.proxyType,
-          globalPrice: priceData.price ?? item.price,
-          minAgentPrice: priceData.minAgentPrice ?? item.minAgentPrice,
-          isGlobal: true
-        };
-      }).filter((item): item is NonNullable<typeof item> => item !== null);
-
-      if (updates.length === 0) {
-        message.error('没有需要更新的数据');
-        return;
-      }
-
-      const response = await batchUpdateProductPriceSettings(updates);
-      if (response.code === 0 || response.code === 200) {
-        message.success('价格更新成功');
-        setModifiedPrices({});
-        setHasChanges(false);
-        loadPrices();
-      } else {
-        message.error(response.message || '价格更新失败');
-      }
+      await batchUpdateProductPriceSettings(requestData);
+      message.success('价格更新成功');
+      setModifiedPrices([]);
+      setHasChanges(false);
+      loadPrices();
     } catch (error) {
       console.error('更新价格失败:', error);
       message.error('更新价格失败');
-    } finally {
-      setLoading(false);
     }
+  };
+
+  const handleAgentChange = (value: number | null) => {
+    setLoading(true);
+    if (value === null) {
+      setSelectedAgent(null);
+      setIsGlobal(true);
+    } else {
+      const agent = agents.find(a => a.id === value);
+      if (agent) {
+        setSelectedAgent({
+          id: agent.id,
+          name: agent.app_username || agent.username || '未命名代理商'
+        });
+        setIsGlobal(false);
+      }
+    }
+    
+    // 清除修改状态
+    setModifiedPrices([]);
+    setHasChanges(false);
+    
+    // 重新加载价格
+    loadPrices();
   };
 
   const columns: ColumnsType<ProductPrice> = [
@@ -257,58 +269,37 @@ const StaticProductPage: React.FC = () => {
       onFilter: (value: any, record: ProductPrice) => record.city === value
     },
     {
-      title: 'IP范围',
-      dataIndex: 'ipRange',
-      key: 'ipRange',
-      width: 160,
-      ellipsis: {
-        showTitle: false,
-      },
-      render: (ipRange: string) => (
-        ipRange ? (
-          <Tooltip placement="topLeft" title={ipRange}>
-            {ipRange}
-          </Tooltip>
-        ) : '-'
-      ),
-    },
-    {
-      title: (
-        <Space>
-          价格
-          <Tooltip title="此处设置的价格为系统全局默认价格">
-            <InfoCircleOutlined style={{ color: '#1890ff' }} />
-          </Tooltip>
-        </Space>
-      ),
+      title: '价格',
       dataIndex: 'price',
       key: 'price',
       width: 120,
       render: (price: number, record: ProductPrice) => (
         <InputNumber
-          style={{ width: '100%' }}
+          style={{ width: 120 }}
           min={0}
+          max={9999}
           precision={1}
-          value={modifiedPrices[record.id]?.price ?? price}
-          onChange={(value) => handlePriceChange(record.id, value || 0, 'price')}
+          value={modifiedPrices.find(p => p.product_id === record.id)?.price ?? price}
+          onChange={(value) => handlePriceChange(record.id, value?.toString() || '')}
           prefix="¥"
         />
       )
     },
     {
-      title: '最低价',
+      title: '最低代理价格',
       dataIndex: 'minAgentPrice',
       key: 'minAgentPrice',
       width: 120,
       render: (minPrice: number, record: ProductPrice) => (
         <InputNumber
-          style={{ width: '100%' }}
+          style={{ width: 120 }}
           min={0}
+          max={9999}
           precision={1}
-          value={modifiedPrices[record.id]?.minAgentPrice ?? minPrice}
-          onChange={(value) => handlePriceChange(record.id, value || 0, 'minAgentPrice')}
+          value={modifiedPrices.find(p => p.product_id === record.id)?.minAgentPrice ?? minPrice}
+          onChange={(value) => handlePriceChange(record.id, value?.toString() || '', 'minAgentPrice')}
           prefix="¥"
-          disabled={!!selectedAgent}
+          disabled={!isGlobal}
         />
       )
     },
@@ -325,7 +316,7 @@ const StaticProductPage: React.FC = () => {
       width: 160,
       render: (date: string) => new Date(date).toLocaleString(),
     },
-  ].filter(col => col.key !== 'action'); // 移除操作列
+  ];
 
   return (
     <div className="static-product-page">
@@ -337,7 +328,6 @@ const StaticProductPage: React.FC = () => {
               <li>静态代理产品包括：101、102、103类型</li>
               <li>可以设置代理商价格、最低代理价格和全局价格</li>
               <li>修改价格后将立即生效</li>
-              <li>IP范围为静态代理特有属性</li>
             </ul>
           }
           type="info"
@@ -349,18 +339,16 @@ const StaticProductPage: React.FC = () => {
           <Space direction="vertical" size="small" style={{ width: '100%' }}>
             <div>设置对象</div>
             <Space direction="vertical" size="small">
-              <Select<number | null>
-                placeholder="选择代理商（默认为全局价格）"
+              <Select
+                placeholder="选择代理商"
                 allowClear
                 style={{ width: 300 }}
-                value={selectedAgent}
-                onChange={(value) => {
-                  setSelectedAgent(value);
-                }}
+                value={selectedAgent?.id}
+                onChange={handleAgentChange}
               >
-                {agents.map((agent: AgentInfo) => (
+                {agents.map(agent => (
                   <Option key={agent.id} value={agent.id}>
-                    {(agent as any).username || agent.app_username || '未命名代理商'}
+                    {agent.app_username || agent.username || '未命名代理商'}
                   </Option>
                 ))}
               </Select>

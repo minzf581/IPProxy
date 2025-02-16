@@ -54,24 +54,23 @@ export interface Statistics {
 }
 
 export interface DashboardData {
-  statistics: Statistics;
+  agent: {
+    id: string;
+    username: string;
+    balance: number;
+  };
+  statistics: {
+    total_recharge: number;
+    monthly_recharge: number;
+    total_consumption: number;
+    monthly_consumption: number;
+    total_users: number;
+    active_users: number;
+    total_orders: number;
+    monthly_orders: number;
+  };
   dynamicResources: DynamicResource[];
   staticResources: StaticResource[];
-  recentOrders?: Array<{
-    id: number;
-    userId: number;
-    amount: number;
-    status: string;
-    createdAt: string;
-  }>;
-  userGrowth?: Array<{
-    date: string;
-    count: number;
-  }>;
-  revenueStats?: Array<{
-    date: string;
-    amount: number;
-  }>;
 }
 
 export interface AgentListResponse {

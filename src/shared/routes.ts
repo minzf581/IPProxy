@@ -10,125 +10,84 @@
 export const API_VERSION = 'v2';
 
 // API 基础路径
-export const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
-// API 模块前缀
+// API 前缀
 export const API_PREFIX = {
-  OPEN: '/open/app',
+  OPEN: '/api/open',
   AUTH: '/api/auth',
-  USER: '/user',
-  ADMIN: '/admin',
-  PROXY: '/proxy'
-} as const;
+  USER: '/api/user',
+  ADMIN: '/api/admin',
+  PROXY: '/api/proxy'
+};
 
-// 打印调试信息的函数
+// 调试信息
 function logDebugInfo() {
   if (process.env.NODE_ENV === 'development') {
-    console.log('[Routes Config]', {
-      API_VERSION,
-      API_BASE,
-      API_PREFIX,
+    console.log('API Configuration:', {
+      version: API_VERSION,
+      baseUrl: API_BASE_URL,
+      prefix: API_PREFIX
     });
   }
 }
 
-// 只在开发环境下执行调试日志
-if (process.env.NODE_ENV === 'development') {
-  logDebugInfo();
-}
-
-/**
- * API 路由配置
- * 
- * 使用方式：
- * 1. 前端：直接导入 API_ROUTES 使用
- * 2. 后端：使用 ROUTES_PY 中的路由定义
- */
+// API 路由配置
 export const API_ROUTES = {
   AUTH: {
     LOGIN: `${API_PREFIX.AUTH}/login`,
     LOGOUT: `${API_PREFIX.AUTH}/logout`,
-    REFRESH: `${API_PREFIX.AUTH}/refresh`,
-    PROFILE: `${API_PREFIX.AUTH}/current-user`
+    REFRESH: `${API_PREFIX.AUTH}/refresh`
   },
-
   USER: {
-    CREATE: `${API_PREFIX.OPEN}/user/create/v2`,
     LIST: `${API_PREFIX.USER}/list`,
+    CREATE: `${API_PREFIX.USER}/create`,
     UPDATE: `${API_PREFIX.USER}/{id}`,
-    DELETE: `${API_PREFIX.USER}/{id}`,
-    CHANGE_PASSWORD: `${API_PREFIX.USER}/{id}/password`,
-    ACTIVATE_BUSINESS: `${API_PREFIX.USER}/{id}/activate-business`,
-    DEACTIVATE_BUSINESS: `${API_PREFIX.USER}/{id}/deactivate-business`
+    DELETE: `${API_PREFIX.USER}/{id}`
   },
-
-  ORDER: {
-    CREATE: `${API_PREFIX.OPEN}/order/create/v2`,
-    LIST: `${API_PREFIX.OPEN}/order/list/v2`,
-    DETAIL: `${API_PREFIX.OPEN}/order/detail/v2`,
-    CANCEL: `${API_PREFIX.OPEN}/order/cancel/v2`,
-    STATIC: {
-      LIST: `${API_PREFIX.OPEN}/static/order/list/v2`,
-      CREATE: `${API_PREFIX.OPEN}/static/order/create/v2`,
-      DETAIL: `${API_PREFIX.OPEN}/static/order/detail/v2`,
-      STATUS: `${API_PREFIX.OPEN}/static/order/status/v2`
-    }
-  },
-
-  PROXY: {
-    QUERY: `${API_PREFIX.OPEN}/product/query/${API_VERSION}`,
-    STOCK: `${API_PREFIX.OPEN}/product/stock/${API_VERSION}`,
-    BALANCE: `${API_PREFIX.PROXY}/balance`,
-    FLOW_LOG: `${API_PREFIX.PROXY}/flow/log`
-  },
-
-  AREA: {
-    LIST: `${API_PREFIX.OPEN}/area/${API_VERSION}`,
-    STOCK: `${API_PREFIX.OPEN}/area/stock/${API_VERSION}`,
-    CITY_LIST: `${API_PREFIX.OPEN}/city/list/${API_VERSION}`,
-    IP_RANGES: `${API_PREFIX.OPEN}/product/query/${API_VERSION}`
-  },
-
-  SETTINGS: {
-    AGENT: {
-      // 移除价格相关路由
-    },
-    PRODUCT: {
-      PRICES: {
-        IMPORT: '/product/prices/import',
-        BATCH_IMPORT: '/product/prices/batch-import',
-        EXPORT: '/product/prices/export'
-      }
-    }
-  },
-
   AGENT: {
-    LIST: `${API_PREFIX.OPEN}/agent/list`,
-    CREATE: `${API_PREFIX.OPEN}/proxy/user/v2`,
-    UPDATE: `${API_PREFIX.OPEN}/agent/{id}`,
-    DELETE: `${API_PREFIX.OPEN}/agent/{id}`,
-    ORDERS: `${API_PREFIX.OPEN}/agent-orders/v2`
+    LIST: `${API_PREFIX.OPEN}/app/agent/list`,
+    CREATE: `${API_PREFIX.OPEN}/app/proxy/user/v2`,
+    UPDATE: `${API_PREFIX.OPEN}/app/agent/{id}`,
+    STATISTICS: `${API_PREFIX.OPEN}/app/agent/{id}/statistics`,
+    ORDERS: `${API_PREFIX.OPEN}/app/agent-orders/v2`,
+    USERS: `${API_PREFIX.OPEN}/app/agent/{id}/users`
   },
-} as const;
+  ORDER: {
+    LIST: `${API_PREFIX.PROXY}/orders`,
+    CREATE: `${API_PREFIX.PROXY}/order/create`,
+    DETAIL: `${API_PREFIX.PROXY}/order/{id}`
+  },
+  PROXY: {
+    LIST: `${API_PREFIX.PROXY}/list`,
+    CREATE: `${API_PREFIX.PROXY}/create`,
+    UPDATE: `${API_PREFIX.PROXY}/{id}`,
+    DELETE: `${API_PREFIX.PROXY}/{id}`
+  },
+  AREA: {
+    LIST: `${API_PREFIX.OPEN}/app/area/v2`
+  },
+  SETTINGS: {
+    PRICES: `${API_PREFIX.OPEN}/app/settings/prices`,
+    RESOURCES: `${API_PREFIX.OPEN}/app/settings/resources`
+  }
+};
 
-// 调试日志
-if (process.env.NODE_ENV === 'development') {
-  console.log('[Routes Config] Generated Routes:', {
-    AUTH: API_ROUTES.AUTH,
-    USER: API_ROUTES.USER,
-    ORDER: API_ROUTES.ORDER,
-    PROXY: API_ROUTES.PROXY,
-    AREA: API_ROUTES.AREA,
-    SETTINGS: API_ROUTES.SETTINGS
-  });
-}
+// 初始化时打印调试信息
+logDebugInfo();
+
+// 导出 Python 兼容的路由配置
+export const PYTHON_ROUTES = {
+  ...API_ROUTES,
+  // 添加 Python 特定的路由配置
+};
 
 // 为了方便 Python 使用，导出一个常量字符串版本
 export const ROUTES_PY = `
 from typing import Dict, Any
 
 API_VERSION = "${API_VERSION}"
-API_BASE = "${API_BASE}"
+API_BASE = "${API_BASE_URL}"
 
 API_PREFIX = {
     "OPEN": "${API_PREFIX.OPEN}",
@@ -142,67 +101,39 @@ API_ROUTES = {
     "AUTH": {
         "LOGIN": f"{API_PREFIX['AUTH']}/login",
         "LOGOUT": f"{API_PREFIX['AUTH']}/logout",
-        "REFRESH": f"{API_PREFIX['AUTH']}/refresh",
-        "PROFILE": f"{API_PREFIX['AUTH']}/current-user"
+        "REFRESH": f"{API_PREFIX['AUTH']}/refresh"
     },
     "USER": {
-        "CREATE": f"{API_PREFIX['OPEN']}/user/create/v2",
         "LIST": f"{API_PREFIX['USER']}/list",
+        "CREATE": f"{API_PREFIX['USER']}/create",
         "UPDATE": f"{API_PREFIX['USER']}/{{id}}",
-        "DELETE": f"{API_PREFIX['USER']}/{{id}}",
-        "CHANGE_PASSWORD": f"{API_PREFIX['USER']}/{{id}}/password",
-        "ACTIVATE_BUSINESS": f"{API_PREFIX['USER']}/{{id}}/activate-business",
-        "DEACTIVATE_BUSINESS": f"{API_PREFIX['USER']}/{{id}}/deactivate-business"
-    },
-    "ORDER": {
-        "CREATE": f"{API_PREFIX['OPEN']}/order/create/v2",
-        "LIST": f"{API_PREFIX['OPEN']}/order/list/v2",
-        "DETAIL": f"{API_PREFIX['OPEN']}/order/detail/v2",
-        "CANCEL": f"{API_PREFIX['OPEN']}/order/cancel/v2",
-        "STATIC": {
-            "LIST": f"{API_PREFIX['OPEN']}/static/order/list/v2",
-            "CREATE": f"{API_PREFIX['OPEN']}/static/order/create/v2",
-            "DETAIL": f"{API_PREFIX['OPEN']}/static/order/detail/v2",
-            "STATUS": f"{API_PREFIX['OPEN']}/static/order/status/v2"
-        }
-    },
-    "PROXY": {
-        "QUERY": f"{API_PREFIX['OPEN']}/product/query/{API_VERSION}",
-        "STOCK": f"{API_PREFIX['OPEN']}/product/stock/{API_VERSION}",
-        "BALANCE": f"{API_PREFIX['PROXY']}/balance",
-        "FLOW_LOG": f"{API_PREFIX['PROXY']}/flow/log"
-    },
-    "AREA": {
-        "LIST": f"{API_PREFIX['OPEN']}/area/{API_VERSION}",
-        "STOCK": f"{API_PREFIX['OPEN']}/area/stock/{API_VERSION}",
-        "CITY_LIST": f"{API_PREFIX['OPEN']}/city/list/{API_VERSION}",
-        "IP_RANGES": f"{API_PREFIX['OPEN']}/product/query/{API_VERSION}"
-    },
-    "SETTINGS": {
-        "AGENT": {
-            "PRICES": {
-                "GET": lambda id: f"{API_PREFIX['ADMIN']}/settings/agent/{id}/prices",
-                "UPDATE": lambda id: f"{API_PREFIX['ADMIN']}/settings/agent/{id}/prices"
-            }
-        },
-        "PRODUCT": {
-            "PRICES": {
-                "IMPORT": "/product/prices/import",
-                "BATCH_IMPORT": "/product/prices/batch-import",
-                "EXPORT": "/product/prices/export"
-            }
-        }
+        "DELETE": f"{API_PREFIX['USER']}/{{id}}"
     },
     "AGENT": {
-        "LIST": f"{API_PREFIX['OPEN']}/agent/list",
-        "CREATE": f"{API_PREFIX['OPEN']}/proxy/user/v2",
-        "UPDATE": f"{API_PREFIX['OPEN']}/agent/{{id}}",
-        "DELETE": f"{API_PREFIX['OPEN']}/agent/{{id}}",
-        "ORDERS": f"{API_PREFIX['OPEN']}/agent-orders/v2",
-        "PRICES": {
-            "GET": lambda id: f"{API_PREFIX['ADMIN']}/agent/{id}/prices",
-            "UPDATE": lambda id: f"{API_PREFIX['ADMIN']}/agent/{id}/prices"
-        }
+        "LIST": f"{API_PREFIX['OPEN']}/app/agent/list",
+        "CREATE": f"{API_PREFIX['OPEN']}/app/proxy/user/v2",
+        "UPDATE": f"{API_PREFIX['OPEN']}/app/agent/{{id}}",
+        "STATISTICS": f"{API_PREFIX['OPEN']}/app/agent/{{id}}/statistics",
+        "ORDERS": f"{API_PREFIX['OPEN']}/app/agent-orders/v2",
+        "USERS": f"{API_PREFIX['OPEN']}/app/agent/{{id}}/users"
+    },
+    "ORDER": {
+        "LIST": f"{API_PREFIX['PROXY']}/orders",
+        "CREATE": f"{API_PREFIX['PROXY']}/order/create",
+        "DETAIL": f"{API_PREFIX['PROXY']}/order/{{id}}"
+    },
+    "PROXY": {
+        "LIST": f"{API_PREFIX['PROXY']}/list",
+        "CREATE": f"{API_PREFIX['PROXY']}/create",
+        "UPDATE": f"{API_PREFIX['PROXY']}/{{id}}",
+        "DELETE": f"{API_PREFIX['PROXY']}/{{id}}"
+    },
+    "AREA": {
+        "LIST": f"{API_PREFIX['OPEN']}/app/area/v2"
+    },
+    "SETTINGS": {
+        "PRICES": f"{API_PREFIX['OPEN']}/app/settings/prices",
+        "RESOURCES": f"{API_PREFIX['OPEN']}/app/settings/resources"
     }
 }
 `; 

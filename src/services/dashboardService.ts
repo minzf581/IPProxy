@@ -1,11 +1,29 @@
-import axios from 'axios';
+import request from '@/utils/request';
+import axios, { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import type { ApiResponse } from '@/types/api';
 import type { DashboardData as DashboardDataType, AgentListResponse } from '@/types/dashboard';
 import type { AxiosError } from 'axios';
+import { API_ROUTES, API_PREFIX } from '@/shared/routes';
+
+interface ErrorResponse {
+  message?: string;
+  msg?: string;
+  data?: any;
+}
+
+// Debug 工具
+const debug = {
+  log: (...args: any[]) => {
+    console.log('[Dashboard Service]', ...args);
+  },
+  error: (...args: any[]) => {
+    console.error('[Dashboard Service]', ...args);
+  }
+};
 
 // 创建仪表盘服务专用的 axios 实例
 const dashboardApi = axios.create({
-  baseURL: `${import.meta.env.VITE_API_URL}/api`,
+  baseURL: `${import.meta.env.VITE_API_URL}`,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -14,17 +32,23 @@ const dashboardApi = axios.create({
 });
 
 // 添加认证拦截器
-dashboardApi.interceptors.request.use((config) => {
+dashboardApi.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = localStorage.getItem('token');
-  if (token) {
+  if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  
+  // 确保URL包含/api前缀
+  if (config.url && !config.url.startsWith('/api')) {
+    config.url = `/api${config.url}`;
+  }
+  
   return config;
 });
 
 // 添加响应拦截器
 dashboardApi.interceptors.response.use(
-  response => {
+  (response: AxiosResponse) => {
     const { data } = response;
     if (data.code === 0 || data.code === 200 || (data.data && !data.code)) {
       response.data = {
@@ -36,7 +60,7 @@ dashboardApi.interceptors.response.use(
     }
     throw new Error(data.message || data.msg || '请求失败');
   },
-  error => {
+  (error: AxiosError<ErrorResponse>) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       window.location.href = '/login';
@@ -81,196 +105,69 @@ export interface StaticResource {
 
 // 仪表盘数据接口
 export interface DashboardData {
-  statistics: Statistics;
+  agent: {
+    id: number;
+    username: string;
+    balance: number;
+  };
+  statistics: {
+    total_recharge: number;
+    monthly_recharge: number;
+    total_consumption: number;
+    monthly_consumption: number;
+    total_users: number;
+    active_users: number;
+    total_orders: number;
+    monthly_orders: number;
+  };
+  recentOrders: any[];
+  userGrowth: any[];
+  revenueStats: any[];
   dynamicResources: DynamicResource[];
   staticResources: StaticResource[];
 }
 
-// 获取仪表盘数据
-export async function getDashboardData(agentId?: string | number): Promise<DashboardDataType> {
+/**
+ * 获取仪表盘数据
+ * @param agentId 可选的代理商ID
+ * @returns 仪表盘数据
+ */
+export async function getDashboardData(agentId?: string): Promise<ApiResponse<DashboardData>> {
   try {
-    console.log('[Dashboard Service] Getting dashboard data for agent:', agentId);
+    debug.log('获取仪表盘数据, agentId:', agentId);
+    const url = agentId 
+      ? `/api/dashboard/agent/${agentId}`
+      : '/api/open/app/dashboard/info/v2';
+    debug.log('请求URL:', url);
     
-    const url = '/open/app/dashboard/info/v2';
-    const params = agentId ? { agent_id: agentId } : undefined;
-      
-    console.log('[Dashboard Service] Request URL:', url);
-    console.log('[Dashboard Service] Request params:', params);
+    const response = await request.get<ApiResponse<DashboardData>>(url);
+    debug.log('仪表盘响应数据:', response.data);
     
-    const response = await dashboardApi.get<ApiResponse<DashboardDataType>>(url, { params });
-    const { data } = response.data;
-    console.log('[Dashboard Service] Dashboard data:', JSON.stringify(data, null, 2));
-
-    // 如果数据为空，返回默认值
-    if (!data) {
-      console.warn('[Dashboard Service] No data received, returning default values');
-      return {
-        statistics: {
-          totalRecharge: 0,
-          totalConsumption: 0,
-          balance: 0,
-          monthRecharge: 0,
-          monthConsumption: 0,
-          lastMonthConsumption: 0
-        },
-        dynamicResources: [],
-        staticResources: []
-      };
+    if (response.data.code !== 0) {
+      throw new Error(response.data.msg || '获取仪表盘数据失败');
     }
-
-    // 确保统计数据存在
-    if (!data.statistics) {
-      console.warn('[Dashboard Service] No statistics data, using default values');
-      data.statistics = {
-        totalRecharge: 0,
-        totalConsumption: 0,
-        balance: 0,
-        monthRecharge: 0,
-        monthConsumption: 0,
-        lastMonthConsumption: 0
-      };
-    }
-
-    // 固定的动态资源列表
-    const defaultDynamicResources = [
-      {
-        id: 'pool1',
-        name: '动态IP池1',
-        usageRate: 0,
-        total: 0,
-        monthly: 0,
-        today: 0,
-        lastMonth: 0
-      },
-      {
-        id: 'pool2',
-        name: '动态IP池2',
-        usageRate: 0,
-        total: 0,
-        monthly: 0,
-        today: 0,
-        lastMonth: 0
-      },
-      {
-        id: 'pool3',
-        name: '动态IP池3',
-        usageRate: 0,
-        total: 0,
-        monthly: 0,
-        today: 0,
-        lastMonth: 0
-      }
-    ];
-
-    // 固定的静态资源列表
-    const defaultStaticResources = [
-      {
-        id: 'static1',
-        name: '纯净静态1',
-        usageRate: 0,
-        total: 0,
-        monthly: 0,
-        lastMonth: 0,
-        available: 0,
-        expired: 0
-      },
-      {
-        id: 'static2',
-        name: '纯净静态2',
-        usageRate: 0,
-        total: 0,
-        monthly: 0,
-        lastMonth: 0,
-        available: 0,
-        expired: 0
-      },
-      {
-        id: 'static3',
-        name: '纯净静态3',
-        usageRate: 0,
-        total: 0,
-        monthly: 0,
-        lastMonth: 0,
-        available: 0,
-        expired: 0
-      },
-      {
-        id: 'static4',
-        name: '纯净静态4',
-        usageRate: 0,
-        total: 0,
-        monthly: 0,
-        lastMonth: 0,
-        available: 0,
-        expired: 0
-      },
-      {
-        id: 'static5',
-        name: '纯净静态5',
-        usageRate: 0,
-        total: 0,
-        monthly: 0,
-        lastMonth: 0,
-        available: 0,
-        expired: 0
-      },
-      {
-        id: 'static7',
-        name: '纯净静态7',
-        usageRate: 0,
-        total: 0,
-        monthly: 0,
-        lastMonth: 0,
-        available: 0,
-        expired: 0
-      }
-    ];
-
-    // 将后端返回的数据与默认数据合并
-    const mergedDynamicResources = defaultDynamicResources.map(defaultResource => {
-      const backendResource = (data.dynamicResources || []).find(r => r.id === defaultResource.id);
-      return backendResource ? {
-        ...defaultResource,
-        ...backendResource,
-        name: defaultResource.name // 保持固定的名称
-      } : defaultResource;
-    });
-
-    const mergedStaticResources = defaultStaticResources.map(defaultResource => {
-      const backendResource = (data.staticResources || []).find(r => r.id === defaultResource.id);
-      return backendResource ? {
-        ...defaultResource,
-        ...backendResource,
-        name: defaultResource.name // 保持固定的名称
-      } : defaultResource;
-    });
-
-    // 更新数据
-    data.dynamicResources = mergedDynamicResources;
-    data.staticResources = mergedStaticResources;
-
-    console.log('[Dashboard Service] Final processed data:', JSON.stringify(data, null, 2));
-    return data;
-  } catch (error) {
-    console.error('[Dashboard Service] Error getting dashboard data:', error);
+    
+    // 扩展响应数据，添加空的统计数组
+    const extendedData: DashboardData = {
+      ...response.data.data,
+      recentOrders: [],
+      userGrowth: [],
+      revenueStats: [],
+      dynamicResources: [],
+      staticResources: []
+    };
+    
+    return {
+      code: 0,
+      message: 'success',
+      data: extendedData
+    };
+  } catch (error: unknown) {
+    debug.error('获取仪表盘数据失败:', error);
     if (error instanceof Error) {
       throw new Error(error.message || '获取仪表盘数据失败');
-    } else {
-      throw new Error('获取仪表盘数据失败');
     }
-  }
-}
-
-// 获取代理列表
-export async function getAgentList(params: { page: number; pageSize: number }): Promise<AgentListResponse> {
-  try {
-    console.log('[Dashboard Service] Getting agent list with params:', params);
-    const response = await dashboardApi.get<ApiResponse<AgentListResponse>>('/open/app/agent/list', { params });
-    console.log('[Dashboard Service] Agent list response:', response);
-    return response.data.data;
-  } catch (error) {
-    console.error('[Dashboard Service] Error getting agent list:', error);
-    throw error;
+    throw new Error('获取仪表盘数据失败');
   }
 }
 
@@ -292,4 +189,12 @@ export function formatCount(count: number): string {
 // 格式化百分比
 export function formatPercent(percent: number): string {
   return `${percent}%`;
-} 
+}
+
+export default {
+  getDashboardData,
+  formatNumber,
+  formatTraffic,
+  formatCount,
+  formatPercent
+}; 

@@ -21,6 +21,7 @@ __all__ = [
     'ProxyInfo',
     'ResourceType',
     'AgentPrice',
+    'UserPrice',
     'ProductInventory',
     'AgentStatistics'
 ] 

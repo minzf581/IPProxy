@@ -80,7 +80,7 @@ import requests
 import json
 from datetime import datetime, timedelta
 import logging
-from sqlalchemy import func
+from sqlalchemy import func, distinct
 import traceback
 
 from app.database import get_db
@@ -492,4 +492,121 @@ async def get_resource_statistics(db: Session = Depends(get_db)):
 
     except Exception as e:
         db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/dashboard/agent/{agent_id}")
+async def get_agent_dashboard(
+    agent_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """获取代理商仪表盘数据"""
+    try:
+        logger.info(f"[DashboardRouter] 获取代理商仪表盘: agent_id={agent_id}")
+        
+        # 权限检查
+        if not current_user.is_admin and current_user.id != agent_id:
+            raise HTTPException(status_code=403, detail="没有权限查看此代理商的仪表盘")
+            
+        # 查找代理商
+        agent = db.query(User).filter(
+            User.id == agent_id,
+            User.is_agent == True
+        ).first()
+        
+        if not agent:
+            raise HTTPException(status_code=404, detail="代理商不存在")
+            
+        # 获取当前月份的开始和结束时间
+        now = datetime.now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        # 查询累计充值（所有增加额度的订单总和）
+        total_recharge = db.query(func.sum(Transaction.amount)).filter(
+            Transaction.agent_id == agent_id,
+            Transaction.user_id == Transaction.agent_id,  # 确保是代理商自己的交易
+            Transaction.type == "recharge",
+            Transaction.status == "success"
+        ).scalar() or 0
+        
+        # 查询本月充值
+        monthly_recharge = db.query(func.sum(Transaction.amount)).filter(
+            Transaction.agent_id == agent_id,
+            Transaction.user_id == Transaction.agent_id,  # 确保是代理商自己的交易
+            Transaction.type == "recharge",
+            Transaction.status == "success",
+            Transaction.created_at >= month_start
+        ).scalar() or 0
+        
+        # 查询累计消费
+        total_consumption = db.query(func.sum(Transaction.amount)).filter(
+            Transaction.agent_id == agent_id,
+            Transaction.type == "consume",
+            Transaction.status == "success"
+        ).scalar() or 0
+        
+        # 查询本月消费
+        monthly_consumption = db.query(func.sum(Transaction.amount)).filter(
+            Transaction.agent_id == agent_id,
+            Transaction.type == "consume",
+            Transaction.status == "success",
+            Transaction.created_at >= month_start
+        ).scalar() or 0
+        
+        # 查询用户数量
+        total_users = db.query(func.count(User.id)).filter(
+            User.agent_id == agent_id
+        ).scalar() or 0
+        
+        # 查询活跃用户数（本月有消费记录的用户）
+        active_users = db.query(func.count(distinct(Transaction.user_id))).filter(
+            Transaction.agent_id == agent_id,
+            Transaction.type == "consume",
+            Transaction.status == "success",
+            Transaction.created_at >= month_start
+        ).scalar() or 0
+        
+        # 查询订单数量
+        total_orders = db.query(func.count(Transaction.id)).filter(
+            Transaction.agent_id == agent_id,
+            Transaction.type == "consume",
+            Transaction.status == "success"
+        ).scalar() or 0
+        
+        # 查询本月订单数
+        monthly_orders = db.query(func.count(Transaction.id)).filter(
+            Transaction.agent_id == agent_id,
+            Transaction.type == "consume",
+            Transaction.status == "success",
+            Transaction.created_at >= month_start
+        ).scalar() or 0
+        
+        return {
+            "code": 0,
+            "message": "获取仪表盘数据成功",
+            "data": {
+                "agent": {
+                    "id": agent.id,
+                    "username": agent.username,
+                    "balance": float(agent.balance or 0)
+                },
+                "statistics": {
+                    "total_recharge": float(total_recharge),
+                    "monthly_recharge": float(monthly_recharge),
+                    "total_consumption": float(total_consumption),
+                    "monthly_consumption": float(monthly_consumption),
+                    "total_users": total_users,
+                    "active_users": active_users,
+                    "total_orders": total_orders,
+                    "monthly_orders": monthly_orders,
+                    "balance": float(agent.balance or 0)
+                }
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[DashboardRouter] 获取代理商仪表盘失败: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))

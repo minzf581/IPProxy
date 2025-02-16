@@ -1,8 +1,8 @@
-import axios from 'axios';
+import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'axios';
 
 // 自定义API错误类型
 class ApiError extends Error {
-  response?: any;
+  response?: AxiosResponse;
   constructor(message: string) {
     super(message);
     this.name = 'ApiError';
@@ -20,22 +20,22 @@ const request = axios.create({
 
 // Debug 函数
 const debug = {
-  log: (...args: any[]) => {
+  log: (...args: unknown[]) => {
     if (process.env.NODE_ENV === 'development') {
       console.log('[Request Debug]', ...args);
     }
   },
-  error: (...args: any[]) => {
+  error: (...args: unknown[]) => {
     console.error('[Request Error]', ...args);
   }
 };
 
 // 请求拦截器
 request.interceptors.request.use(
-  (config) => {
+  (config: InternalAxiosRequestConfig) => {
     // 在发送请求之前做些什么
     const token = localStorage.getItem('token');
-    if (token) {
+    if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`;
     }
 
@@ -48,15 +48,22 @@ request.interceptors.request.use(
 
     return config;
   },
-  (error) => {
+  (error: AxiosError) => {
     debug.error('Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
 
+interface ApiResponseData {
+  code?: number;
+  message?: string;
+  msg?: string;
+  data?: unknown;
+}
+
 // 响应拦截器
 request.interceptors.response.use(
-  response => {
+  (response: AxiosResponse<ApiResponseData>) => {
     const { data } = response;
     console.log('[API Response]', {
       url: response.config.url,
@@ -95,7 +102,7 @@ request.interceptors.response.use(
     });
     throw error;
   },
-  error => {
+  (error: AxiosError) => {
     if (error.response) {
       console.error('[API Error Response]', {
         url: error.config?.url,
@@ -112,8 +119,8 @@ request.interceptors.response.use(
       }
       
       // 处理其他HTTP错误
-      const errorMessage = error.response.data?.message || 
-                          error.response.data?.msg || 
+      const errorMessage = (error.response.data as ApiResponseData)?.message || 
+                          (error.response.data as ApiResponseData)?.msg || 
                           '请求失败';
       throw new Error(errorMessage);
     } else if (error.request) {

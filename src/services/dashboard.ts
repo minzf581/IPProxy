@@ -1,14 +1,40 @@
 import { api } from '@/utils/request';
-import type { DashboardData, DynamicResource, StaticResource } from '@/types/dashboard';
+import type { DynamicResource, StaticResource } from '@/types/dashboard';
 import type { ApiResponse } from '@/types/api';
+
+interface DashboardDataResponse {
+  agent: {
+    id: number;
+    username: string;
+    balance: number;
+  };
+  statistics: {
+    total_recharge: number;
+    monthly_recharge: number;
+    total_consumption: number;
+    monthly_consumption: number;
+    total_users: number;
+    active_users: number;
+    total_orders: number;
+    monthly_orders: number;
+  };
+}
+
+interface DashboardDataExtended extends DashboardDataResponse {
+  recentOrders: any[];
+  userGrowth: any[];
+  revenueStats: any[];
+}
 
 // 使用预定义的 dashboard 命名空间
 export const dashboard = {
   // 获取仪表盘数据
-  async getData(agentId?: string): Promise<DashboardData> {
+  async getData(agentId?: string): Promise<DashboardDataExtended> {
     try {
-      const url = agentId ? `/open/app/dashboard/info/v2?agent_id=${agentId}` : '/open/app/dashboard/info/v2';
-      const response = await api.get<ApiResponse<DashboardData>>(url);
+      const url = agentId 
+        ? `/api/dashboard/agent/${agentId}` 
+        : '/api/open/app/dashboard/info/v2';
+      const response = await api.get<ApiResponse<DashboardDataResponse>>(url);
       return {
         ...response.data.data,
         recentOrders: [],
@@ -24,7 +50,7 @@ export const dashboard = {
   // 获取动态资源列表
   async getDynamicResources(): Promise<DynamicResource[]> {
     try {
-      const response = await api.get<ApiResponse<DynamicResource[]>>('/open/app/dashboard/dynamic-resources');
+      const response = await api.get<ApiResponse<DynamicResource[]>>('/api/open/app/dashboard/dynamic-resources');
       return response.data.data;
     } catch (error) {
       console.error('Failed to get dynamic resources:', error);
@@ -35,7 +61,7 @@ export const dashboard = {
   // 获取静态资源列表
   async getStaticResources(): Promise<StaticResource[]> {
     try {
-      const response = await api.get<ApiResponse<StaticResource[]>>('/open/app/dashboard/static-resources');
+      const response = await api.get<ApiResponse<StaticResource[]>>('/api/open/app/dashboard/static-resources');
       return response.data.data;
     } catch (error) {
       console.error('Failed to get static resources:', error);
@@ -43,5 +69,30 @@ export const dashboard = {
     }
   }
 };
+
+// 获取仪表盘数据
+export async function getDashboardData(agentId?: string): Promise<ApiResponse<DashboardDataResponse>> {
+  try {
+    console.log('获取仪表盘数据, agentId:', agentId);
+    const url = agentId 
+      ? `/api/dashboard/agent/${agentId}`
+      : '/api/open/app/dashboard/info/v2';
+    console.log('请求URL:', url);
+    const response = await api.get<ApiResponse<DashboardDataResponse>>(url);
+    console.log('仪表盘响应数据:', response.data);
+    
+    if (response.data.code !== 0) {
+      throw new Error(response.data.msg || '获取仪表盘数据失败');
+    }
+    
+    return response.data;
+  } catch (error: unknown) {
+    console.error('获取仪表盘数据失败:', error);
+    if (error instanceof Error) {
+      throw new Error(error.message || '获取仪表盘数据失败');
+    }
+    throw new Error('获取仪表盘数据失败');
+  }
+}
 
 export default dashboard;

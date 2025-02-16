@@ -1,10 +1,20 @@
 export interface AgentInfo {
-  id: number;
-  username?: string;
+  id: string;
+  username: string;
   app_username?: string;
-  created_at?: string;
-  updated_at?: string;
-  status?: number;
+  platform_account?: string;
+  email?: string;
+  phone?: string | null;
+  balance: number;
+  status: string;  // 'active' | 'disabled'
+  remark?: string | null;
+  created_at: string;
+  updated_at: string;
+  total_income: number;
+  total_expense: number;
+  total_profit: number;
+  total_orders: number;
+  total_users: number;
 }
 
 export interface AgentStatistics {
@@ -73,4 +83,15 @@ export interface AgentUser {
 export interface Agent {
   id: number;
   name: string;
+}
+
+export interface AgentListResponse {
+  list: AgentInfo[];
+  total: number;
+}
+
+export interface ApiResponse<T> {
+  code: number;
+  msg: string;
+  data: T;
 }
