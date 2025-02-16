@@ -5,6 +5,7 @@ import {
   SettingOutlined,
   TeamOutlined,
   AppstoreOutlined,
+  ShoppingCartOutlined,
 } from '@ant-design/icons';
 
 // 管理员菜单配置
@@ -79,8 +80,8 @@ export const adminMenuConfig = [
   }
 ];
 
-// 代理商菜单配置
-export const agentMenuConfig = [
+// 代理商和用户菜单配置
+export const businessMenuConfig = [
   {
     key: 'dashboard',
     label: '仪表盘',
@@ -88,10 +89,21 @@ export const agentMenuConfig = [
     path: '/dashboard'
   },
   {
-    key: 'users',
-    label: '用户管理',
-    icon: <UserOutlined />,
-    path: '/users'
+    key: 'business',
+    label: '业务开通',
+    icon: <ShoppingCartOutlined />,
+    children: [
+      {
+        key: 'business/dynamic',
+        label: '动态代理业务',
+        path: '/business/dynamic'
+      },
+      {
+        key: 'business/static',
+        label: '静态代理业务',
+        path: '/business/static'
+      }
+    ]
   },
   {
     key: 'order',
@@ -121,4 +133,4 @@ export const agentMenuConfig = [
     icon: <SettingOutlined />,
     path: '/settings'
   }
-]; 
+];

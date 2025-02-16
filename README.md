@@ -50,6 +50,19 @@ project/
   - 页面组件：`src/pages/agent/index.tsx`
   - 类型定义：`src/types/agent.ts`
 
+### 业务开通模块
+- 后端主文件：`backend/app/routers/business.py`
+- 核心依赖：
+  - BusinessService (`backend/app/services/business_service.py`)
+  - 订单模型 (`backend/app/models/order.py`)
+  - 代理模型 (`backend/app/models/proxy.py`)
+- 前端对应：
+  - 服务层：`src/services/businessService.ts`
+  - 页面组件：
+    - `src/pages/business/DynamicBusiness.tsx`
+    - `src/pages/business/StaticBusiness.tsx`
+  - 类型定义：`src/types/business.ts`
+
 ### 仪表盘模块
 - 后端主文件：`backend/app/routers/dashboard.py`
 - 核心依赖：

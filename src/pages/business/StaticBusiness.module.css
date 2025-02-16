@@ -1,0 +1,27 @@
+.headerCard {
+  margin-bottom: 24px;
+}
+
+.headerCard :global(.ant-card-body) {
+  padding: 16px 24px;
+}
+
+.tableCard {
+  margin-bottom: 24px;
+}
+
+.tableCard :global(.ant-table-wrapper) {
+  margin-top: 16px;
+}
+
+.tableCard :global(.ant-input-number) {
+  width: 100%;
+}
+
+.tableCard :global(.ant-select) {
+  width: 100%;
+}
+
+.tableCard :global(.ant-table-row.selected) {
+  background-color: #f0f7ff;
+} 

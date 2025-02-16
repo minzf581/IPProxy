@@ -2,7 +2,7 @@ import React from 'react';
 import { Layout, Menu } from 'antd';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { adminMenuConfig, agentMenuConfig } from '@/config/menu';
+import { adminMenuConfig, businessMenuConfig } from '@/config/menu';
 import './MainLayout.less';
 
 const { Header, Sider, Content } = Layout;
@@ -14,14 +14,14 @@ interface MainLayoutProps {
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { isAdmin, isAgent, user } = useAuth();
+  const { user } = useAuth();
+  const isBusinessUser = user?.role === 'agent' || user?.role === 'user';
 
   // 根据用户角色选择菜单配置
-  const menuConfig = isAdmin ? adminMenuConfig : agentMenuConfig;
+  const menuConfig = isBusinessUser ? businessMenuConfig : adminMenuConfig;
 
   console.log('[Layout Debug] User info:', user);
-  console.log('[Layout Debug] Is admin:', isAdmin);
-  console.log('[Layout Debug] Is agent:', isAgent);
+  console.log('[Layout Debug] Is business user:', isBusinessUser);
   console.log('[Layout Debug] Menu config:', menuConfig);
 
   // 获取当前选中的菜单项

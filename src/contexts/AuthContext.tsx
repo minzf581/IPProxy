@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { User, UserRole } from '@/types/user';
 import { getCurrentUser, login as authLogin } from '@/services/auth';
-import { USER_ROLE } from '@/utils/constants';
 
 // Debug 函数
 const debug = {
@@ -24,6 +23,8 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   isAgent: boolean;
+  isUser: boolean;
+  role: UserRole | null;
   login: (username: string, password: string) => Promise<void>;
   logout: () => void;
 }
@@ -38,6 +39,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [initialized, setInitialized] = useState(false);
 
   debug.log('AuthProvider mounted');
+
+  // 确定用户角色
+  const determineUserRole = (userData: User): UserRole => {
+    if (userData.is_admin) return UserRole.ADMIN;
+    if (userData.is_agent) return UserRole.AGENT;
+    return UserRole.USER;
+  };
 
   const checkAuth = useCallback(async () => {
     // 如果已经初始化过，不再重复检查
@@ -62,8 +70,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       debug.log('Current user check result:', response);
       
       if (response.code === 0 && response.data) {
-        setUser(response.data);
-        debug.log('User authenticated:', response.data);
+        const userData = {
+          ...response.data,
+          role: determineUserRole(response.data)
+        };
+        setUser(userData);
+        debug.log('User authenticated:', userData);
       } else {
         debug.log('Authentication failed, clearing token and user');
         setUser(null);
@@ -97,22 +109,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       debug.log('Login response:', response);
 
       if (response.code === 200 && response.data) {  // 前端已经转换为标准状态码 200
-        const { token, user } = response.data;
-        if (!token || !user) {
+        const { token, user: userData } = response.data;
+        if (!token || !userData) {
           debug.error('Invalid login response data:', response.data);
           throw new Error('登录响应数据不完整');
         }
         
         debug.log('Login successful, setting token and user');
-        setUser(user);  // token 已经在 auth service 中保存
-        debug.log('User state updated:', user);
+        const userWithRole = {
+          ...userData,
+          role: determineUserRole(userData)
+        };
+        setUser(userWithRole);
+        debug.log('User state updated:', userWithRole);
       } else {
         debug.error('Login failed:', response);
-        throw new Error(response.message || '登录失败');  // 使用 message 而不是 msg
+        throw new Error(response.message || '登录失败');
       }
     } catch (error: any) {
       debug.error('Login failed:', error);
-      // 确保清理任何可能存在的无效 token
       localStorage.removeItem('token');
       setUser(null);
       throw error;
@@ -126,7 +141,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     debug.log('Logging out user');
     localStorage.removeItem('token');
     setUser(null);
-    setInitialized(false); // 重置初始化状态，允许下次登录时重新检查
+    setInitialized(false);
     debug.log('User logged out, state cleared');
   }, []);
 
@@ -136,8 +151,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       debug.log('Auth state:', { 
         user, 
         isAuthenticated: !!user,
-        isAdmin: user?.is_admin ?? false,
-        isAgent: user?.is_agent ?? false,
+        isAdmin: user?.role === UserRole.ADMIN,
+        isAgent: user?.role === UserRole.AGENT,
+        isUser: user?.role === UserRole.USER,
+        role: user?.role,
         loading,
         initialized
       });
@@ -148,8 +165,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user,
     isAuthenticated: !!user,
     loading,
-    isAdmin: user?.is_admin ?? false,
-    isAgent: user?.is_agent ?? false,
+    isAdmin: user?.role === UserRole.ADMIN,
+    isAgent: user?.role === UserRole.AGENT,
+    isUser: user?.role === UserRole.USER,
+    role: user?.role || null,
     login,
     logout,
   };

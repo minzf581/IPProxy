@@ -16,6 +16,8 @@ import StaticRenewalPage from '@/pages/static-renewal';
 import DynamicOrderList from '@/pages/orders/components/DynamicOrderList';
 import DynamicProductPage from '@/pages/products/dynamic';
 import StaticProductPage from '@/pages/products/static';
+import DynamicBusiness from '@/pages/business/DynamicBusiness';
+import StaticBusiness from '@/pages/business/StaticBusiness';
 
 // 路由配置选项
 const routerOptions = {
@@ -119,8 +121,8 @@ const createRoutes = () => {
     },
   ];
 
-  // 代理商路由
-  const agentRoutes: RouteObject[] = [
+  // 代理商和用户路由
+  const businessRoutes: RouteObject[] = [
     {
       path: '',
       element: <Dashboard />,
@@ -130,8 +132,17 @@ const createRoutes = () => {
       element: <Dashboard />,
     },
     {
-      path: 'users',
-      element: <UserManagement />,
+      path: 'business',
+      children: [
+        {
+          path: 'dynamic',
+          element: <DynamicBusiness />,
+        },
+        {
+          path: 'static',
+          element: <StaticBusiness />,
+        },
+      ],
     },
     {
       path: 'order',
@@ -168,7 +179,7 @@ const createRoutes = () => {
     },
   ];
 
-  return { adminRoutes, agentRoutes };
+  return { adminRoutes, businessRoutes };
 };
 
 // 创建路由器
@@ -176,7 +187,7 @@ const router = createBrowserRouter([
   {
     path: '/',
     element: <AuthGuard><Layout /></AuthGuard>,
-    children: [...createRoutes().adminRoutes, ...createRoutes().agentRoutes],
+    children: [...createRoutes().adminRoutes, ...createRoutes().businessRoutes],
     errorElement: <ErrorBoundary><div>页面加载失败</div></ErrorBoundary>,
   },
   {

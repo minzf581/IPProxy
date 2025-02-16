@@ -16,7 +16,8 @@ import {
   LogoutOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '@/hooks/useAuth';
-import { adminMenuConfig, agentMenuConfig } from '@/config/menu';
+import { adminMenuConfig, businessMenuConfig } from '@/config/menu';
+import { UserRole } from '@/types/user';
 import styles from './index.module.less';
 
 const { Header, Sider, Content } = Layout;
@@ -44,7 +45,7 @@ const LayoutComponent: React.FC = () => {
 
   useEffect(() => {
     debug.log('User info:', user);
-    debug.log('Is agent:', user?.is_agent);
+    debug.log('User role:', user?.role);
   }, [user]);
 
   useEffect(() => {
@@ -94,9 +95,9 @@ const LayoutComponent: React.FC = () => {
 
   // 获取菜单配置
   const getMenuConfig = () => {
-    const isAgent = user?.is_agent ?? false;
-    debug.log('Getting menu config for role:', isAgent ? 'agent' : 'admin');
-    return isAgent ? agentMenuConfig : adminMenuConfig;
+    const isBusinessUser = user?.role === UserRole.AGENT || user?.role === UserRole.USER;
+    debug.log('Getting menu config for role:', user?.role);
+    return isBusinessUser ? businessMenuConfig : adminMenuConfig;
   };
 
   const menuItems = getMenuConfig();
@@ -112,7 +113,7 @@ const LayoutComponent: React.FC = () => {
         width={220}
       >
         <div className={styles.logo}>
-          {!collapsed && (user?.agent_id === null ? 'IP管理后台' : 'IP代理商后台')}
+          {!collapsed && (user?.role === UserRole.ADMIN ? 'IP管理后台' : 'IP代理系统')}
         </div>
         <Menu
           theme="dark"

@@ -1,0 +1,24 @@
+.balanceCard {
+  margin-bottom: 24px;
+}
+
+.balanceCard :global(.ant-card-body) {
+  padding: 16px 24px;
+}
+
+.formCard {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.formCard :global(.ant-form-item) {
+  margin-bottom: 24px;
+}
+
+.formCard :global(.ant-input-number) {
+  width: 100%;
+}
+
+.formCard :global(.ant-select) {
+  width: 100%;
+}

@@ -16,6 +16,7 @@ export interface User {
   balance: number;
   is_admin: boolean;
   is_agent: boolean;
+  role: UserRole;  // 添加 role 字段
   remark?: string;
   created_at: string;
   updated_at: string;  // 改为必需字段，因为后端总是会返回这个字段
