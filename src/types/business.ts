@@ -13,9 +13,13 @@ export interface BusinessOrder {
 
 export interface DynamicBusinessOrder {
   userId: number;
+  username: string;
+  agentId: number;
+  agentUsername: string;
   flow: number;
   duration: number;
   remark?: string;
+  totalCost: number;
 }
 
 export interface StaticBusinessOrderProduct {

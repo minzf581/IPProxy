@@ -6,16 +6,30 @@ import type {
 } from '@/types/business';
 
 export async function submitDynamicOrder(data: DynamicBusinessOrder): Promise<BusinessResponse> {
-  return request('/api/business/dynamic', {
+  return request(`/api/user/${data.userId}/activate-business`, {
     method: 'POST',
-    data,
+    data: {
+      userId: String(data.userId),
+      username: data.username,
+      agentId: String(data.agentId),
+      agentUsername: data.agentUsername,
+      proxyType: 'dynamic',
+      poolType: 'pool1',
+      traffic: String(data.flow),
+      duration: String(data.duration),
+      remark: data.remark,
+      total_cost: data.totalCost
+    },
   });
 }
 
 export async function submitStaticOrder(data: StaticBusinessOrder): Promise<BusinessResponse> {
-  return request('/api/business/static', {
+  return request(`/api/user/${data.userId}/activate-business`, {
     method: 'POST',
-    data,
+    data: {
+      proxyType: 101,  // 静态云平台代理，可以是101-103
+      products: data.products
+    },
   });
 }
 

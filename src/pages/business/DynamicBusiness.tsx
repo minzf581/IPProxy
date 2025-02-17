@@ -58,9 +58,8 @@ const DynamicBusiness: React.FC = () => {
     countries: [],
     cities: [],
   });
-  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [remarks, setRemarks] = useState<Record<string, string>>({});
+  const [quantity, setQuantity] = useState<number>(0);
+  const [remark, setRemark] = useState<string>('');
 
   // 获取代理商列表
   const { data: agentResponse } = useRequest(
@@ -186,54 +185,46 @@ const DynamicBusiness: React.FC = () => {
     }
   };
 
+  // 初始化时如果是代理商，自动设置selectedAgent
   useEffect(() => {
-    loadBalance();
-    loadProducts();
-  }, []);
+    if (isAgent && user?.id) {
+      setSelectedAgent({ id: user.id, name: user.username || '' });
+      loadBalance(user.id);
+      loadProducts(user.id);
+    }
+  }, [isAgent, user]);
 
   // 处理代理商/用户选择
   const handleAgentChange = async (value: number | undefined) => {
     console.log('选择用户/代理商:', value);
-    setSelectedAgent(value ? { id: value, name: '' } : null);
-    
-    // 加载选中用户/代理商的余额
-    await loadBalance(value);
-    
-    // 重新加载产品列表
-    if (value) {
-      await loadProducts(value);
+    if (isAgent && user?.id) {
+      // 如果是代理商，只允许选择自己的用户
+      setSelectedAgent({ id: value || user.id, name: '' });
+      await loadBalance(value || user.id);
+      await loadProducts(value || user.id);
     } else {
-      setProducts([]);
+      setSelectedAgent(value ? { id: value, name: '' } : null);
+      await loadBalance(value);
+      if (value) {
+        await loadProducts(value);
+      } else {
+        setProducts([]);
+      }
     }
   };
 
   // 处理数量变更
-  const handleQuantityChange = (productId: string, value: number | null) => {
-    setQuantities(prev => ({
-      ...prev,
-      [productId]: value || 0
-    }));
+  const handleQuantityChange = (value: number | null) => {
+    setQuantity(value || 0);
   };
 
   // 处理备注变更
-  const handleRemarkChange = (productId: string, value: string) => {
-    setRemarks(prev => ({
-      ...prev,
-      [productId]: value
-    }));
+  const handleRemarkChange = (value: string) => {
+    setRemark(value);
   };
 
   // 提交订单
   const handleSubmit = async () => {
-    if (selectedProducts.length === 0) {
-      message.error('请选择产品');
-      return;
-    }
-
-    const productId = selectedProducts[0];
-    const quantity = quantities[productId] || 0;
-    const remark = remarks[productId] || '';
-
     if (quantity <= 0) {
       message.error('请输入有效的流量');
       return;
@@ -241,25 +232,53 @@ const DynamicBusiness: React.FC = () => {
 
     try {
       setLoading(true);
+      
+      if (!selectedAgent) {
+        message.error('请选择用户');
+        return;
+      }
+
+      // 获取当前选中的代理商或用户信息
+      const targetUser = isAgent 
+        ? userList.find(u => u.id === selectedAgent.id)
+        : agents.find(a => a.id === selectedAgent.id);
+
+      if (!targetUser) {
+        message.error('未找到目标用户信息');
+        return;
+      }
+
+      // 计算总价
+      const product = products[0]; // 使用第一个产品的价格
+      if (!product) {
+        message.error('未找到产品信息');
+        return;
+      }
+      const totalCost = quantity * product.price;
+
       const response = await submitDynamicOrder({
-        userId: selectedAgent?.id || (user?.id ?? 0),
+        userId: selectedAgent.id,
+        username: targetUser.username || '',
+        agentId: isAgent ? (user?.id ?? 0) : selectedAgent.id,
+        agentUsername: isAgent ? (user?.username ?? '') : (targetUser.username || ''),
         flow: quantity,
         duration: 30, // 默认30天
-        remark: remark
+        remark: remark,
+        totalCost: totalCost
       });
 
       if (response.code === 0) {
         message.success('订单提交成功');
-        setSelectedProducts([]);
-        setQuantities({});
-        setRemarks({});
-        loadBalance();
-        loadProducts();
+        // 重置表单
+        setQuantity(0);
+        setRemark('');
+        // 刷新余额
+        await loadBalance(selectedAgent.id);
       } else {
-        message.error(response.message || '订单提交失败');
+        throw new Error(response.message || '订单提交失败');
       }
-    } catch (error) {
-      message.error('订单提交失败');
+    } catch (error: any) {
+      message.error(error.message || '订单提交失败');
     } finally {
       setLoading(false);
     }
@@ -322,8 +341,8 @@ const DynamicBusiness: React.FC = () => {
       render: (_: unknown, record: ProductPrice) => (
         <InputNumber
           min={1}
-          value={quantities[record.id] || 0}
-          onChange={(value) => handleQuantityChange(record.id.toString(), value)}
+          value={quantity}
+          onChange={handleQuantityChange}
           style={{ width: '100%' }}
           placeholder="请输入流量"
         />
@@ -333,7 +352,6 @@ const DynamicBusiness: React.FC = () => {
       title: '总价(元)',
       dataIndex: 'totalPrice',
       render: (_: unknown, record: ProductPrice) => {
-        const quantity = quantities[record.id] || 0;
         const totalPrice = quantity * record.price;
         return <Text strong>¥{totalPrice.toFixed(2)}</Text>;
       }
@@ -343,8 +361,8 @@ const DynamicBusiness: React.FC = () => {
       dataIndex: 'remark',
       render: (_: unknown, record: ProductPrice) => (
         <Input
-          value={remarks[record.id] || ''}
-          onChange={(e) => handleRemarkChange(record.id.toString(), e.target.value)}
+          value={remark}
+          onChange={(e) => handleRemarkChange(e.target.value)}
           placeholder="请输入备注"
         />
       )
@@ -353,14 +371,15 @@ const DynamicBusiness: React.FC = () => {
 
   return (
     <PageContainer>
-      <Card className="dynamic-business-page">
+      <Card className={styles.dynamicBusinessPage}>
         <Alert
           message="业务说明"
           description={
-            <ul>
-              <li>动态代理业务包括：104、105、201类型</li>
-              <li>请选择需要开通的产品并填写流量</li>
-            </ul>
+            <>
+              <p>1. 动态代理按流量计费，最小购买单位为1GB</p>
+              <p>2. 流量有效期为30天</p>
+              <p>3. 支持HTTP/HTTPS/SOCKS5协议</p>
+            </>
           }
           type="info"
           showIcon
@@ -371,25 +390,31 @@ const DynamicBusiness: React.FC = () => {
           <Space align="start" style={{ width: '100%', justifyContent: 'space-between' }}>
             <Space direction="vertical" size="small">
               <div>{isAgent ? '选择用户' : '开通对象'}</div>
-              <Select
-                placeholder={isAgent ? "选择用户" : "选择代理商"}
-                allowClear
-                style={{ width: 200 }}
-                onChange={handleAgentChange}
-              >
-                {isAgent
-                  ? userList.map(user => (
-                      <Option key={user.id} value={user.id}>
-                        {user.username}
-                      </Option>
-                    ))
-                  : agents.map(agent => (
-                      <Option key={agent.id} value={agent.id}>
-                        {agent.username}
-                      </Option>
-                    ))
-                }
-              </Select>
+              {isAgent && userList.length > 0 && (
+                <Select
+                  placeholder="选择用户"
+                  style={{ width: 200 }}
+                  onChange={handleAgentChange}
+                  allowClear
+                >
+                  {userList.map(user => (
+                    <Option key={user.id} value={user.id}>{user.username}</Option>
+                  ))}
+                </Select>
+              )}
+
+              {!isAgent && agents.length > 0 && (
+                <Select
+                  placeholder="选择代理商"
+                  style={{ width: 200 }}
+                  onChange={handleAgentChange}
+                  allowClear
+                >
+                  {agents.map(agent => (
+                    <Option key={agent.id} value={agent.id}>{agent.username}</Option>
+                  ))}
+                </Select>
+              )}
             </Space>
             <Space direction="vertical" size="small">
               <div>账户余额</div>
@@ -408,16 +433,19 @@ const DynamicBusiness: React.FC = () => {
             rowKey="id"
           />
 
-          <Space>
+          <div className={styles.actionSection}>
             <Button
               type="primary"
               onClick={handleSubmit}
               loading={loading}
-              disabled={selectedProducts.length === 0}
+              disabled={
+                (!isAgent && !selectedAgent) || // 非代理商必须选择代理商
+                quantity <= 0 // 流量必须大于0
+              }
             >
               提交订单
             </Button>
-          </Space>
+          </div>
         </Space>
       </Card>
     </PageContainer>
