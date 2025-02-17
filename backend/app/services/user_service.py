@@ -103,6 +103,49 @@ class UserService(IPIPVBaseAPI):
                         updated_at=datetime.utcnow()
                     )
                     
+                    # 如果是代理商，设置 app_username 和 platform_account
+                    if is_agent:
+                        try:
+                            # 使用测试环境的主账号
+                            main_username = "test1006"  # 测试环境的主账号
+                            
+                            # 调用 IPIPV API 创建代理商账号
+                            ipipv_response = await self._make_request(
+                                "api/open/app/proxy/user/v2",
+                                {
+                                    "version": "v2",
+                                    "encrypt": "AES",
+                                    "appUsername": username,
+                                    "password": password,  # 添加密码
+                                    "limitFlow": 1024,  # 默认1GB流量
+                                    "remark": remark or f"代理商{username}",
+                                    "mainUsername": main_username,     # 主账号
+                                    "appMainUsername": main_username,  # 主账号
+                                    "platformAccount": username,       # 平台账号
+                                    "channelAccount": username,        # 渠道商账号
+                                    "status": 1,                      # 状态：1=正常
+                                    "authType": 1,                    # 认证类型：1=企业认证
+                                    "authName": "测试公司",           # 认证名称
+                                    "no": "3101112",                 # 证件号码
+                                    "phone": phone or "13800138000",  # 手机号码
+                                    "email": email or f"{username}@test.com"  # 邮箱
+                                }
+                            )
+                            
+                            if ipipv_response and ipipv_response.get("code") == 200:
+                                ipipv_data = ipipv_response.get("data", {})
+                                new_user.app_username = ipipv_data.get("appUsername") or username
+                                new_user.platform_account = ipipv_data.get("platformAccount") or username
+                                new_user.ipipv_username = ipipv_data.get("username")
+                                new_user.ipipv_password = ipipv_data.get("password")
+                            else:
+                                logger.error(f"[UserService.create_user] IPIPV API 调用失败: {ipipv_response}")
+                                return None
+                                
+                        except Exception as e:
+                            logger.error(f"[UserService.create_user] IPIPV API 调用失败: {str(e)}")
+                            return None
+                    
                     db.add(new_user)
                     db.commit()
                     db.refresh(new_user)

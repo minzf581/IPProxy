@@ -31,6 +31,7 @@ from datetime import datetime
 from .ipipv_base_api import IPIPVBaseAPI
 import json
 import traceback
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -270,10 +271,31 @@ class ProxyService(IPIPVBaseAPI):
                     "data": None
                 }
             
+            # 构建请求参数
+            request_params = {
+                "version": "v2",
+                "encrypt": "AES",
+                "appUsername": params["appUsername"],
+                "limitFlow": params["limitFlow"],
+                "remark": params["remark"],
+                "mainUsername": settings.IPPROXY_MAIN_USERNAME,     # 主账号
+                "appMainUsername": settings.IPPROXY_MAIN_USERNAME,  # 主账号
+                "platformAccount": params["platformAccount"],       # 平台账号
+                "channelAccount": params["channelAccount"],        # 渠道商账号
+                "status": 1,                                       # 状态：1=正常
+                "authType": settings.IPPROXY_MAIN_AUTH_TYPE,       # 认证类型
+                "authName": settings.IPPROXY_MAIN_AUTH_NAME,       # 认证名称
+                "no": settings.IPPROXY_MAIN_AUTH_NO,              # 证件号码
+                "phone": settings.IPPROXY_MAIN_PHONE,             # 手机号码
+                "email": settings.IPPROXY_MAIN_EMAIL              # 邮箱
+            }
+            
+            logger.info(f"[ProxyService] 请求参数: {json.dumps(request_params, ensure_ascii=False)}")
+            
             # 调用IPIPV API创建代理用户
             response = await self._make_request(
                 "api/open/app/proxy/user/v2",
-                params
+                request_params
             )
             
             logger.info(f"[ProxyService] IPIPV API响应: {json.dumps(response, ensure_ascii=False)}")
@@ -288,7 +310,13 @@ class ProxyService(IPIPVBaseAPI):
                 }
             
             # 检查响应状态
-            if response.get("code") not in [0, 200]:
+            if response.get("code") == 200:  # IPIPV API 返回200表示成功
+                return {
+                    "code": 0,  # 我们的API使用0表示成功
+                    "msg": "success",
+                    "data": response.get("data")
+                }
+            else:
                 error_msg = f"创建代理用户失败: {response.get('msg', '未知错误')}"
                 logger.error(f"[ProxyService] {error_msg}")
                 return {
@@ -296,12 +324,6 @@ class ProxyService(IPIPVBaseAPI):
                     "msg": error_msg,
                     "data": None
                 }
-            
-            return {
-                "code": 0,
-                "msg": "success",
-                "data": response.get("data")
-            }
             
         except Exception as e:
             error_msg = f"创建代理用户失败: {str(e)}"

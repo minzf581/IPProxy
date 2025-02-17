@@ -523,30 +523,64 @@ async def create_dynamic_proxy_user(
                 "data": None
             }
         
-        # 记录数据库会话信息
-        logger.debug(f"[{func_name}] 数据库会话: {db}")
-        
         try:
             # 从数据库获取代理商信息
-            logger.info(f"[{func_name}] 开始查询代理商信息: appUsername={request['appUsername']}")
-            agent = db.query(User).filter(
-                User.app_username == request["appUsername"],
+            agent_id = request["appUsername"]  # 这里接收的是代理商ID
+            logger.info(f"[{func_name}] 开始查询代理商信息: agent_id={agent_id}")
+            
+            # 确保agent_id是整数
+            try:
+                agent_id = int(agent_id)
+            except (ValueError, TypeError):
+                error_msg = f"代理商ID格式错误: {agent_id}"
+                logger.error(f"[{func_name}] {error_msg}")
+                return {
+                    "code": 400,
+                    "msg": error_msg,
+                    "data": None
+                }
+            
+            # 先查询用户基本信息，不带任何条件
+            base_user = db.query(User).filter(User.id == agent_id).first()
+            logger.info(f"[{func_name}] 基本用户信息: {vars(base_user) if base_user else None}")
+            
+            # 查询代理商信息
+            query = db.query(User).filter(
+                User.id == agent_id,
                 User.is_agent == True,  # 确保是代理商
                 User.status == 1  # 确保账号是激活状态
-            ).first()
+            )
             
-            logger.debug(f"[{func_name}] 查询结果: {agent}")
+            # 记录SQL查询语句
+            logger.info(f"[{func_name}] SQL查询: {query.statement}")
+            
+            agent = query.first()
+            logger.info(f"[{func_name}] 查询结果: {vars(agent) if agent else None}")
             
             if not agent:
-                error_msg = f"未找到代理商: {request['appUsername']}"
+                error_msg = f"未找到代理商账号或账号未激活: ID={agent_id}"
                 logger.error(f"[{func_name}] {error_msg}")
+                # 记录更多信息以便调试
+                if base_user:
+                    logger.error(f"[{func_name}] 用户存在但不满足条件:")
+                    logger.error(f"  - is_agent: {base_user.is_agent}")
+                    logger.error(f"  - status: {base_user.status}")
                 return {
                     "code": 404,
                     "msg": error_msg,
                     "data": None
                 }
             
-            # 记录代理商详细信息（排除敏感信息）
+            if not agent.app_username:
+                error_msg = "代理商app_username未设置"
+                logger.error(f"[{func_name}] {error_msg}")
+                return {
+                    "code": 400,
+                    "msg": error_msg,
+                    "data": None
+                }
+            
+            # 记录代理商详细信息
             logger.info(f"[{func_name}] 找到代理商:")
             logger.info(f"  - ID: {agent.id}")
             logger.info(f"  - 用户名: {agent.username}")
@@ -557,11 +591,13 @@ async def create_dynamic_proxy_user(
             
             # 准备请求参数
             params = {
-                "appUsername": request["appUsername"],
+                "appUsername": agent.app_username,  # 使用数据库中的app_username
                 "limitFlow": request["limitFlow"],  # MB为单位
                 "remark": request["remark"],
                 "platformAccount": agent.platform_account,  # 平台主账号
-                "channelAccount": agent.app_username,   # 渠道商主账号就是 app_username
+                "channelAccount": agent.app_username,   # 渠道商主账号
+                "appMainUsername": agent.ipipv_username,  # IPIPV平台主账号
+                "mainUsername": agent.ipipv_username  # IPIPV平台主账号
             }
             
             logger.info(f"[{func_name}] 准备调用IPIPV API, 参数: {json.dumps(params, ensure_ascii=False)}")
@@ -570,21 +606,11 @@ async def create_dynamic_proxy_user(
             response = await proxy_service.create_proxy_user(params)
             logger.info(f"[{func_name}] IPIPV API响应: {json.dumps(response, ensure_ascii=False)}")
             
-            if response.get("code") == 0:
-                logger.info(f"[{func_name}] 创建代理用户成功")
-                return {
-                    "code": 0,
-                    "msg": "success",
-                    "data": response.get("data")
-                }
-            else:
-                error_msg = response.get("msg", "创建代理用户失败")
-                logger.error(f"[{func_name}] {error_msg}")
-                return {
-                    "code": response.get("code", 500),
-                    "msg": error_msg,
-                    "data": None
-                }
+            return {
+                "code": response.get("code", 500),
+                "msg": response.get("msg", "success"),
+                "data": response.get("data")
+            }
                 
         except Exception as db_error:
             logger.error(f"[{func_name}] 数据库操作失败: {str(db_error)}")
@@ -601,10 +627,5 @@ async def create_dynamic_proxy_user(
         return {
             "code": 500,
             "msg": f"创建代理用户失败: {str(e)}",
-            "data": None,
-            "error_details": {
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "timestamp": datetime.now().isoformat()
-            }
+            "data": None
         }

@@ -23,6 +23,16 @@ class Settings(BaseSettings):
     IPPROXY_APP_KEY: str = "AK20241120145620"
     IPPROXY_APP_SECRET: str = "bf3ffghlt0hpc4omnvc2583jt0fag6a4"
     
+    # IPIPV 主账号配置
+    IPPROXY_MAIN_USERNAME: str = "test1006"
+    IPPROXY_MAIN_PASSWORD: str = "test1006"
+    IPPROXY_MAIN_PHONE: str = "13800138000"
+    IPPROXY_MAIN_EMAIL: str = "test1006@test.com"
+    IPPROXY_MAIN_AUTH_TYPE: int = 1  # 企业认证
+    IPPROXY_MAIN_AUTH_NAME: str = "测试公司"
+    IPPROXY_MAIN_AUTH_NO: str = "3101112"
+    IPPROXY_MAIN_STATUS: int = 1  # 正常状态
+    
     # 日志配置
     LOGGING_CONFIG: ClassVar[Dict[str, Any]] = {
         'version': 1,

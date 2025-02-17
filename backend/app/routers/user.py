@@ -303,25 +303,35 @@ async def create_user(
 
         # 如果是管理员创建代理用户，需要调用 IPIPV API
         if current_user.is_admin and user_data.is_agent:
-            if not all([user_data.phone, user_data.email, user_data.auth_type]):
+            if not all([user_data.phone, user_data.email]):
                 raise HTTPException(
                     status_code=400,
-                    detail="创建代理用户需要提供手机号、邮箱和认证类型"
+                    detail="创建代理用户需要提供手机号和邮箱"
                 )
             
             try:
                 ipipv_api = IPIPVBaseAPI()
-                ipipv_user = await ipipv_api.create_user(
-                    username=user_data.username,
-                    password=user_data.password,
-                    email=user_data.email,
-                    phone=user_data.phone,
-                    auth_type=user_data.auth_type,
-                    auth_name=user_data.auth_name,
-                    no=user_data.no
-                )
-                user_dict["ipipv_username"] = ipipv_user.get("username")
-                user_dict["ipipv_password"] = ipipv_user.get("password")
+                # 调用IPIPV API创建代理用户
+                ipipv_user = await ipipv_api.create_proxy_user({
+                    "appUsername": user_data.username,  # 使用用户名作为appUsername
+                    "limitFlow": 1024,  # 默认1GB流量
+                    "remark": user_data.remark or f"代理商{user_data.username}",
+                    "platformAccount": user_data.username,  # 使用用户名作为platformAccount
+                    "channelAccount": user_data.username  # 使用用户名作为channelAccount
+                })
+                
+                if not ipipv_user or ipipv_user.get("code") != 0:
+                    error_msg = ipipv_user.get("msg") if ipipv_user else "未知错误"
+                    logger.error(f"[用户创建] 调用 IPIPV API 失败: {error_msg}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"创建 IPIPV 用户失败: {error_msg}"
+                    )
+                
+                # 设置app_username和platform_account
+                user_dict["app_username"] = user_data.username
+                user_dict["platform_account"] = user_data.username
+                
             except Exception as e:
                 logger.error(f"[用户创建] 调用 IPIPV API 失败: {str(e)}")
                 raise HTTPException(

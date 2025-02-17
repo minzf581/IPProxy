@@ -1,5 +1,41 @@
 import type { ProductPrice } from './product';
 
+export type { ProductPrice };
+
+export interface AgentInfo {
+  id: string;
+  username: string;
+  app_username: string;
+  platform_account: string;
+  email: string | null;
+  phone: string | null;
+  balance: number;
+  status: string;
+  remark: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentUser {
+  id: string;
+  username: string;
+  app_username: string;
+  platform_account: string;
+  email: string | null;
+  phone: string | null;
+  balance: number;
+  status: string;
+  remark: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentListResponse {
+  list: AgentInfo[];
+  total: number;
+  message?: string;
+}
+
 export interface BusinessOrder {
   userId: number;
   productType: string;

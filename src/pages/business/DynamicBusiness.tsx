@@ -364,32 +364,32 @@ const DynamicBusiness: React.FC = () => {
 
   // 提交订单
   const handleSubmit = async () => {
-    if (!selectedAgent || !quantity) {
-      message.error('请选择代理商和输入流量');
+    if (!user || !quantity) {
+      message.error('请输入流量');
       return;
     }
 
     try {
       setLoading(true);
       const response = await createProxyUser({
-        appUsername: selectedAgent.username,
+        appUsername: String(user.id),
         limitFlow: quantity,
         remark
       });
 
       if (response.code === 0) {
-        message.success('订单提交成功');
+        message.success('创建代理用户成功');
         // 重新加载余额
-        await loadBalance(selectedAgent.id);
+        await loadBalance(user.id);
         // 清空表单
         setQuantity(0);
         setRemark('');
       } else {
-        message.error(response.message || '订单提交失败');
+        message.error(response.message || '创建代理用户失败');
       }
     } catch (error) {
-      console.error('[动态代理页面] 提交订单失败:', error);
-      message.error('提交订单失败');
+      console.error('[动态代理页面] 创建代理用户失败:', error);
+      message.error('创建代理用户失败');
     } finally {
       setLoading(false);
     }
