@@ -276,52 +276,6 @@ async def get_flow_usage(db: Session = Depends(get_db)) -> Dict[str, Any]:
         }
     }
 
-@router.post("/user/{user_id}/activate-business")
-async def activate_business(
-    user_id: str,
-    request: Dict[str, Any],
-    db: Session = Depends(get_db)
-) -> Dict[str, Any]:
-    """激活用户业务
-    Args:
-        user_id: 用户ID
-        request: {
-            username: str,          # 用户名
-            proxyType: str,         # 代理类型
-            poolType: str,          # 代理池类型
-            traffic: str,           # 流量大小
-            remark: str,           # 备注
-        }
-    """
-    func_name = "activate_business"
-    try:
-        log_request_info(func_name, user_id=user_id, request=request)
-        
-        proxy_service = ProxyService()
-        params = {
-            "poolId": request.get("poolType"),
-            "trafficAmount": int(request.get("traffic", 0)),
-            "username": request.get("username"),
-            "remark": request.get("remark", "")
-        }
-        
-        logger.info(f"[{func_name}] Opening dynamic proxy with params: {json.dumps(params, ensure_ascii=False)}")
-        response = await proxy_service.open_proxy(params)
-        logger.info(f"[{func_name}] Service response: {json.dumps(response, ensure_ascii=False)}")
-        
-        result = {
-            "code": 0,
-            "msg": "success",
-            "data": response
-        }
-        log_response_info(func_name, result)
-        return result
-        
-    except Exception as e:
-        logger.error(f"[{func_name}] Error: {str(e)}", exc_info=True)
-        logger.error(f"[{func_name}] Stack trace:", stack_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
 @router.post("/open/app/product/query/v2")
 async def query_product(
     request: Dict[str, Any],

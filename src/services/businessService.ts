@@ -4,9 +4,10 @@ import type {
   StaticBusinessOrder, 
   BusinessResponse 
 } from '@/types/business';
+import { API_PREFIX } from '@/shared/routes';
 
 export async function submitDynamicOrder(data: DynamicBusinessOrder): Promise<BusinessResponse> {
-  return request(`/api/user/${data.userId}/activate-business`, {
+  return request(`${API_PREFIX.USER}/${data.userId}/activate-business`, {
     method: 'POST',
     data: {
       userId: String(data.userId),
@@ -24,11 +25,17 @@ export async function submitDynamicOrder(data: DynamicBusinessOrder): Promise<Bu
 }
 
 export async function submitStaticOrder(data: StaticBusinessOrder): Promise<BusinessResponse> {
-  return request(`/api/user/${data.userId}/activate-business`, {
+  return request(`${API_PREFIX.USER}/${data.userId}/activate-business`, {
     method: 'POST',
     data: {
-      proxyType: 101,  // 静态云平台代理，可以是101-103
-      products: data.products
+      userId: String(data.userId),
+      proxyType: 'static',
+      products: data.products.map(product => ({
+        productId: product.productId,
+        quantity: product.quantity,
+        duration: product.duration,
+        remark: product.remark
+      }))
     },
   });
 }

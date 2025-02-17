@@ -557,8 +557,30 @@ async def activate_business(
             
         # 调用产品库存服务
         ipipv_api = IPIPVBaseAPI()  # 创建 API 实例
-        product_service = StaticOrderService(db, ipipv_api)  # 传入 API 实例
-        activation_result = await product_service.activate_business(
+
+        # 根据代理类型选择对应的服务
+        proxy_type = data.get("proxyType")
+        if proxy_type == "dynamic":
+            from app.services.ipipv_service import IPIPVService
+            product_service = IPIPVService(db)
+        elif proxy_type == "static":
+            from app.services.static_order_service import StaticOrderService
+            product_service = StaticOrderService(db, ipipv_api)
+        else:
+            logger.error(f"[Business Activation] 无效的代理类型: {proxy_type}")
+            raise HTTPException(
+                status_code=400,
+                detail={"code": 400, "message": f"无效的代理类型: {proxy_type}"}
+            )
+
+        activation_result = await product_service.activate_dynamic_proxy(
+            order_id=str(user_id),
+            pool_id=data.get("poolType"),
+            traffic_amount=int(data.get("traffic", 0)),
+            duration=int(data.get("duration", 30)),
+            user_id=user_id,
+            agent_id=agent.id
+        ) if proxy_type == "dynamic" else await product_service.activate_business(
             user_id=user_id,
             username=user.username,
             agent_id=agent.id,

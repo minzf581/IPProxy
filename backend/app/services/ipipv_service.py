@@ -11,7 +11,16 @@ from sqlalchemy.orm import Session
 from app.models.dynamic_order import DynamicOrder
 from decimal import Decimal
 import httpx
-from app.utils.crypto import encrypt, decrypt
+import sys
+import os
+from pathlib import Path
+
+# 获取项目根目录
+root_dir = str(Path(__file__).parent.parent.parent.parent)
+if root_dir not in sys.path:
+    sys.path.append(root_dir)
+
+from generate_sign import encrypt_params, decrypt_params  # 导入现有的加密/解密函数
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +36,23 @@ class IPIPVService(IPIPVBaseAPI):
         self.channel_id = settings.IPPROXY_CHANNEL_ID
         self.app_key = settings.IPPROXY_APP_KEY
         self.db = db
+    
+    def _encrypt_params(self, data: dict) -> str:
+        """使用现有的加密函数加密参数"""
+        try:
+            return encrypt_params(json.dumps(data), self.app_key)
+        except Exception as e:
+            logger.error(f"参数加密失败: {str(e)}")
+            raise HTTPException(status_code=500, detail="参数加密失败")
+            
+    def _decrypt_response(self, encrypted_data: str) -> dict:
+        """使用现有的解密函数解密响应"""
+        try:
+            decrypted_data = decrypt_params(encrypted_data, self.app_key)
+            return json.loads(decrypted_data)
+        except Exception as e:
+            logger.error(f"响应解密失败: {str(e)}")
+            raise HTTPException(status_code=500, detail="响应解密失败")
     
     async def get_product_inventory(self, proxy_type: int) -> List[Dict]:
         """获取产品库存信息"""
