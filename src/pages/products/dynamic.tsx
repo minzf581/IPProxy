@@ -1,32 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Input, Select, Form, message, Card, Alert, Divider, InputNumber, Tooltip } from 'antd';
 import { SyncOutlined, InfoCircleOutlined } from '@ant-design/icons';
-import { getProductPrices, syncProductStock, batchUpdateProductPriceSettings, PriceUpdateItem } from '@/services/productInventory';
-import { getAgentList } from '@/services/agentService';
+import { getProductPrices, syncProductStock, batchUpdateProductPriceSettings, type PriceUpdateItem } from '@/services/productInventory';
+import { getAgentList, getAgentUsers } from '@/services/agentService';
 import type { ProductPrice } from '@/types/product';
 import type { ColumnsType } from 'antd/es/table';
-import type { AgentInfo, Agent } from '@/types/agent';
+import type { AgentInfo, AgentUser } from '@/types/agent';
 import { getMappedValue, getUniqueValues, PRODUCT_NO_MAP, AREA_MAP, COUNTRY_MAP, CITY_MAP } from '@/constants/mappings';
 import PriceSettingsModal from '@/components/PriceSettings/PriceSettingsModal';
 import PriceImportExport from '@/components/PriceSettings/PriceImportExport';
 import { useRequest } from 'ahooks';
+import { useAuth } from '@/hooks/useAuth';
+import { UserRole } from '@/types/user';
 import './index.less';
 
 const { Option } = Select;
 
-interface PriceUpdate {
+interface SelectedAgent {
+  id: number;
+  name: string;
+}
+
+interface ModifiedPrice {
   product_id: number;
-  type: string;
-  proxy_type: number;
   price: number;
-  min_agent_price: number;
-  is_global: boolean;
+  minAgentPrice?: number;
 }
 
 const DynamicProductPage: React.FC = () => {
+  const { user } = useAuth();
+  const isAgent = user?.role === UserRole.AGENT;
   const [loading, setLoading] = useState(false);
   const [isGlobal, setIsGlobal] = useState(true);
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<SelectedAgent | null>(null);
   const [prices, setPrices] = useState<ProductPrice[]>([]);
   const [visible, setVisible] = useState(false);
   const [selectedPrice, setSelectedPrice] = useState<ProductPrice | null>(null);
@@ -46,10 +52,34 @@ const DynamicProductPage: React.FC = () => {
 
   // 获取代理商列表
   const { data: agentResponse } = useRequest(
-    async () => getAgentList({ page: 1, pageSize: 1000, status: 'active' }),
-    { cacheKey: 'agentList' }
+    async () => getAgentList({ page: 1, pageSize: 1000, status: 1 }),
+    { 
+      cacheKey: 'agentList',
+      ready: !isAgent
+    }
   );
   const agents = agentResponse?.list || [];
+
+  // 获取代理商的用户列表
+  const { data: userResponse } = useRequest(
+    async () => {
+      if (isAgent && user?.id) {
+        const response = await getAgentUsers({
+          agentId: String(user.id),
+          page: 1,
+          pageSize: 1000,
+          status: 'active'
+        });
+        return response;
+      }
+      return { list: [], total: 0 };
+    },
+    {
+      cacheKey: 'agentUserList',
+      ready: !!isAgent && !!user?.id
+    }
+  );
+  const userList = (userResponse?.list || []) as AgentUser[];
 
   // 加载价格数据
   const loadPrices = async () => {
@@ -135,7 +165,6 @@ const DynamicProductPage: React.FC = () => {
 
   // 处理价格变更
   const handlePriceChange = (id: string, value: number, field: 'price' | 'minAgentPrice') => {
-    console.log('价格变更:', { id, value, field });
     const newPrices = { ...modifiedPrices };
     if (!newPrices[id]) {
       newPrices[id] = { price: 0, minAgentPrice: 0 };
@@ -156,28 +185,23 @@ const DynamicProductPage: React.FC = () => {
           return null;
         }
         
-        console.log('构建更新数据:', {
-          productId,
-          product,
-          values
-        });
-
         return {
           product_id: productId,
           type: product.type,
           proxy_type: product.proxyType,
           price: values.price,
-          min_agent_price: values.minAgentPrice
-        };
-      }).filter(Boolean);
+          min_agent_price: values.minAgentPrice,
+          is_global: !selectedAgent,
+          agent_id: selectedAgent?.id
+        } as PriceUpdateItem;
+      }).filter((item): item is PriceUpdateItem => item !== null);
 
       const requestData = {
         prices: updates,
-        agent_id: selectedAgent ? selectedAgent.id : undefined,
+        agent_id: selectedAgent?.id,
         is_global: !selectedAgent
       };
 
-      console.log('发送更新请求数据:', JSON.stringify(requestData, null, 2));
       await batchUpdateProductPriceSettings(requestData);
       message.success('价格更新成功');
       setModifiedPrices({});
@@ -195,13 +219,26 @@ const DynamicProductPage: React.FC = () => {
       setSelectedAgent(null);
       setIsGlobal(true);
     } else {
-      const agent = agents.find(a => a.id === value);
-      if (agent) {
-        setSelectedAgent({
-          id: agent.id,
-          name: agent.app_username || agent.username || '未命名代理商'
-        });
-        setIsGlobal(false);
+      if (isAgent) {
+        // 代理商模式下，value 是用户ID
+        const selectedUser = userList.find(u => u.id === value);
+        if (selectedUser) {
+          setSelectedAgent({
+            id: value,
+            name: selectedUser.account || '未命名用户'
+          });
+          setIsGlobal(false);
+        }
+      } else {
+        // 管理员模式下，value 是代理商ID
+        const agent = agents.find(a => Number(a.id) === value);
+        if (agent) {
+          setSelectedAgent({
+            id: value,
+            name: agent.app_username || agent.username || '未命名代理商'
+          });
+          setIsGlobal(false);
+        }
       }
     }
     
@@ -261,7 +298,7 @@ const DynamicProductPage: React.FC = () => {
       title: (
         <Space>
           价格
-          <Tooltip title="此处设置的价格为系统全局默认价格">
+          <Tooltip title={isAgent ? "此处设置的价格为用户特定价格" : "此处设置的价格为系统全局默认价格"}>
             <InfoCircleOutlined style={{ color: '#1890ff' }} />
           </Tooltip>
         </Space>
@@ -275,15 +312,15 @@ const DynamicProductPage: React.FC = () => {
           min={0}
           precision={1}
           value={modifiedPrices[record.id]?.price ?? price}
-          onChange={(value) => handlePriceChange(record.id, value || 0, 'price')}
+          onChange={(value) => handlePriceChange(String(record.id), value || 0, 'price')}
           prefix="¥"
         />
       )
     },
-    {
+    ...(!isAgent ? [{
       title: (
         <Space>
-          最低价
+          最低代理价格
           <Tooltip title="代理商价格不能低于此价格">
             <InfoCircleOutlined style={{ color: '#1890ff' }} />
           </Tooltip>
@@ -298,12 +335,12 @@ const DynamicProductPage: React.FC = () => {
           min={0}
           precision={1}
           value={modifiedPrices[record.id]?.minAgentPrice ?? minPrice}
-          onChange={(value) => handlePriceChange(record.id, value || 0, 'minAgentPrice')}
+          onChange={(value) => handlePriceChange(String(record.id), value || 0, 'minAgentPrice')}
           prefix="¥"
           disabled={!isGlobal}
         />
       )
-    },
+    }] : []),
     {
       title: '库存',
       dataIndex: 'stock',
@@ -316,8 +353,8 @@ const DynamicProductPage: React.FC = () => {
       key: 'updatedAt',
       width: 160,
       render: (date: string) => new Date(date).toLocaleString(),
-    },
-  ].filter(col => col.key !== 'action'); // 移除操作列
+    }
+  ].filter(Boolean);
 
   return (
     <div className="dynamic-product-page">
@@ -327,7 +364,11 @@ const DynamicProductPage: React.FC = () => {
           description={
             <ul>
               <li>动态代理产品包括：104、105、201类型</li>
-              <li>可以设置代理商价格、最低代理价格和全局价格</li>
+              {isAgent ? (
+                <li>可以为用户设置特定价格</li>
+              ) : (
+                <li>可以设置代理商价格、最低代理价格和全局价格</li>
+              )}
               <li>修改价格后将立即生效</li>
             </ul>
           }
@@ -338,23 +379,35 @@ const DynamicProductPage: React.FC = () => {
 
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Space direction="vertical" size="small" style={{ width: '100%' }}>
-            <div>设置对象</div>
+            <div>{isAgent ? '选择用户' : '设置对象'}</div>
             <Space direction="vertical" size="small">
               <Select
-                placeholder="选择代理商"
+                placeholder={isAgent ? "选择要设置价格的用户" : "选择代理商"}
                 allowClear
                 style={{ width: 300 }}
                 value={selectedAgent?.id}
                 onChange={handleAgentChange}
               >
-                {agents.map(agent => (
-                  <Option key={agent.id} value={agent.id}>
-                    {agent.app_username || agent.username || '未命名代理商'}
-                  </Option>
-                ))}
+                {isAgent ? (
+                  userList.map(user => (
+                    <Option key={user.id} value={user.id}>
+                      {user.account || '未命名用户'}
+                    </Option>
+                  ))
+                ) : (
+                  agents.map(agent => (
+                    <Option key={agent.id} value={agent.id}>
+                      {agent.app_username || agent.username || '未命名代理商'}
+                    </Option>
+                  ))
+                )}
               </Select>
               <div style={{ color: '#666', fontSize: '12px' }}>
-                {selectedAgent ? '当前显示所选代理商的价格' : '当前显示默认全局价格'}
+                {isAgent ? (
+                  selectedAgent ? '当前显示所选用户的价格' : '当前显示您的默认价格'
+                ) : (
+                  selectedAgent ? '当前显示所选代理商的价格' : '当前显示默认全局价格'
+                )}
               </div>
             </Space>
           </Space>

@@ -45,9 +45,17 @@ project/
   - AgentService (`backend/app/services/agent_service.py`)
   - 代理商模型 (`backend/app/models/agent.py`)
   - 订单模型 (`backend/app/models/order.py`)
+  - 用户模型 (`backend/app/models/user.py`)
+- 主要功能：
+  - 代理商管理（创建、更新、查询）
+  - 代理商资金管理（余额更新、交易记录）
+  - 代理商统计信息（订单统计、收入统计）
+  - 代理商用户管理（用户列表、用户状态管理）
 - 前端对应：
   - 服务层：`src/services/agentService.ts`
-  - 页面组件：`src/pages/agent/index.tsx`
+  - 页面组件：
+    - `src/pages/agent/index.tsx`
+    - `src/pages/agent/users.tsx`
   - 类型定义：`src/types/agent.ts`
 
 ### 业务开通模块

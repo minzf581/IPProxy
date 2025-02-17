@@ -18,10 +18,18 @@ logger = logging.getLogger(__name__)
 
 def check_price_permission(user: User, is_global: bool, agent_id: int = None) -> bool:
     """检查用户是否有权限访问或修改价格"""
-    if is_global:
-        return user.is_admin
-    if agent_id:
-        return user.is_admin or user.id == agent_id
+    # 管理员有所有权限
+    if user.is_admin:
+        return True
+        
+    # 代理商可以查看全局价格和自己的价格
+    if user.is_agent:
+        if is_global:
+            return True
+        if agent_id:
+            return user.id == agent_id
+        return True
+        
     return False
 
 @router.get("/prices", response_model=ProductPriceResponse)
@@ -34,9 +42,15 @@ async def get_prices(
 ):
     """获取价格列表"""
     try:
-        logger.info(f"接收到请求参数: is_global={is_global}, agent_id={agent_id}, proxy_types={proxy_types}")
+        logger.info(f"接收到请求参数: is_global={is_global}, agent_id={agent_id}, proxy_types={proxy_types}, user={current_user.username}, is_agent={current_user.is_agent}")
+        
+        # 如果是代理商且没有提供agent_id，使用当前用户的ID
+        if current_user.is_agent and not agent_id:
+            agent_id = current_user.id
+            logger.info(f"代理商用户，使用当前用户ID: {agent_id}")
         
         if not check_price_permission(current_user, is_global, agent_id):
+            logger.warning(f"用户无权限: user={current_user.username}, is_admin={current_user.is_admin}, is_agent={current_user.is_agent}, is_global={is_global}, agent_id={agent_id}")
             raise HTTPException(
                 status_code=403,
                 detail="没有权限访问价格信息"
@@ -49,10 +63,17 @@ async def get_prices(
         prices = product_prices.get_prices(db, is_global, agent_id, proxy_types)
         logger.info(f"查询到 {len(prices)} 条价格记录")
         
+        # 转换为字典并根据用户角色处理数据
+        price_data = [price.model_dump() for price in prices]
+        if current_user.is_agent:
+            for price in price_data:
+                if 'minAgentPrice' in price:
+                    del price['minAgentPrice']
+        
         return {
             "code": 200,
             "message": "success",
-            "data": [price.dict() for price in prices]
+            "data": price_data
         }
     except Exception as e:
         logger.error(f"获取价格信息失败: {str(e)}")

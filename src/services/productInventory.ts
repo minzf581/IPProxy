@@ -1,6 +1,8 @@
 import request from '@/utils/request';
 import type { ProductPrice, ProductPriceParams } from '@/types/product';
 import type { ApiResponse } from '@/types/api';
+import { useAuth } from '@/hooks/useAuth';
+import { UserRole } from '@/types/user';
 
 interface GetPricesParams {
   is_global: boolean;
@@ -13,12 +15,21 @@ export async function getProductPrices(params: GetPricesParams): Promise<ApiResp
     console.log('发送请求参数:', params);
     const queryParams = new URLSearchParams();
     
-    // 如果有代理商ID，则设置is_global为false
-    if (params.agent_id) {
+    // 获取当前用户角色
+    const token = localStorage.getItem('token');
+    const userRole = token ? JSON.parse(atob(token.split('.')[1])).role : null;
+    const isAgent = userRole === UserRole.AGENT;
+    
+    // 如果是代理商，设置is_global为false，并使用代理商ID
+    if (isAgent) {
       queryParams.append('is_global', 'false');
-      queryParams.append('agent_id', String(params.agent_id));
+      // 不需要传agent_id，后端会自动使用当前登录的代理商ID
     } else {
+      // 管理员可以查看全局价格或特定代理商的价格
       queryParams.append('is_global', String(params.is_global));
+      if (params.agent_id) {
+        queryParams.append('agent_id', String(params.agent_id));
+      }
     }
     
     // 添加代理类型数组
@@ -32,6 +43,11 @@ export async function getProductPrices(params: GetPricesParams): Promise<ApiResp
     const response = await request.get('/api/product/prices', { 
       params: queryParams
     });
+    
+    // 如果是代理商，移除最低代理价格字段
+    if (isAgent && response.data?.data) {
+      response.data.data = response.data.data.map(({ minAgentPrice, ...rest }) => rest);
+    }
     
     console.log('API响应:', response.data);
     return response.data;

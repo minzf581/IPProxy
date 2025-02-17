@@ -95,9 +95,17 @@ const LayoutComponent: React.FC = () => {
 
   // 获取菜单配置
   const getMenuConfig = () => {
-    const isBusinessUser = user?.role === UserRole.AGENT || user?.role === UserRole.USER;
-    debug.log('Getting menu config for role:', user?.role);
-    return isBusinessUser ? businessMenuConfig : adminMenuConfig;
+    if (user?.role === UserRole.ADMIN) {
+      return adminMenuConfig;
+    }
+    
+    if (user?.role === UserRole.AGENT) {
+      // 代理商可以看到产品管理菜单
+      return businessMenuConfig;
+    }
+    
+    // 普通用户看不到产品管理菜单
+    return businessMenuConfig.filter(item => item.key !== 'products');
   };
 
   const menuItems = getMenuConfig();

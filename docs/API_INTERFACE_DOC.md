@@ -142,6 +142,32 @@
 
 ## 代理管理
 
+### 获取代理商用户列表
+- **接口**: `getAgentUsers`
+- **参数**:
+  ```typescript
+  {
+    agentId: number;
+    page: number;
+    pageSize: number;
+    status?: 'active' | 'disabled';
+  }
+  ```
+- **返回**:
+  ```typescript
+  {
+    code: number;
+    message: string;
+    data: {
+      list: AgentUser[];
+      total: number;
+    }
+  }
+  ```
+- **权限**:
+  - 管理员可以查看所有代理商的用户列表
+  - 代理商只能查看自己名下的用户列表
+
 ### 获取动态代理列表
 - **接口**: `getDynamicProxies`
 - **参数**:
@@ -249,6 +275,20 @@ interface StaticProxy {
   location: string;
   resourceType: string;
   createdAt: string;
+}
+```
+
+### AgentUser
+```typescript
+interface AgentUser {
+  id: number;
+  username: string;
+  email?: string;
+  status: 'active' | 'disabled';
+  balance: number;
+  remark?: string;
+  created_at: string;
+  updated_at: string;
 }
 ```
 

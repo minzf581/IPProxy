@@ -184,6 +184,43 @@
   }
   ```
 
+### 5. 获取代理商用户列表
+- **接口**: `/api/open/app/agent/{id}/users`
+- **方法**: GET
+- **参数**:
+  - page: 页码 (默认: 1)
+  - pageSize: 每页数量 (默认: 10, 最大: 100)
+  - status: 状态筛选 (可选, active | disabled)
+- **响应**:
+  ```json
+  {
+    "code": 0,
+    "message": "获取用户列表成功",
+    "data": {
+      "list": [
+        {
+          "id": "number",
+          "username": "string",
+          "email": "string",
+          "status": "string",
+          "balance": "number",
+          "remark": "string",
+          "created_at": "string",
+          "updated_at": "string"
+        }
+      ],
+      "total": "number"
+    }
+  }
+  ```
+- **权限要求**:
+  - 管理员可以查看所有代理商的用户列表
+  - 代理商只能查看自己名下的用户列表
+- **错误码**:
+  - 403: 无权限查看此代理商的用户
+  - 404: 代理商不存在
+  - 500: 服务器内部错误
+
 ## 订单管理
 
 ### 1. 创建动态代理订单

@@ -106,6 +106,23 @@ export const businessMenuConfig = [
     ]
   },
   {
+    key: 'products',
+    label: '产品管理',
+    icon: <AppstoreOutlined />,
+    children: [
+      {
+        key: 'products/dynamic',
+        label: '动态代理',
+        path: '/products/dynamic'
+      },
+      {
+        key: 'products/static',
+        label: '静态代理',
+        path: '/products/static'
+      }
+    ]
+  },
+  {
     key: 'order',
     label: '订单管理',
     icon: <OrderedListOutlined />,

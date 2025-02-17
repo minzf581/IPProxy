@@ -1,4 +1,4 @@
-import type { AgentInfo, AgentStatistics, CreateAgentForm, UpdateAgentForm } from '@/types/agent';
+import type { AgentInfo, AgentStatistics, CreateAgentForm, UpdateAgentForm, AgentUser } from '@/types/agent';
 import axios from 'axios';
 import { debug } from '@/utils/debug';
 import { API_ROUTES, API_PREFIX } from '@/shared/routes';
@@ -195,20 +195,24 @@ export async function getAgentUsers(params: {
   page: number;
   pageSize: number;
   status?: string;
-}) {
+}): Promise<{ list: AgentUser[]; total: number }> {
   debugAgent.info('Getting agent users:', params);
-  const response = await agentApi.get<ApiResponse<{ list: any[]; total: number }>>(
+  const response = await agentApi.get<ApiResponse<{ list: AgentUser[]; total: number }>>(
     API_ROUTES.AGENT.USERS.replace('{id}', String(params.agentId)),
     {
       params: {
-        page: params.page,
-        pageSize: params.pageSize,
+        page: params.page || 1,
+        pageSize: Math.min(params.pageSize || 10, 100),  // 限制最大为100
         status: params.status
       }
     }
   );
   debugAgent.info('Agent users response:', response.data);
-  return response.data.data;
+  if (response.data.code === 0 && response.data.data) {
+    return response.data.data;
+  }
+  debugAgent.warn('Invalid response format or error:', response.data);
+  return { list: [], total: 0 };
 }
 
 export async function updateAgentStatus(agentId: string, status: string): Promise<ApiResponse<AgentInfo>> {

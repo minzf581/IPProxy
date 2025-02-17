@@ -994,3 +994,74 @@ async def get_agent_balance_orders(
         logger.error(f"[AgentRouter] 获取代理商额度订单失败: {str(e)}")
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/open/app/agent/{id}/users")
+async def get_agent_users(
+    id: int,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(10, ge=1, le=100),
+    status: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """获取代理商名下的用户列表"""
+    try:
+        logger.info(f"获取代理商用户列表: agent_id={id}, page={page}, pageSize={pageSize}, status={status}")
+        
+        # 检查代理商是否存在
+        agent = db.query(User).filter(User.id == id, User.is_agent == True).first()
+        if not agent:
+            raise HTTPException(status_code=404, detail={"code": 404, "message": "代理商不存在"})
+        
+        # 检查权限：管理员可以查看所有代理商的用户，代理商只能查看自己的用户
+        if not current_user.is_admin and current_user.id != id:
+            raise HTTPException(status_code=403, detail={"code": 403, "message": "没有权限查看此代理商的用户"})
+        
+        # 构建查询
+        query = db.query(User).filter(User.agent_id == id)
+        
+        # 添加状态过滤
+        if status:
+            if status == 'active':
+                query = query.filter(User.status == 1)
+            elif status == 'disabled':
+                query = query.filter(User.status == 0)
+        
+        # 计算总数
+        total = query.count()
+        
+        # 分页查询
+        users = query.order_by(User.created_at.desc()) \
+            .offset((page - 1) * pageSize) \
+            .limit(pageSize) \
+            .all()
+        
+        # 转换为响应格式
+        user_list = []
+        for user in users:
+            user_dict = {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email,
+                "status": "active" if user.status == 1 else "disabled",
+                "balance": float(user.balance) if user.balance is not None else 0.0,
+                "remark": user.remark,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "updated_at": user.updated_at.isoformat() if user.updated_at else None
+            }
+            user_list.append(user_dict)
+        
+        return {
+            "code": 0,
+            "message": "获取用户列表成功",
+            "data": {
+                "list": user_list,
+                "total": total
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"获取代理商用户列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})

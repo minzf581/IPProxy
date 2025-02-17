@@ -2,17 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Input, Select, Form, message, Card, Alert, Divider, InputNumber, Tooltip } from 'antd';
 import { SyncOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { getProductPrices, syncProductStock, batchUpdateProductPriceSettings, type PriceUpdateItem } from '@/services/productInventory';
-import { getAgentList } from '@/services/agentService';
+import { getAgentList, getAgentUsers } from '@/services/agentService';
 import type { ProductPrice } from '@/types/product';
+import type { AgentInfo, AgentUser } from '@/types/agent';
 import type { ColumnsType } from 'antd/es/table';
-import type { Agent } from '@/types/agent';
 import { getMappedValue, getUniqueValues, PRODUCT_NO_MAP, AREA_MAP, COUNTRY_MAP, CITY_MAP } from '@/constants/mappings';
 import PriceSettingsModal from '@/components/PriceSettings/PriceSettingsModal';
 import PriceImportExport from '@/components/PriceSettings/PriceImportExport';
 import { useRequest } from 'ahooks';
+import { useAuth } from '@/hooks/useAuth';
+import { UserRole } from '@/types/user';
 import './index.less';
 
 const { Option } = Select;
+
+interface SelectedAgent {
+  id: number;
+  name: string;
+}
 
 interface ModifiedPrice {
   product_id: number;
@@ -21,9 +28,11 @@ interface ModifiedPrice {
 }
 
 const StaticProductPage: React.FC = () => {
+  const { user } = useAuth();
+  const isAgent = user?.role === UserRole.AGENT;
   const [loading, setLoading] = useState(false);
   const [isGlobal, setIsGlobal] = useState(true);
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<SelectedAgent | null>(null);
   const [prices, setPrices] = useState<ProductPrice[]>([]);
   const [visible, setVisible] = useState(false);
   const [selectedPrice, setSelectedPrice] = useState<ProductPrice | null>(null);
@@ -43,10 +52,34 @@ const StaticProductPage: React.FC = () => {
 
   // 获取代理商列表
   const { data: agentResponse } = useRequest(
-    async () => getAgentList({ page: 1, pageSize: 1000, status: 'active' }),
-    { cacheKey: 'agentList' }
+    async () => getAgentList({ page: 1, pageSize: 1000, status: 1 }),
+    { 
+      cacheKey: 'agentList',
+      ready: !isAgent
+    }
   );
   const agents = agentResponse?.list || [];
+
+  // 获取代理商的用户列表
+  const { data: userResponse } = useRequest(
+    async () => {
+      if (isAgent && user?.id) {
+        const response = await getAgentUsers({
+          agentId: user.id,
+          page: 1,
+          pageSize: 1000,
+          status: 'active'
+        });
+        return response;
+      }
+      return { list: [], total: 0 };
+    },
+    {
+      cacheKey: 'agentUserList',
+      ready: !!isAgent && !!user?.id
+    }
+  );
+  const userList = (userResponse?.list || []) as AgentUser[];
 
   // 加载价格数据
   const loadPrices = async () => {
@@ -131,8 +164,8 @@ const StaticProductPage: React.FC = () => {
   };
 
   // 处理价格变更
-  const handlePriceChange = (id: number, value: string, field: 'price' | 'minAgentPrice' = 'price') => {
-    const numericValue = parseFloat(value);
+  const handlePriceChange = (id: number, value: number | null, field: 'price' | 'minAgentPrice' = 'price') => {
+    const numericValue = value === null ? 0 : value;
     if (isNaN(numericValue)) {
       return;
     }
@@ -206,13 +239,26 @@ const StaticProductPage: React.FC = () => {
       setSelectedAgent(null);
       setIsGlobal(true);
     } else {
-      const agent = agents.find(a => a.id === value);
-      if (agent) {
-        setSelectedAgent({
-          id: agent.id,
-          name: agent.app_username || agent.username || '未命名代理商'
-        });
-        setIsGlobal(false);
+      if (isAgent) {
+        // 代理商模式下，value 是用户ID
+        const selectedUser = userList.find(u => u.id === value);
+        if (selectedUser) {
+          setSelectedAgent({
+            id: value,
+            name: selectedUser.account || '未命名用户'
+          });
+          setIsGlobal(false);
+        }
+      } else {
+        // 管理员模式下，value 是代理商ID
+        const agent = agents.find(a => Number(a.id) === value);
+        if (agent) {
+          setSelectedAgent({
+            id: value,
+            name: agent.app_username || agent.username || '未命名代理商'
+          });
+          setIsGlobal(false);
+        }
       }
     }
     
@@ -275,47 +321,29 @@ const StaticProductPage: React.FC = () => {
       width: 120,
       render: (price: number, record: ProductPrice) => (
         <InputNumber
-          style={{ width: 120 }}
           min={0}
-          max={9999}
-          precision={1}
-          value={modifiedPrices.find(p => p.product_id === record.id)?.price ?? price}
-          onChange={(value) => handlePriceChange(record.id, value?.toString() || '')}
-          prefix="¥"
+          step={0.1}
+          value={price}
+          onChange={(value: number | null) => handlePriceChange(record.id, value)}
+          style={{ width: '100%' }}
         />
       )
     },
-    {
+    ...(!isAgent ? [{
       title: '最低代理价格',
       dataIndex: 'minAgentPrice',
       key: 'minAgentPrice',
       width: 120,
-      render: (minPrice: number, record: ProductPrice) => (
+      render: (price: number, record: ProductPrice) => (
         <InputNumber
-          style={{ width: 120 }}
           min={0}
-          max={9999}
-          precision={1}
-          value={modifiedPrices.find(p => p.product_id === record.id)?.minAgentPrice ?? minPrice}
-          onChange={(value) => handlePriceChange(record.id, value?.toString() || '', 'minAgentPrice')}
-          prefix="¥"
-          disabled={!isGlobal}
+          step={0.1}
+          value={price}
+          onChange={(value: number | null) => handlePriceChange(record.id, value, 'minAgentPrice')}
+          style={{ width: '100%' }}
         />
       )
-    },
-    {
-      title: '库存',
-      dataIndex: 'stock',
-      key: 'stock',
-      width: 100,
-    },
-    {
-      title: '更新时间',
-      dataIndex: 'updatedAt',
-      key: 'updatedAt',
-      width: 160,
-      render: (date: string) => new Date(date).toLocaleString(),
-    },
+    }] : [])
   ];
 
   return (
@@ -326,7 +354,11 @@ const StaticProductPage: React.FC = () => {
           description={
             <ul>
               <li>静态代理产品包括：101、102、103类型</li>
-              <li>可以设置代理商价格、最低代理价格和全局价格</li>
+              {isAgent ? (
+                <li>可以为用户设置特定价格</li>
+              ) : (
+                <li>可以设置代理商价格、最低代理价格和全局价格</li>
+              )}
               <li>修改价格后将立即生效</li>
             </ul>
           }
@@ -337,23 +369,35 @@ const StaticProductPage: React.FC = () => {
 
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Space direction="vertical" size="small" style={{ width: '100%' }}>
-            <div>设置对象</div>
+            <div>{isAgent ? '选择用户' : '设置对象'}</div>
             <Space direction="vertical" size="small">
               <Select
-                placeholder="选择代理商"
+                placeholder={isAgent ? "选择要设置价格的用户" : "选择代理商"}
                 allowClear
                 style={{ width: 300 }}
                 value={selectedAgent?.id}
                 onChange={handleAgentChange}
               >
-                {agents.map(agent => (
-                  <Option key={agent.id} value={agent.id}>
-                    {agent.app_username || agent.username || '未命名代理商'}
-                  </Option>
-                ))}
+                {isAgent ? (
+                  userList.map(user => (
+                    <Option key={user.id} value={user.id}>
+                      {user.account || '未命名用户'}
+                    </Option>
+                  ))
+                ) : (
+                  agents.map(agent => (
+                    <Option key={agent.id} value={agent.id}>
+                      {agent.app_username || agent.username || '未命名代理商'}
+                    </Option>
+                  ))
+                )}
               </Select>
               <div style={{ color: '#666', fontSize: '12px' }}>
-                {selectedAgent ? '当前显示所选代理商的价格' : '当前显示默认全局价格'}
+                {isAgent ? (
+                  selectedAgent ? '当前显示所选用户的价格' : '当前显示您的默认价格'
+                ) : (
+                  selectedAgent ? '当前显示所选代理商的价格' : '当前显示默认全局价格'
+                )}
               </div>
             </Space>
           </Space>
