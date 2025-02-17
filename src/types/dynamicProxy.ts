@@ -15,6 +15,16 @@ export interface DynamicProxyCity {
   cityName: string;
 }
 
+export interface DynamicProxyProduct {
+  productNo: string;
+  areaCode: string;
+  countryCode: string;
+  cityCode: string;
+  price: string;
+  region: string;
+  status: number;
+}
+
 export interface FilterOption {
   text: string;
   value: string;
@@ -30,5 +40,5 @@ export interface FilterOptions {
 export interface DynamicProxyResponse {
   code: number;
   message: string;
-  data: DynamicProxyArea[];
+  data: DynamicProxyArea[] | DynamicProxyProduct[];
 } 

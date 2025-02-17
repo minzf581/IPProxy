@@ -89,6 +89,7 @@ export interface Agent {
 export interface AgentListResponse {
   list: AgentInfo[];
   total: number;
+  message?: string;
 }
 
 export interface ApiResponse<T> {

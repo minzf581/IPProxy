@@ -18,8 +18,9 @@ export const API_PREFIX = {
   AUTH: '/api/auth',
   USER: '/api/user',
   ADMIN: '/api/admin',
-  PROXY: '/api/proxy'
-};
+  PROXY: '/api/proxy',
+  BUSINESS: '/api/business'
+} as const;
 
 // 调试信息
 function logDebugInfo() {
@@ -94,7 +95,8 @@ API_PREFIX = {
     "AUTH": "${API_PREFIX.AUTH}",
     "USER": "${API_PREFIX.USER}",
     "ADMIN": "${API_PREFIX.ADMIN}",
-    "PROXY": "${API_PREFIX.PROXY}"
+    "PROXY": "${API_PREFIX.PROXY}",
+    "BUSINESS": "${API_PREFIX.BUSINESS}"
 }
 
 API_ROUTES = {

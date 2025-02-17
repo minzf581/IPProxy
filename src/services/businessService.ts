@@ -75,3 +75,20 @@ export async function saveDynamicProxyAreas(data: {
     data,
   });
 }
+
+export async function getDynamicProxyProducts(): Promise<BusinessResponse> {
+  return request('/api/business/dynamic-proxy/products', {
+    method: 'GET'
+  });
+}
+
+export async function createProxyUser(data: {
+  appUsername: string;
+  limitFlow: number;
+  remark: string;
+}): Promise<BusinessResponse> {
+  return request('/api/business/dynamic-proxy/create-user', {
+    method: 'POST',
+    data
+  });
+}

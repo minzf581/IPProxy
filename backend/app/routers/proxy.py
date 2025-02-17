@@ -20,6 +20,8 @@
 - 数据模型：
   - ProxyInfo (app/models/dashboard.py)
   - FlowUsage (app/models/transaction.py)
+  - ProductInventory (app/models/product_inventory.py)
+  - User (app/models/user.py)
 - 服务层：
   - ProxyService (app/services/proxy.py)
 - 前端对应：
@@ -59,12 +61,15 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.dashboard import ProxyInfo
 from app.models.transaction import FlowUsage
+from app.models.product_inventory import ProductInventory
+from app.models.user import User
 from app.core.deps import get_proxy_service
 from app.services import ProxyService
 from typing import Dict, Any, List, Optional
 import logging
 import json
 from datetime import datetime
+import traceback
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -402,4 +407,204 @@ async def query_product(
             "code": 500,
             "msg": str(e),
             "data": []
-        } 
+        }
+
+@router.get("/business/dynamic-proxy/products")
+async def get_dynamic_proxy_products(
+    proxy_service: ProxyService = Depends(get_proxy_service),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """获取动态代理产品区域列表"""
+    func_name = "get_dynamic_proxy_products"
+    try:
+        log_request_info(func_name)
+        
+        # 记录数据库会话信息
+        logger.debug(f"[{func_name}] Database session: {db}")
+        
+        # 从数据库中获取已同步的动态代理区域列表
+        logger.debug(f"[{func_name}] 开始查询动态代理产品")
+        query = db.query(ProductInventory).filter(
+            ProductInventory.enable == 1,
+            ProductInventory.proxy_type == 104  # 动态代理类型
+        )
+        
+        # 记录SQL查询语句
+        logger.debug(f"[{func_name}] SQL Query: {query.statement}")
+        
+        products = query.all()
+        
+        # 记录查询结果
+        logger.debug(f"[{func_name}] 查询到 {len(products)} 个产品")
+        
+        # 记录每个产品的详细信息
+        for product in products:
+            logger.debug(f"[{func_name}] 产品详细信息:")
+            logger.debug(f"  - product_no: {product.product_no}")
+            logger.debug(f"  - area_code: {product.area_code}")
+            logger.debug(f"  - country_code: {product.country_code}")
+            logger.debug(f"  - city_code: {product.city_code}")
+            logger.debug(f"  - global_price: {product.global_price}")
+            logger.debug(f"  - enable: {product.enable}")
+            logger.debug(f"  - proxy_type: {product.proxy_type}")
+            logger.debug(f"  - 所有属性: {vars(product)}")
+        
+        # 转换为前端需要的格式，添加默认区域信息
+        result = []
+        for product in products:
+            logger.debug(f"[{func_name}] 处理产品: {product.product_no}")
+            if product.product_no == 'out_dynamic_1':
+                result.append({
+                    "productNo": product.product_no,
+                    "areaCode": "GLOBAL",  # 默认全球
+                    "countryCode": "ALL",   # 默认所有国家
+                    "cityCode": "ALL",      # 默认所有城市
+                    "price": float(product.global_price or 0),
+                    "status": product.enable,
+                    "name": product.product_name or "海外动态代理"
+                })
+            else:
+                result.append({
+                    "productNo": product.product_no,
+                    "areaCode": product.area_code or "",
+                    "countryCode": product.country_code or "",
+                    "cityCode": product.city_code or "",
+                    "price": float(product.global_price or 0),
+                    "status": product.enable,
+                    "name": product.product_name
+                })
+            
+        response = {
+            "code": 0,
+            "msg": "success",
+            "data": result
+        }
+        
+        # 记录响应信息
+        log_response_info(func_name, response)
+        return response
+        
+    except Exception as e:
+        logger.error(f"[{func_name}] Error: {str(e)}", exc_info=True)
+        logger.error(f"[{func_name}] Stack trace:", stack_info=True)
+        return {
+            "code": 500,
+            "msg": f"获取产品列表失败: {str(e)}",
+            "data": None,
+            "error_details": {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+        }
+
+@router.post("/business/dynamic-proxy/create-user")
+async def create_dynamic_proxy_user(
+    request: Dict[str, Any],
+    proxy_service: ProxyService = Depends(get_proxy_service),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """创建动态代理用户（子账号）"""
+    func_name = "create_dynamic_proxy_user"
+    try:
+        # 记录请求开始
+        logger.info(f"[{func_name}] 开始处理创建代理用户请求")
+        log_request_info(func_name, **request)
+        
+        # 验证必要参数
+        required_fields = ["appUsername", "limitFlow", "remark"]
+        missing_fields = [field for field in required_fields if field not in request]
+        if missing_fields:
+            error_msg = f"缺少必要参数: {', '.join(missing_fields)}"
+            logger.error(f"[{func_name}] {error_msg}")
+            return {
+                "code": 400,
+                "msg": error_msg,
+                "data": None
+            }
+        
+        # 记录数据库会话信息
+        logger.debug(f"[{func_name}] 数据库会话: {db}")
+        
+        try:
+            # 从数据库获取代理商信息
+            logger.info(f"[{func_name}] 开始查询代理商信息: appUsername={request['appUsername']}")
+            agent = db.query(User).filter(
+                User.app_username == request["appUsername"],
+                User.is_agent == True,  # 确保是代理商
+                User.status == 1  # 确保账号是激活状态
+            ).first()
+            
+            logger.debug(f"[{func_name}] 查询结果: {agent}")
+            
+            if not agent:
+                error_msg = f"未找到代理商: {request['appUsername']}"
+                logger.error(f"[{func_name}] {error_msg}")
+                return {
+                    "code": 404,
+                    "msg": error_msg,
+                    "data": None
+                }
+            
+            # 记录代理商详细信息（排除敏感信息）
+            logger.info(f"[{func_name}] 找到代理商:")
+            logger.info(f"  - ID: {agent.id}")
+            logger.info(f"  - 用户名: {agent.username}")
+            logger.info(f"  - 应用用户名: {agent.app_username}")
+            logger.info(f"  - 平台账号: {agent.platform_account}")
+            logger.info(f"  - 状态: {agent.status}")
+            logger.info(f"  - 是否代理商: {agent.is_agent}")
+            
+            # 准备请求参数
+            params = {
+                "appUsername": request["appUsername"],
+                "limitFlow": request["limitFlow"],  # MB为单位
+                "remark": request["remark"],
+                "platformAccount": agent.platform_account,  # 平台主账号
+                "channelAccount": agent.app_username,   # 渠道商主账号就是 app_username
+            }
+            
+            logger.info(f"[{func_name}] 准备调用IPIPV API, 参数: {json.dumps(params, ensure_ascii=False)}")
+            
+            # 调用IPIPV API创建代理用户
+            response = await proxy_service.create_proxy_user(params)
+            logger.info(f"[{func_name}] IPIPV API响应: {json.dumps(response, ensure_ascii=False)}")
+            
+            if response.get("code") == 0:
+                logger.info(f"[{func_name}] 创建代理用户成功")
+                return {
+                    "code": 0,
+                    "msg": "success",
+                    "data": response.get("data")
+                }
+            else:
+                error_msg = response.get("msg", "创建代理用户失败")
+                logger.error(f"[{func_name}] {error_msg}")
+                return {
+                    "code": response.get("code", 500),
+                    "msg": error_msg,
+                    "data": None
+                }
+                
+        except Exception as db_error:
+            logger.error(f"[{func_name}] 数据库操作失败: {str(db_error)}")
+            logger.error(traceback.format_exc())
+            return {
+                "code": 500,
+                "msg": f"数据库操作失败: {str(db_error)}",
+                "data": None
+            }
+            
+    except Exception as e:
+        logger.error(f"[{func_name}] Error: {str(e)}", exc_info=True)
+        logger.error(f"[{func_name}] Stack trace:", stack_info=True)
+        return {
+            "code": 500,
+            "msg": f"创建代理用户失败: {str(e)}",
+            "data": None,
+            "error_details": {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+        }

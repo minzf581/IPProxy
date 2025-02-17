@@ -259,3 +259,14 @@ export async function adjustAgentBalance(agentId: number, amount: number, remark
     throw error;
   }
 }
+
+export async function createProxyUser(data: {
+  appUsername: string;
+  limitFlow: number;
+  remark: string;
+}): Promise<BusinessResponse> {
+  return request(`${API_PREFIX.BUSINESS}/dynamic-proxy/create-user`, {
+    method: 'POST',
+    data
+  });
+}

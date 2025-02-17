@@ -29,6 +29,8 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from .ipipv_base_api import IPIPVBaseAPI
+import json
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -236,4 +238,82 @@ class ProxyService(IPIPVBaseAPI):
                 "code": 500,
                 "msg": f"查询失败: {str(e)}",
                 "data": []
+            }
+
+    async def create_proxy_user(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        创建代理用户（子账号）
+        
+        Args:
+            params: 创建参数，包括：
+                - appUsername: 代理商用户名
+                - limitFlow: 流量限制（MB）
+                - remark: 备注
+                - platformAccount: 平台主账号
+                - channelAccount: 渠道商主账号
+                
+        Returns:
+            Dict[str, Any]: 创建结果
+        """
+        try:
+            logger.info(f"[ProxyService] 开始创建代理用户: {json.dumps(params, ensure_ascii=False)}")
+            
+            # 验证必要参数
+            required_fields = ["appUsername", "limitFlow", "remark", "platformAccount", "channelAccount"]
+            missing_fields = [field for field in required_fields if field not in params]
+            if missing_fields:
+                error_msg = f"缺少必要参数: {', '.join(missing_fields)}"
+                logger.error(f"[ProxyService] {error_msg}")
+                return {
+                    "code": 400,
+                    "msg": error_msg,
+                    "data": None
+                }
+            
+            # 调用IPIPV API创建代理用户
+            response = await self._make_request(
+                "api/open/app/proxy/user/v2",
+                params
+            )
+            
+            logger.info(f"[ProxyService] IPIPV API响应: {json.dumps(response, ensure_ascii=False)}")
+            
+            if not response:
+                error_msg = "创建代理用户失败: 无响应数据"
+                logger.error(f"[ProxyService] {error_msg}")
+                return {
+                    "code": 500,
+                    "msg": error_msg,
+                    "data": None
+                }
+            
+            # 检查响应状态
+            if response.get("code") not in [0, 200]:
+                error_msg = f"创建代理用户失败: {response.get('msg', '未知错误')}"
+                logger.error(f"[ProxyService] {error_msg}")
+                return {
+                    "code": response.get("code", 500),
+                    "msg": error_msg,
+                    "data": None
+                }
+            
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": response.get("data")
+            }
+            
+        except Exception as e:
+            error_msg = f"创建代理用户失败: {str(e)}"
+            logger.error(f"[ProxyService] {error_msg}")
+            logger.error(traceback.format_exc())
+            return {
+                "code": 500,
+                "msg": error_msg,
+                "data": None,
+                "error_details": {
+                    "error_type": type(e).__name__,
+                    "error_message": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
             } 

@@ -6,21 +6,30 @@ import type { Key } from 'react';
 import type { ColumnType } from 'antd/es/table';
 import { useAuth } from '@/hooks/useAuth';
 import { 
-  getUserBalance, 
-  getBusinessProducts, 
-  submitDynamicOrder 
+  getDynamicProxyProducts,
+  createProxyUser 
 } from '@/services/businessService';
-import { getAgentList, getAgentUsers } from '@/services/agentService';
-import { getProductPrices } from '@/services/productInventory';
-import type { ProductPrice } from '@/types/product';
-import type { AgentInfo, AgentUser } from '@/types/agent';
-import type { DynamicBusinessOrder } from '@/types/business';
+import { 
+  getAgentList,
+  getAgentUsers 
+} from '@/services/agentService';
+import type { 
+  ProductPrice,
+  AgentInfo,
+  AgentUser,
+  DynamicBusinessOrder
+} from '@/types/business';
+import type {
+  DynamicProxyProduct,
+  DynamicProxyResponse,
+  DynamicProxyArea,
+  DynamicProxyCountry,
+  DynamicProxyCity
+} from '@/types/dynamicProxy';
+import { UserRole } from '@/types/user';
 import { getMappedValue, getUniqueValues, PRODUCT_NO_MAP, AREA_MAP, COUNTRY_MAP, CITY_MAP } from '@/constants/mappings';
 import { useRequest } from 'ahooks';
-import { UserRole } from '@/types/user';
 import styles from './DynamicBusiness.module.less';
-import { getDynamicProxyAreas, saveDynamicProxyAreas } from '@/services/dynamicProxyService';
-import type { DynamicProxyArea, DynamicProxyCountry, DynamicProxyCity } from '@/types/dynamicProxy';
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -28,6 +37,7 @@ const { Text } = Typography;
 interface SelectedAgent {
   id: number;
   name: string;
+  username: string;
 }
 
 interface AgentListResponse {
@@ -193,109 +203,97 @@ const DynamicBusiness: React.FC = () => {
     try {
       setLoading(true);
       
-      // 调用新的动态代理区域列表API
-      console.log('[动态代理页面] 调用区域列表API, 参数:', {
-        productNo: 'out_dynamic_1',
-        proxyType: 104
-      });
+      // 调用新的动态代理产品列表API
+      const response = await getDynamicProxyProducts();
+      console.log('[动态代理页面] API响应:', response);
       
-      const response = await getDynamicProxyAreas({
-        productNo: 'out_dynamic_1', // 海外动态代理产品编号
-        proxyType: 104 // 海外动态代理类型
-      });
-      
-      console.log('[动态代理页面] 获取区域列表响应:', JSON.stringify(response));
-      
-      if (response.code === 0 && response.data) {
-        const areaData = (Array.isArray(response.data) ? response.data : [response.data]) as DynamicProxyArea[];
-        console.log('[动态代理页面] 解析区域数据, 数量:', areaData.length);
-        setAreaList(areaData);
-        
-        // 保存区域列表到数据库
-        try {
-          console.log('[动态代理页面] 开始保存区域列表到数据库');
-          await saveDynamicProxyAreas({ areas: areaData });
-          console.log('[动态代理页面] 保存区域列表成功');
-        } catch (saveError) {
-          console.error('[动态代理页面] 保存区域列表失败:', saveError);
-          // 不影响页面展示，所以这里只记录错误
-        }
-        
-        // 更新筛选选项
-        if (areaData.length > 0) {
-          console.log('[动态代理页面] 开始更新筛选选项');
-          
-          const areas = areaData.map((item: DynamicProxyArea) => ({
-            text: item.areaName || item.areaCode,
-            value: item.areaCode
-          }));
-          console.log('[动态代理页面] 区域选项数量:', areas.length);
-          
-          const countries = areaData.reduce((acc: FilterOption[], item: DynamicProxyArea) => {
-            if (item.countries) {
-              acc.push(...item.countries.map((country: DynamicProxyCountry) => ({
-                text: country.countryName || country.countryCode,
-                value: country.countryCode
-              })));
-            }
-            return acc;
-          }, []);
-          console.log('[动态代理页面] 国家选项数量:', countries.length);
-          
-          const cities = areaData.reduce((acc: FilterOption[], item: DynamicProxyArea) => {
-            if (item.countries) {
-              item.countries.forEach((country: DynamicProxyCountry) => {
-                if (country.cities) {
-                  acc.push(...country.cities.map((city: DynamicProxyCity) => ({
-                    text: city.cityName || city.cityCode,
-                    value: city.cityCode
-                  })));
-                }
-              });
-            }
-            return acc;
-          }, []);
-          console.log('[动态代理页面] 城市选项数量:', cities.length);
-
-          const uniqueAreas = areas.filter((v, i, a) => a.findIndex(t => t.value === v.value) === i);
-          const uniqueCountries = countries.filter((v, i, a) => a.findIndex(t => t.value === v.value) === i);
-          const uniqueCities = cities.filter((v, i, a) => a.findIndex(t => t.value === v.value) === i);
-
-          console.log('[动态代理页面] 去重后数量 - 区域:', uniqueAreas.length, 
-            '国家:', uniqueCountries.length, 
-            '城市:', uniqueCities.length
-          );
-
-          setFilterOptions({
-            ...filterOptions,
-            areas: uniqueAreas,
-            countries: uniqueCountries,
-            cities: uniqueCities
-          });
-          console.log('[动态代理页面] 筛选选项更新完成');
-        }
-      } else {
-        console.warn('[动态代理页面] API响应异常:', response);
-        message.error(response.message || '获取产品列表失败');
+      // 检查response.data是否存在
+      if (!response || !response.data) {
+        console.warn('[动态代理页面] 响应数据为空:', response);
+        message.error('获取产品列表失败: 响应数据为空');
+        return;
       }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[动态代理页面] 获取产品列表失败:', {
-        error,
-        errorMessage,
-        stack: error instanceof Error ? error.stack : undefined
+      
+      // 检查response.data.data是否存在（因为axios会自动包装一层data）
+      const productData = response.data.data;
+      if (!productData) {
+        console.warn('[动态代理页面] 产品数据为空:', response.data);
+        message.error('获取产品列表失败: 产品数据为空');
+        return;
+      }
+      
+      console.log('[动态代理页面] 获取到产品数据:', productData);
+      
+      // 确保productData是数组
+      if (!Array.isArray(productData)) {
+        console.warn('[动态代理页面] 产品数据不是数组:', productData);
+        message.error('获取产品列表失败: 数据格式错误');
+        return;
+      }
+      
+      // 直接使用返回的产品数据
+      const formattedProducts = productData.map((product: any) => ({
+        id: product.productNo,
+        type: product.productNo,
+        proxyType: 104,
+        area: product.areaCode || 'GLOBAL',
+        country: product.countryCode || 'ALL',
+        city: product.cityCode || 'ALL',
+        price: product.price || 0,
+        status: product.status || 1,
+        areaName: product.areaCode === 'GLOBAL' ? '全球' : (AREA_MAP[product.areaCode] || product.areaCode || '全球'),
+        countryName: product.countryCode === 'ALL' ? '所有国家' : (COUNTRY_MAP[product.countryCode] || product.countryCode || '所有国家'),
+        cityName: product.cityCode === 'ALL' ? '所有城市' : (CITY_MAP[product.cityCode] || product.cityCode || '所有城市')
+      }));
+      
+      console.log('[动态代理页面] 格式化后的产品数据:', formattedProducts);
+      
+      // 提取所有筛选选项
+      const areas = getUniqueValues(formattedProducts, 'area').map(code => ({
+        text: code === 'GLOBAL' ? '全球' : (AREA_MAP[code] || code || '全球'),
+        value: code
+      }));
+      
+      const countries = getUniqueValues(formattedProducts, 'country').map(code => ({
+        text: code === 'ALL' ? '所有国家' : (COUNTRY_MAP[code] || code || '所有国家'),
+        value: code
+      }));
+      
+      const cities = getUniqueValues(formattedProducts, 'city').map(code => ({
+        text: code === 'ALL' ? '所有城市' : (CITY_MAP[code] || code || '所有城市'),
+        value: code
+      }));
+      
+      setProducts(formattedProducts);
+      setFilterOptions({
+        ...filterOptions,
+        areas,
+        countries,
+        cities
       });
-      message.error('获取产品列表失败: ' + errorMessage);
+      
+      console.log('[动态代理页面] 更新后的状态:', {
+        products: formattedProducts,
+        filterOptions: {
+          ...filterOptions,
+          areas,
+          countries,
+          cities
+        }
+      });
+      
+    } catch (error) {
+      console.error('[动态代理页面] 加载产品列表失败:', error);
+      message.error('加载产品列表失败');
     } finally {
       setLoading(false);
-      console.log('[动态代理页面] 加载产品列表完成');
     }
   };
 
   // 初始化时如果是代理商，自动设置selectedAgent
   useEffect(() => {
     if (isAgent && user?.id) {
-      setSelectedAgent({ id: user.id, name: user.username || '' });
+      setSelectedAgent({ id: user.id, name: user.username || '', username: user.username || '' });
       loadBalance(user.id);
       loadProducts(user.id);
     }
@@ -319,7 +317,7 @@ const DynamicBusiness: React.FC = () => {
           availableUsers: userList.map(u => ({ id: u.id, username: u.username }))
         });
         
-        setSelectedAgent({ id: targetId, name: '' });
+        setSelectedAgent({ id: targetId, name: '', username: '' });
         await loadBalance(targetId);
         await loadProducts(targetId);
       } else {
@@ -328,7 +326,7 @@ const DynamicBusiness: React.FC = () => {
           availableAgents: agents.map(a => ({ id: a.id, username: a.username }))
         });
         
-        setSelectedAgent(value ? { id: value, name: '' } : null);
+        setSelectedAgent(value ? { id: value, name: '', username: '' } : null);
         await loadBalance(value);
         if (value) {
           await loadProducts(value);
@@ -366,106 +364,34 @@ const DynamicBusiness: React.FC = () => {
 
   // 提交订单
   const handleSubmit = async () => {
-    console.log('[动态代理页面] 开始提交订单');
-    
-    if (quantity <= 0) {
-      console.warn('[动态代理页面] 无效的流量数量:', quantity);
-      message.error('请输入有效的流量');
+    if (!selectedAgent || !quantity) {
+      message.error('请选择代理商和输入流量');
       return;
     }
 
     try {
       setLoading(true);
-      
-      if (!selectedAgent) {
-        console.warn('[动态代理页面] 未选择用户');
-        message.error('请选择用户');
-        return;
-      }
-
-      console.log('[动态代理页面] 订单参数:', {
-        selectedAgent,
-        isAgent,
-        userId: user?.id,
-        quantity,
+      const response = await createProxyUser({
+        appUsername: selectedAgent.username,
+        limitFlow: quantity,
         remark
       });
 
-      // 获取当前选中的代理商或用户信息
-      const targetUser = isAgent 
-        ? userList.find(u => u.id === selectedAgent.id)
-        : agents.find(a => a.id === selectedAgent.id);
-
-      if (!targetUser) {
-        console.error('[动态代理页面] 未找到目标用户信息:', {
-          selectedAgentId: selectedAgent.id,
-          userListLength: userList.length,
-          agentsLength: agents.length
-        });
-        message.error('未找到目标用户信息');
-        return;
-      }
-
-      console.log('[动态代理页面] 目标用户信息:', {
-        id: targetUser.id,
-        username: targetUser.username,
-        balance: targetUser.balance
-      });
-
-      // 计算总价
-      const product = products[0]; // 使用第一个产品的价格
-      if (!product) {
-        console.error('[动态代理页面] 未找到产品信息');
-        message.error('未找到产品信息');
-        return;
-      }
-      
-      const totalCost = quantity * product.price;
-      console.log('[动态代理页面] 订单金额计算:', {
-        quantity,
-        unitPrice: product.price,
-        totalCost
-      });
-
-      const orderData = {
-        userId: selectedAgent.id,
-        username: targetUser.username || '',
-        agentId: isAgent ? (user?.id ?? 0) : selectedAgent.id,
-        agentUsername: isAgent ? (user?.username ?? '') : (targetUser.username || ''),
-        flow: quantity,
-        duration: 30, // 默认30天
-        remark: remark,
-        totalCost: totalCost
-      };
-      
-      console.log('[动态代理页面] 提交订单数据:', orderData);
-
-      const response = await submitDynamicOrder(orderData);
-      console.log('[动态代理页面] 订单提交响应:', response);
-
       if (response.code === 0) {
-        console.log('[动态代理页面] 订单提交成功');
         message.success('订单提交成功');
-        // 重置表单
+        // 重新加载余额
+        await loadBalance(selectedAgent.id);
+        // 清空表单
         setQuantity(0);
         setRemark('');
-        // 刷新余额
-        await loadBalance(selectedAgent.id);
       } else {
-        console.error('[动态代理页面] 订单提交失败:', response);
-        throw new Error(response.message || '订单提交失败');
+        message.error(response.message || '订单提交失败');
       }
-    } catch (error: any) {
-      const errorMessage = error?.message || '订单提交失败';
-      console.error('[动态代理页面] 订单提交异常:', {
-        error,
-        errorMessage,
-        stack: error?.stack
-      });
-      message.error(errorMessage);
+    } catch (error) {
+      console.error('[动态代理页面] 提交订单失败:', error);
+      message.error('提交订单失败');
     } finally {
       setLoading(false);
-      console.log('[动态代理页面] 订单提交流程完成');
     }
   };
 
