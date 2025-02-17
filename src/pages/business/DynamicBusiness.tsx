@@ -19,6 +19,8 @@ import { getMappedValue, getUniqueValues, PRODUCT_NO_MAP, AREA_MAP, COUNTRY_MAP,
 import { useRequest } from 'ahooks';
 import { UserRole } from '@/types/user';
 import styles from './DynamicBusiness.module.less';
+import { getDynamicProxyAreas, saveDynamicProxyAreas } from '@/services/dynamicProxyService';
+import type { DynamicProxyArea, DynamicProxyCountry, DynamicProxyCity } from '@/types/dynamicProxy';
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -60,6 +62,7 @@ const DynamicBusiness: React.FC = () => {
   });
   const [quantity, setQuantity] = useState<number>(0);
   const [remark, setRemark] = useState<string>('');
+  const [areaList, setAreaList] = useState<DynamicProxyArea[]>([]);
 
   // 获取代理商列表
   const { data: agentResponse } = useRequest(
@@ -97,91 +100,195 @@ const DynamicBusiness: React.FC = () => {
 
   // 加载余额
   const loadBalance = async (userId?: number) => {
+    const requestId = new Date().getTime().toString();
+    console.log('[动态代理页面] [请求ID:%s] 开始加载余额', requestId, {
+      userId,
+      isAgent,
+      currentUserId: user?.id,
+      timestamp: new Date().toISOString()
+    });
+
     try {
       if (isAgent && userId) {
         // 如果是代理商，加载选中用户的余额
-        const user = userList.find(u => u.id === userId);
-        if (user) {
-          setBalance(user.balance || 0);
+        console.log('[动态代理页面] [请求ID:%s] 代理商加载用户余额', requestId, {
+          userId,
+          userListLength: userList.length,
+          availableUsers: userList.map(u => ({ id: u.id, username: u.username }))
+        });
+
+        const targetUser = userList.find(u => u.id === userId);
+        if (targetUser) {
+          console.log('[动态代理页面] [请求ID:%s] 找到目标用户', requestId, {
+            userId: targetUser.id,
+            username: targetUser.username,
+            balance: targetUser.balance
+          });
+          setBalance(targetUser.balance || 0);
+        } else {
+          console.warn('[动态代理页面] [请求ID:%s] 未找到目标用户', requestId, {
+            userId,
+            userListLength: userList.length
+          });
+          setBalance(0);
         }
       } else if (!isAgent && userId) {
         // 如果是管理员，加载选中代理商的余额
+        console.log('[动态代理页面] [请求ID:%s] 管理员加载代理商余额', requestId, {
+          userId,
+          timestamp: new Date().toISOString()
+        });
+
         const response = await getAgentList({ page: 1, pageSize: 100, status: 1 });
+        console.log('[动态代理页面] [请求ID:%s] 获取代理商列表响应', requestId, {
+          code: response.code,
+          total: response.data?.total,
+          listLength: response.data?.list?.length
+        });
+
         if (response.code === 0 && response.data) {
           const agent = response.data.list.find((a: AgentInfo) => Number(a.id) === userId);
           if (agent) {
+            console.log('[动态代理页面] [请求ID:%s] 找到目标代理商', requestId, {
+              agentId: agent.id,
+              username: agent.username,
+              balance: agent.balance
+            });
             setBalance(agent.balance || 0);
+          } else {
+            console.warn('[动态代理页面] [请求ID:%s] 未找到目标代理商', requestId, {
+              userId,
+              agentListLength: response.data.list.length
+            });
+            setBalance(0);
           }
+        } else {
+          console.error('[动态代理页面] [请求ID:%s] 获取代理商列表失败', requestId, {
+            code: response.code,
+            message: response.message
+          });
+          setBalance(0);
         }
       } else {
+        console.log('[动态代理页面] [请求ID:%s] 重置余额为0', requestId, {
+          reason: '未提供用户ID或非代理商角色'
+        });
         setBalance(0);
       }
     } catch (error) {
-      console.error('获取余额失败:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[动态代理页面] [请求ID:%s] 获取余额失败', requestId, {
+        error,
+        errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+        timestamp: new Date().toISOString()
+      });
       message.error('获取余额失败');
     }
   };
 
   // 加载产品列表
   const loadProducts = async (userId?: number) => {
+    console.log('[动态代理页面] 开始加载产品列表, 用户ID:', userId);
     try {
       setLoading(true);
-      const params: {
-        is_global: boolean;
-        proxy_types: number[];
-        user_id?: number;
-        agent_id?: number;
-      } = {
-        is_global: false,
-        proxy_types: [104, 105, 201]  // 动态代理类型
-      };
-
-      // 如果选择了代理商或用户
-      if (selectedAgent) {
-        if (isAgent) {
-          // 如果当前是代理商角色，传递用户ID
-          params.user_id = selectedAgent.id;
-        } else {
-          // 如果当前是管理员角色，传递代理商ID
-          params.agent_id = selectedAgent.id;
-        }
-      }
       
-      const response = await getProductPrices(params);
+      // 调用新的动态代理区域列表API
+      console.log('[动态代理页面] 调用区域列表API, 参数:', {
+        productNo: 'out_dynamic_1',
+        proxyType: 104
+      });
+      
+      const response = await getDynamicProxyAreas({
+        productNo: 'out_dynamic_1', // 海外动态代理产品编号
+        proxyType: 104 // 海外动态代理类型
+      });
+      
+      console.log('[动态代理页面] 获取区域列表响应:', JSON.stringify(response));
       
       if (response.code === 0 && response.data) {
-        const productData = Array.isArray(response.data) ? response.data : [response.data];
-        setProducts(productData);
+        const areaData = (Array.isArray(response.data) ? response.data : [response.data]) as DynamicProxyArea[];
+        console.log('[动态代理页面] 解析区域数据, 数量:', areaData.length);
+        setAreaList(areaData);
+        
+        // 保存区域列表到数据库
+        try {
+          console.log('[动态代理页面] 开始保存区域列表到数据库');
+          await saveDynamicProxyAreas({ areas: areaData });
+          console.log('[动态代理页面] 保存区域列表成功');
+        } catch (saveError) {
+          console.error('[动态代理页面] 保存区域列表失败:', saveError);
+          // 不影响页面展示，所以这里只记录错误
+        }
         
         // 更新筛选选项
-        if (productData.length > 0) {
-          const types = getUniqueValues(productData, 'type').map(type => ({
-            text: getMappedValue(PRODUCT_NO_MAP, type),
-            value: type
-          }));
+        if (areaData.length > 0) {
+          console.log('[动态代理页面] 开始更新筛选选项');
           
-          const areas = getUniqueValues(productData, 'area').map(area => ({
-            text: getMappedValue(AREA_MAP, area),
-            value: area
+          const areas = areaData.map((item: DynamicProxyArea) => ({
+            text: item.areaName || item.areaCode,
+            value: item.areaCode
           }));
+          console.log('[动态代理页面] 区域选项数量:', areas.length);
           
-          const countries = getUniqueValues(productData, 'country').map(country => ({
-            text: getMappedValue(COUNTRY_MAP, country),
-            value: country
-          }));
+          const countries = areaData.reduce((acc: FilterOption[], item: DynamicProxyArea) => {
+            if (item.countries) {
+              acc.push(...item.countries.map((country: DynamicProxyCountry) => ({
+                text: country.countryName || country.countryCode,
+                value: country.countryCode
+              })));
+            }
+            return acc;
+          }, []);
+          console.log('[动态代理页面] 国家选项数量:', countries.length);
           
-          const cities = getUniqueValues(productData, 'city').map(city => ({
-            text: city,
-            value: city
-          }));
+          const cities = areaData.reduce((acc: FilterOption[], item: DynamicProxyArea) => {
+            if (item.countries) {
+              item.countries.forEach((country: DynamicProxyCountry) => {
+                if (country.cities) {
+                  acc.push(...country.cities.map((city: DynamicProxyCity) => ({
+                    text: city.cityName || city.cityCode,
+                    value: city.cityCode
+                  })));
+                }
+              });
+            }
+            return acc;
+          }, []);
+          console.log('[动态代理页面] 城市选项数量:', cities.length);
 
-          setFilterOptions({ types, areas, countries, cities });
+          const uniqueAreas = areas.filter((v, i, a) => a.findIndex(t => t.value === v.value) === i);
+          const uniqueCountries = countries.filter((v, i, a) => a.findIndex(t => t.value === v.value) === i);
+          const uniqueCities = cities.filter((v, i, a) => a.findIndex(t => t.value === v.value) === i);
+
+          console.log('[动态代理页面] 去重后数量 - 区域:', uniqueAreas.length, 
+            '国家:', uniqueCountries.length, 
+            '城市:', uniqueCities.length
+          );
+
+          setFilterOptions({
+            ...filterOptions,
+            areas: uniqueAreas,
+            countries: uniqueCountries,
+            cities: uniqueCities
+          });
+          console.log('[动态代理页面] 筛选选项更新完成');
         }
+      } else {
+        console.warn('[动态代理页面] API响应异常:', response);
+        message.error(response.message || '获取产品列表失败');
       }
     } catch (error) {
-      message.error('获取产品列表失败');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[动态代理页面] 获取产品列表失败:', {
+        error,
+        errorMessage,
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      message.error('获取产品列表失败: ' + errorMessage);
     } finally {
       setLoading(false);
+      console.log('[动态代理页面] 加载产品列表完成');
     }
   };
 
@@ -196,20 +303,54 @@ const DynamicBusiness: React.FC = () => {
 
   // 处理代理商/用户选择
   const handleAgentChange = async (value: number | undefined) => {
-    console.log('选择用户/代理商:', value);
-    if (isAgent && user?.id) {
-      // 如果是代理商，只允许选择自己的用户
-      setSelectedAgent({ id: value || user.id, name: '' });
-      await loadBalance(value || user.id);
-      await loadProducts(value || user.id);
-    } else {
-      setSelectedAgent(value ? { id: value, name: '' } : null);
-      await loadBalance(value);
-      if (value) {
-        await loadProducts(value);
+    console.log('[动态代理页面] 选择用户/代理商:', {
+      value,
+      isAgent,
+      userId: user?.id,
+      currentRole: isAgent ? 'agent' : 'admin'
+    });
+
+    try {
+      if (isAgent && user?.id) {
+        // 如果是代理商，只允许选择自己的用户
+        const targetId = value || user.id;
+        console.log('[动态代理页面] 代理商选择用户:', {
+          targetId,
+          availableUsers: userList.map(u => ({ id: u.id, username: u.username }))
+        });
+        
+        setSelectedAgent({ id: targetId, name: '' });
+        await loadBalance(targetId);
+        await loadProducts(targetId);
       } else {
-        setProducts([]);
+        console.log('[动态代理页面] 管理员选择代理商:', {
+          value,
+          availableAgents: agents.map(a => ({ id: a.id, username: a.username }))
+        });
+        
+        setSelectedAgent(value ? { id: value, name: '' } : null);
+        await loadBalance(value);
+        if (value) {
+          await loadProducts(value);
+        } else {
+          setAreaList([]);
+          setFilterOptions({
+            types: [],
+            areas: [],
+            countries: [],
+            cities: []
+          });
+          console.log('[动态代理页面] 清空选择和数据');
+        }
       }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[动态代理页面] 处理用户/代理商选择失败:', {
+        error,
+        errorMessage,
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      message.error('选择失败: ' + errorMessage);
     }
   };
 
@@ -225,7 +366,10 @@ const DynamicBusiness: React.FC = () => {
 
   // 提交订单
   const handleSubmit = async () => {
+    console.log('[动态代理页面] 开始提交订单');
+    
     if (quantity <= 0) {
+      console.warn('[动态代理页面] 无效的流量数量:', quantity);
       message.error('请输入有效的流量');
       return;
     }
@@ -234,9 +378,18 @@ const DynamicBusiness: React.FC = () => {
       setLoading(true);
       
       if (!selectedAgent) {
+        console.warn('[动态代理页面] 未选择用户');
         message.error('请选择用户');
         return;
       }
+
+      console.log('[动态代理页面] 订单参数:', {
+        selectedAgent,
+        isAgent,
+        userId: user?.id,
+        quantity,
+        remark
+      });
 
       // 获取当前选中的代理商或用户信息
       const targetUser = isAgent 
@@ -244,19 +397,37 @@ const DynamicBusiness: React.FC = () => {
         : agents.find(a => a.id === selectedAgent.id);
 
       if (!targetUser) {
+        console.error('[动态代理页面] 未找到目标用户信息:', {
+          selectedAgentId: selectedAgent.id,
+          userListLength: userList.length,
+          agentsLength: agents.length
+        });
         message.error('未找到目标用户信息');
         return;
       }
 
+      console.log('[动态代理页面] 目标用户信息:', {
+        id: targetUser.id,
+        username: targetUser.username,
+        balance: targetUser.balance
+      });
+
       // 计算总价
       const product = products[0]; // 使用第一个产品的价格
       if (!product) {
+        console.error('[动态代理页面] 未找到产品信息');
         message.error('未找到产品信息');
         return;
       }
+      
       const totalCost = quantity * product.price;
+      console.log('[动态代理页面] 订单金额计算:', {
+        quantity,
+        unitPrice: product.price,
+        totalCost
+      });
 
-      const response = await submitDynamicOrder({
+      const orderData = {
         userId: selectedAgent.id,
         username: targetUser.username || '',
         agentId: isAgent ? (user?.id ?? 0) : selectedAgent.id,
@@ -265,9 +436,15 @@ const DynamicBusiness: React.FC = () => {
         duration: 30, // 默认30天
         remark: remark,
         totalCost: totalCost
-      });
+      };
+      
+      console.log('[动态代理页面] 提交订单数据:', orderData);
+
+      const response = await submitDynamicOrder(orderData);
+      console.log('[动态代理页面] 订单提交响应:', response);
 
       if (response.code === 0) {
+        console.log('[动态代理页面] 订单提交成功');
         message.success('订单提交成功');
         // 重置表单
         setQuantity(0);
@@ -275,12 +452,20 @@ const DynamicBusiness: React.FC = () => {
         // 刷新余额
         await loadBalance(selectedAgent.id);
       } else {
+        console.error('[动态代理页面] 订单提交失败:', response);
         throw new Error(response.message || '订单提交失败');
       }
     } catch (error: any) {
-      message.error(error.message || '订单提交失败');
+      const errorMessage = error?.message || '订单提交失败';
+      console.error('[动态代理页面] 订单提交异常:', {
+        error,
+        errorMessage,
+        stack: error?.stack
+      });
+      message.error(errorMessage);
     } finally {
       setLoading(false);
+      console.log('[动态代理页面] 订单提交流程完成');
     }
   };
 

@@ -54,4 +54,24 @@ export async function getBusinessProducts(params: {
     method: 'GET',
     params,
   });
-} 
+}
+
+export async function saveDynamicProxyAreas(data: {
+  areas: Array<{
+    areaCode: string;
+    areaName: string;
+    countries: Array<{
+      countryCode: string;
+      countryName: string;
+      cities: Array<{
+        cityCode: string;
+        cityName: string;
+      }>;
+    }>;
+  }>;
+}): Promise<BusinessResponse> {
+  return request('/api/business/dynamic-proxy/areas', {
+    method: 'POST',
+    data,
+  });
+}
