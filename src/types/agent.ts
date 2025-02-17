@@ -71,13 +71,14 @@ export interface AgentOrder {
 
 export interface AgentUser {
   id: number;
+  username: string;
   account: string;
-  email: string;
+  email?: string;
   status: 'active' | 'disabled';
-  createdAt: string;
-  lastLoginAt: string;
-  totalOrders: number;
-  totalSpent: number;
+  balance: number;
+  remark?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Agent {

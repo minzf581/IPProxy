@@ -16,11 +16,11 @@ import {
   InputNumber,
   Radio,
 } from 'antd';
-import type { TableProps } from 'antd';
+import type { TableProps, TablePaginationConfig } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { getUserList, updateUserStatus, updateUserPassword, createUser } from '@/services/userService';
+import { getUserList, updateUserStatus, updateUserPassword, createUser, adjustUserBalance } from '@/services/userService';
 import type { User, UserListParams, UserListResponse } from '@/types/user';
 import type { CreateUserParams } from '@/services/userService';
 import type { ApiResponse } from '@/types/api';
@@ -30,11 +30,28 @@ import { useRequest } from '@/hooks/useRequest';
 import BusinessActivationModal from "@/pages/users/components/BusinessActivationModal";
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import type { RangePickerProps } from 'antd/es/date-picker';
+import { UserRole } from '@/types/user';
+import { getAgentList } from '@/services/agentService';
+import type { AgentInfo } from '@/types/agent';
+import moment from 'moment';
+import BalanceAdjustModal from '@/components/BalanceAdjustModal';
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 const { TextArea } = Input;
 const { Title } = Typography;
+
+interface FormValues {
+  username?: string;
+  status?: string;
+  dateRange?: [moment.Moment, moment.Moment];
+  agent_id?: string | null;
+}
+
+interface BalanceFormValues {
+  amount: number;
+  remark: string;
+}
 
 const UserManagementPage: React.FC = () => {
   const navigate = useNavigate();
@@ -42,7 +59,7 @@ const UserManagementPage: React.FC = () => {
   const [createForm] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<User[]>([]);
-  const [pagination, setPagination] = useState({
+  const [pagination, setPagination] = useState<TablePaginationConfig>({
     current: 1,
     pageSize: 10,
     total: 0
@@ -54,77 +71,55 @@ const UserManagementPage: React.FC = () => {
     visible: false,
     userId: ''
   });
+  const [agentOptions, setAgentOptions] = useState<{ label: string; value: number; }[]>([]);
+  const [balanceModalVisible, setBalanceModalVisible] = useState(false);
+
+  // 加载代理商列表
+  const loadAgents = async () => {
+    try {
+      const response = await getAgentList({ page: 1, pageSize: 100 });
+      if (response.code === 0 && response.data?.list) {
+        const options = response.data.list.map((agent: AgentInfo) => ({
+          label: agent.username || agent.app_username || '',
+          value: Number(agent.id)
+        }));
+        setAgentOptions(options);
+      }
+    } catch (error) {
+      console.error('Failed to load agents:', error);
+      message.error('加载代理商列表失败');
+    }
+  };
+
+  useEffect(() => {
+    loadAgents();
+  }, []);
 
   // 加载用户列表
   const loadUsers = async (params: UserListParams = { page: 1, pageSize: 10 }) => {
     try {
-      console.log('[User List Debug] Loading users with params:', params);
       setLoading(true);
-      const response = await getUserList({
-        page: params.page || pagination.current,
-        pageSize: params.pageSize || pagination.pageSize,
-        username: params.username,
-        status: params.status,
-        dateRange: params.dateRange
-      });
-      
-      console.log('[User List Debug] API response:', response);
-      
+      const finalParams: Required<UserListParams> = {
+        page: params.page || 1,
+        pageSize: params.pageSize || 10,
+        username: params.username || '',
+        status: params.status || '',
+        dateRange: params.dateRange || [moment(), moment()],
+        agent_id: params.agent_id || 0
+      };
+      const response = await getUserList(finalParams);
       if (response.code === 0 && response.data) {
-        const { list = [], total = 0 } = response.data;
-        console.log('[User List Debug] Parsed data:', { list, total });
-        
-        // 确保数据类型正确
-        const formattedList = list.map(user => {
-          const formattedUser: User = {
-            id: user.id,
-            username: user.username,
-            email: user.email,
-            agent_id: user.agent_id,
-            status: user.status || 'disabled',
-            balance: user.balance || 0,
-            is_admin: !!user.is_admin,
-            is_agent: !!user.is_agent,
-            remark: user.remark,
-            created_at: user.created_at || new Date().toISOString(),
-            updated_at: user.updated_at
-          };
-          return formattedUser;
-        });
-        
-        setData(formattedList);
-        setPagination(prev => ({
-          ...prev,
-          current: params.page || prev.current,
-          total
-        }));
-        
-        console.log('[User List Debug] Updated state:', {
-          dataLength: formattedList.length,
-          pagination: {
-            current: params.page || pagination.current,
-            total
-          }
+        setData(response.data.list);
+        setPagination({
+          current: finalParams.page,
+          pageSize: finalParams.pageSize,
+          total: response.data.total
         });
       } else {
-        console.error('[User List Debug] Invalid response:', response);
         message.error(response.msg || '获取用户列表失败');
-        // 清空数据
-        setData([]);
-        setPagination(prev => ({
-          ...prev,
-          total: 0
-        }));
       }
     } catch (error: any) {
-      console.error('[User List Debug] Error:', error);
       message.error(error.message || '获取用户列表失败');
-      // 清空数据
-      setData([]);
-      setPagination(prev => ({
-        ...prev,
-        total: 0
-      }));
     } finally {
       setLoading(false);
     }
@@ -132,15 +127,7 @@ const UserManagementPage: React.FC = () => {
 
   // 初始化加载
   useEffect(() => {
-    console.log('[User List Debug] Component mounted');
     loadUsers();
-  }, []);
-
-  // 组件卸载时的清理
-  useEffect(() => {
-    return () => {
-      console.log('[User List Debug] Component unmounted');
-    };
   }, []);
 
   useEffect(() => {
@@ -184,6 +171,15 @@ const UserManagementPage: React.FC = () => {
       ),
     },
     {
+      title: '额度',
+      dataIndex: 'balance',
+      key: 'balance',
+      width: 120,
+      render: (balance: number) => (
+        <span>{balance ? `${balance.toFixed(2)} 元` : '0.00 元'}</span>
+      ),
+    },
+    {
       title: '创建时间',
       dataIndex: 'created_at',
       key: 'created_at',
@@ -215,22 +211,31 @@ const UserManagementPage: React.FC = () => {
           >
             业务开通
           </Button>
+          <Button
+            type="link"
+            onClick={() => {
+              setSelectedUser(record);
+              setBalanceModalVisible(true);
+            }}
+          >
+            调整额度
+          </Button>
         </Space>
       ),
     },
   ];
 
   // 处理搜索
-  const handleSearch = async (values: any) => {
-    const { username, status, dateRange } = values;
-    const params: UserListParams = {
+  const handleSearch = async (values: FormValues) => {
+    const searchParams: UserListParams = {
       page: 1,
-      pageSize: pagination.pageSize,
-      username,
-      status,
-      dateRange
+      pageSize: (pagination.pageSize as number) || 10,
+      username: values.username,
+      status: values.status,
+      dateRange: values.dateRange,
+      agent_id: values.agent_id ? Number(values.agent_id) : null
     };
-    await loadUsers(params);
+    await loadUsers(searchParams);
   };
 
   // 处理重置
@@ -238,20 +243,20 @@ const UserManagementPage: React.FC = () => {
     searchForm.resetFields();
     loadUsers({ 
       page: 1,
-      pageSize: pagination.pageSize
+      pageSize: pagination.pageSize ? Number(pagination.pageSize) : 10
     });
   };
 
-  // 处理更新密码
-  const handleUpdatePassword = async (userId: number, password: string) => {
+  // 处理密码更新
+  const handleUpdatePassword = async (userId: string, password: string) => {
     try {
-      const response = await updateUserPassword(String(userId), password);
-      if (response.code === 0) {
-        message.success('密码修改成功');
-        setPasswordModal({ visible: false, userId: '' });
-      } else {
-        message.error(response.msg || '密码修改失败');
+      const userIdNum = Number(userId);
+      if (isNaN(userIdNum)) {
+        throw new Error('无效的用户ID');
       }
+      await updateUserPassword(userIdNum, password);
+      message.success('密码修改成功');
+      setPasswordModal({ visible: false, userId: '' });
     } catch (error: any) {
       message.error(error.message || '密码修改失败');
     }
@@ -262,20 +267,20 @@ const UserManagementPage: React.FC = () => {
     navigate(`/dashboard?user_id=${userId}`);
   };
 
-  // 更新状态
-  const handleUpdateStatus = async (userId: number, newStatus: string) => {
+  // 处理状态更新
+  const handleUpdateStatus = async (userId: string, newStatus: 'active' | 'disabled') => {
     try {
-      const response = await updateUserStatus(String(userId), newStatus);
-      if (response.code === 0) {
-        message.success('状态更新成功');
-        loadUsers({
-          page: pagination.current,
-          pageSize: pagination.pageSize,
-          ...searchForm.getFieldsValue(),
-        });
-      } else {
-        message.error(response.msg || '状态更新失败');
+      const userIdNum = Number(userId);
+      if (isNaN(userIdNum)) {
+        throw new Error('无效的用户ID');
       }
+      await updateUserStatus(userIdNum, newStatus);
+      message.success('状态更新成功');
+      await loadUsers({
+        page: pagination.current || 1,
+        pageSize: pagination.pageSize || 10,
+        ...searchForm.getFieldsValue()
+      });
     } catch (error: any) {
       message.error(error.message || '状态更新失败');
     }
@@ -312,7 +317,15 @@ const UserManagementPage: React.FC = () => {
         password: '******' // 隐藏密码
       });
 
-      const response = await createUser(values);
+      // 创建用户数据
+      const createUserData: CreateUserParams = {
+        ...values,
+        is_agent: false, // 新建用户默认不是代理商
+        status: 'active', // 默认状态为激活
+        agent_id: values.agent_id ? Number(values.agent_id) : undefined
+      };
+
+      const response = await createUser(createUserData);
       console.log('[Create User Debug] API response:', response);
       
       if (response.code === 0 && response.data) {
@@ -336,6 +349,19 @@ const UserManagementPage: React.FC = () => {
     }
   };
 
+  const handleTableChange = (newPagination: TablePaginationConfig) => {
+    const formValues: FormValues = searchForm.getFieldsValue();
+    const params: UserListParams = {
+      page: (newPagination.current as number) || 1,
+      pageSize: (newPagination.pageSize as number) || 10,
+      username: formValues.username,
+      status: formValues.status,
+      dateRange: formValues.dateRange,
+      agent_id: formValues.agent_id ? Number(formValues.agent_id) : null
+    };
+    loadUsers(params);
+  };
+
   return (
     <div className={styles.userManagement}>
       <Card title="用户管理">
@@ -356,6 +382,17 @@ const UserManagementPage: React.FC = () => {
           </Form.Item>
           <Form.Item name="dateRange" label="创建时间">
             <RangePicker showTime />
+          </Form.Item>
+          <Form.Item
+            name="agent_id"
+            label="代理商"
+            getValueFromEvent={(value: string) => (value ? Number(value) : undefined)}
+          >
+            <Select
+              placeholder="请选择代理商"
+              allowClear
+              options={agentOptions}
+            />
           </Form.Item>
           <Form.Item>
             <Space>
@@ -383,13 +420,7 @@ const UserManagementPage: React.FC = () => {
             showQuickJumper: true,
             showTotal: (total) => `共 ${total} 条记录`,
           }}
-          onChange={(pagination, filters, sorter) => {
-            loadUsers({
-              page: pagination.current,
-              pageSize: pagination.pageSize,
-              ...searchForm.getFieldsValue()
-            });
-          }}
+          onChange={handleTableChange}
         />
       </Card>
 
@@ -454,23 +485,24 @@ const UserManagementPage: React.FC = () => {
       {businessModalVisible && selectedUser && (
         <BusinessActivationModal
           visible={businessModalVisible}
-          user={{
-            id: String(selectedUser.id),
+          user={selectedUser ? {
+            id: selectedUser.id,
             username: selectedUser.username
+          } : {
+            id: 0,
+            username: ''
           }}
           onCancel={() => {
-            console.log('BusinessActivationModal onCancel 被调用');
             setBusinessModalVisible(false);
             setSelectedUser(null);
-            console.log('BusinessActivationModal 状态已更新:', { businessModalVisible: false, selectedUser: null });
           }}
           onSuccess={() => {
-            console.log('BusinessActivationModal onSuccess 被调用');
             setBusinessModalVisible(false);
             setSelectedUser(null);
-            console.log('准备重新加载用户列表');
-            loadUsers();
-            console.log('BusinessActivationModal 处理完成');
+            loadUsers({
+              page: pagination.current ? Number(pagination.current) : 1,
+              pageSize: pagination.pageSize ? Number(pagination.pageSize) : 10
+            });
           }}
         />
       )}
@@ -488,6 +520,27 @@ const UserManagementPage: React.FC = () => {
             setSelectedUser(null);
             message.success('密码修改成功');
           }}
+        />
+      )}
+
+      {selectedUser && (
+        <BalanceAdjustModal
+          visible={balanceModalVisible}
+          onCancel={() => {
+            setBalanceModalVisible(false);
+            setSelectedUser(null);
+          }}
+          onSuccess={() => {
+            setBalanceModalVisible(false);
+            setSelectedUser(null);
+            loadUsers({
+              page: pagination.current ? Number(pagination.current) : 1,
+              pageSize: pagination.pageSize ? Number(pagination.pageSize) : 10,
+              ...searchForm.getFieldsValue()
+            });
+          }}
+          target={selectedUser}
+          targetType="user"
         />
       )}
     </div>

@@ -14,6 +14,7 @@ export interface BusinessOrder {
 export interface DynamicBusinessOrder {
   userId: number;
   flow: number;
+  duration: number;
   remark?: string;
 }
 
@@ -26,7 +27,12 @@ export interface StaticBusinessOrderProduct {
 
 export interface StaticBusinessOrder {
   userId: number;
-  products: StaticBusinessOrderProduct[];
+  products: Array<{
+    productId: string;
+    quantity: number;
+    duration: number;
+    remark?: string;
+  }>;
 }
 
 export interface BusinessFormState {

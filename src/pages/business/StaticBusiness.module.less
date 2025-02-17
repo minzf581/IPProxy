@@ -1,0 +1,60 @@
+.staticBusinessPage {
+  :global {
+    .ant-card {
+      margin-bottom: 24px;
+    }
+
+    .ant-statistic-title {
+      color: rgba(0, 0, 0, 0.45);
+    }
+
+    .ant-statistic-content {
+      color: #52c41a;
+      font-weight: bold;
+    }
+
+    .ant-table-wrapper {
+      background: #fff;
+    }
+
+    .ant-table-thead > tr > th {
+      background: #fafafa;
+    }
+
+    .ant-input-number {
+      width: 100%;
+    }
+
+    .ant-select {
+      min-width: 200px;
+    }
+  }
+}
+
+.filterSection {
+  margin-bottom: 16px;
+}
+
+.actionSection {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media screen and (max-width: 768px) {
+  .staticBusinessPage {
+    :global(.ant-select) {
+      width: 100%;
+    }
+
+    .actionSection {
+      flex-direction: column;
+      gap: 8px;
+
+      :global(.ant-btn) {
+        width: 100%;
+      }
+    }
+  }
+} 

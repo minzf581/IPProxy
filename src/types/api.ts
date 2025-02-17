@@ -229,7 +229,7 @@ export interface ProductPrice {
   price: number;  // 价格，精确到小数点后1位
   isGlobal: boolean;  // 是否为全局价格
   stock: number;
-  minAgentPrice: number;  // 最低代理价格
+  minAgentPrice?: number;  // 最低代理价格
   globalPrice: number;  // 全局价格
   updatedAt: string;  // 更新时间
   createdAt: string;  // 创建时间

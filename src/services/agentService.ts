@@ -64,10 +64,10 @@ export interface AgentListResponse {
   list: AgentInfo[];
 }
 
-export async function getAgentList(params: AgentListParams): Promise<AgentListResponse> {
+export async function getAgentList(params: AgentListParams = { page: 1, pageSize: 20 }): Promise<ApiResponse<AgentListResponse>> {
   try {
     console.log('获取代理商列表, 参数:', params);
-    const response = await request.get('/api/open/app/agent/list', { 
+    const response = await request.get<ApiResponse<AgentListResponse>>('/api/open/app/agent/list', { 
       params: {
         page: params.page || 1,
         pageSize: Math.min(params.pageSize || 20, 100),  // 限制最大为100条
@@ -75,18 +75,14 @@ export async function getAgentList(params: AgentListParams): Promise<AgentListRe
       }
     });
     
-    // 确保响应数据格式正确
-    if (response?.data?.code === 0 && response?.data?.data) {
-      const { list, total } = response.data.data;
-      console.log('代理商列表数据:', { list, total });
-      return { list, total };
-    } else {
-      console.error('代理商列表响应格式错误:', response);
-      return { list: [], total: 0 };  // 返回空列表
+    if (!response.data) {
+      throw new Error('获取代理商列表失败');
     }
+    
+    return response.data;
   } catch (error) {
     console.error('获取代理商列表失败:', error);
-    return { list: [], total: 0 };  // 出错时返回空列表
+    throw error;
   }
 }
 
@@ -247,4 +243,19 @@ export async function adjustAgentQuota(agentId: number, quota: number): Promise<
   );
   debugAgent.info('Adjust quota response:', response.data);
   return response.data;
+}
+
+export async function adjustAgentBalance(agentId: number, amount: number, remark: string): Promise<ApiResponse<void>> {
+  try {
+    debugAgent.info('调整代理商额度:', { agentId, amount, remark });
+    const response = await request.post<ApiResponse<void>>(
+      `/api/open/app/agent/${agentId}/balance`,
+      { amount, remark }
+    );
+    debugAgent.info('调整额度响应:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('调整代理商额度失败:', error);
+    throw error;
+  }
 }

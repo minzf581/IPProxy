@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Table, Card, Button, Form, Input, Modal, message, Space, Select } from 'antd';
 import type { CreateUserParams, User } from '@/types/user';
 import { createUser, getUserList, getCurrentUser, getAgentList, searchUsers } from '@/services/userService';
-import './index.less';
+import styles from './index.module.less';
 
 const { TextArea } = Input;
 
@@ -213,7 +213,7 @@ const UserList: React.FC = () => {
   ];
 
   return (
-    <div className="user-list-container">
+    <div className={styles.userListContainer}>
       <Card
         title="用户管理"
         extra={

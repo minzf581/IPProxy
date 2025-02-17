@@ -7,6 +7,7 @@ import { UserRole } from '@/types/user';
 interface GetPricesParams {
   is_global: boolean;
   agent_id?: number | null;
+  user_id?: number | null;
   proxy_types?: number[];
 }
 
@@ -20,15 +21,24 @@ export async function getProductPrices(params: GetPricesParams): Promise<ApiResp
     const userRole = token ? JSON.parse(atob(token.split('.')[1])).role : null;
     const isAgent = userRole === UserRole.AGENT;
     
-    // 如果是代理商，设置is_global为false，并使用代理商ID
+    // 如果是代理商，使用代理商ID
     if (isAgent) {
       queryParams.append('is_global', 'false');
       // 不需要传agent_id，后端会自动使用当前登录的代理商ID
     } else {
-      // 管理员可以查看全局价格或特定代理商的价格
-      queryParams.append('is_global', String(params.is_global));
-      if (params.agent_id) {
+      // 如果指定了用户ID，则获取该用户的价格
+      if (params.user_id) {
+        queryParams.append('user_id', String(params.user_id));
+        queryParams.append('is_global', 'false');
+      } 
+      // 如果指定了代理商ID，则获取该代理商的价格
+      else if (params.agent_id) {
         queryParams.append('agent_id', String(params.agent_id));
+        queryParams.append('is_global', 'false');
+      }
+      // 否则获取全局价格
+      else {
+        queryParams.append('is_global', 'true');
       }
     }
     

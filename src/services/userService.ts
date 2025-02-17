@@ -85,6 +85,8 @@ export interface CreateUserParams {
   remark?: string;  // 可选字段
   authType?: number;  // 可选字段，用于区分用户类型
   status?: string;  // 可选字段
+  is_agent?: boolean;  // 是否是代理商
+  agent_id?: number;  // 代理商ID
 }
 
 export async function createUser(data: CreateUserParams): Promise<ApiResponse<User>> {
@@ -94,10 +96,21 @@ export async function createUser(data: CreateUserParams): Promise<ApiResponse<Us
       password: '******' // 隐藏密码
     });
 
+    // 获取当前用户信息
+    const token = localStorage.getItem('token');
+    const currentUser = token ? JSON.parse(atob(token.split('.')[1])) : null;
+
     // 移除空值参数
     const cleanData = Object.fromEntries(
       Object.entries(data).filter(([_, v]) => v != null && v !== '')
     );
+
+    // 如果当前用户是代理商，自动添加代理商ID
+    if (currentUser?.is_agent) {
+      cleanData.agent_id = currentUser.id;
+      cleanData.is_agent = false; // 代理商创建的用户默认不是代理商
+    }
+
     debug.log('Cleaned data:', {
       ...cleanData,
       password: '******' // 隐藏密码
@@ -243,4 +256,24 @@ export function formatCount(count: number): string {
 // 格式化百分比
 export function formatPercent(percent: number): string {
   return `${percent}%`;
+}
+
+export interface AdjustBalanceParams {
+  amount: number;
+  remark: string;
+}
+
+export async function adjustUserBalance(userId: number, amount: number, remark: string): Promise<ApiResponse<User>> {
+  try {
+    debug.log('Adjusting user balance:', { userId, amount, remark });
+    const response = await userApi.post<ApiResponse<User>>(`/open/app/user/${userId}/balance`, {
+      amount,
+      remark
+    });
+    debug.log('Adjust balance response:', response.data);
+    return response.data;
+  } catch (error: any) {
+    debug.error('API error:', error);
+    throw error;
+  }
 }

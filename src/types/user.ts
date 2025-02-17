@@ -11,15 +11,15 @@ export interface User {
   id: number;
   username: string;
   email?: string;
-  agent_id?: number;  // 改为可选字段，不使用 null
+  agent_id?: number;
   status: 'active' | 'disabled';
   balance: number;
   is_admin: boolean;
   is_agent: boolean;
-  role: UserRole;  // 添加 role 字段
+  role?: UserRole;  // 改为可选字段
   remark?: string;
   created_at: string;
-  updated_at: string;  // 改为必需字段，因为后端总是会返回这个字段
+  updated_at: string;
 }
 
 export interface UserProfile extends User {
@@ -33,6 +33,7 @@ export interface UserListParams {
   username?: string;
   status?: string;
   dateRange?: [moment.Moment, moment.Moment];
+  agent_id?: number | null;
 }
 
 export interface UserListResponse {
@@ -45,7 +46,9 @@ export interface CreateUserParams {
   password: string;
   email?: string;
   remark?: string;
-  agent_id?: number;  // 可选，代理商ID
+  agent_id?: number | null;
+  is_agent?: boolean;
+  status?: 'active' | 'disabled';
 }
 
 export interface CreateUserForm extends CreateUserParams {

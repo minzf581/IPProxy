@@ -12,7 +12,7 @@ import PriceImportExport from '@/components/PriceSettings/PriceImportExport';
 import { useRequest } from 'ahooks';
 import { useAuth } from '@/hooks/useAuth';
 import { UserRole } from '@/types/user';
-import './index.less';
+import styles from '../business/StaticBusiness.module.less';
 
 const { Option } = Select;
 
@@ -347,7 +347,7 @@ const StaticProductPage: React.FC = () => {
   ];
 
   return (
-    <div className="static-product-page">
+    <div className={styles.staticProductPage}>
       <Card title="静态代理产品管理" bordered={false}>
         <Alert
           message="价格说明"

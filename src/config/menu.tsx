@@ -62,12 +62,12 @@ export const adminMenuConfig = [
     children: [
       {
         key: 'products/dynamic',
-        label: '动态代理',
+        label: '动态代理价格',
         path: '/products/dynamic'
       },
       {
         key: 'products/static',
-        label: '静态代理',
+        label: '静态代理价格',
         path: '/products/static'
       }
     ]
@@ -87,6 +87,18 @@ export const businessMenuConfig = [
     label: '仪表盘',
     icon: <DashboardOutlined />,
     path: '/dashboard'
+  },
+  {
+    key: 'account',
+    label: '用户管理',
+    icon: <TeamOutlined />,
+    children: [
+      {
+        key: 'account/users',
+        label: '用户列表',
+        path: '/account/users'
+      }
+    ]
   },
   {
     key: 'business',
@@ -112,12 +124,12 @@ export const businessMenuConfig = [
     children: [
       {
         key: 'products/dynamic',
-        label: '动态代理',
+        label: '动态代理价格',
         path: '/products/dynamic'
       },
       {
         key: 'products/static',
-        label: '静态代理',
+        label: '静态代理价格',
         path: '/products/static'
       }
     ]

@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Input, Select, Form, message, Card, Divider } from 'antd';
+import { Table, Button, Space, Input, Select, Form, message, Card, Divider, Modal } from 'antd';
 import type { TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
 import type { ColumnType } from 'antd/es/table';
 import { getAgentList, updateAgent, updateAgentStatus } from '@/services/agentService';
 import { debug } from '@/utils/debug';
 import UpdatePasswordModal from '@/components/Agent/UpdatePasswordModal';
-import UpdateBalanceModal from '@/components/Agent/UpdateBalanceModal';
 import CreateAgentModal from '@/components/Agent/CreateAgentModal';
 import type { AgentInfo } from '@/types/agent';
 import dayjs from 'dayjs';
-import './index.less';
+import './index.module.less';
 import { PlusOutlined } from '@ant-design/icons';
 import UpdateRemarkModal from '@/components/Agent/UpdateRemarkModal';
 import { useNavigate } from 'react-router-dom';
+import BalanceAdjustModal from '@/components/BalanceAdjustModal';
+import { formatUserStatus } from '@/utils/format';
 
 const { Option } = Select;
 const { Search } = Input;
@@ -249,32 +250,37 @@ const AgentListPage: React.FC = () => {
         <>
           <UpdatePasswordModal
             visible={passwordModalVisible}
-            agentId={Number(selectedAgent.id)}
             onClose={() => {
               setPasswordModalVisible(false);
               setSelectedAgent(null);
             }}
-          />
-          <UpdateBalanceModal
-            visible={balanceModalVisible}
             agentId={Number(selectedAgent.id)}
-            currentBalance={selectedAgent.balance}
-            onClose={() => {
+          />
+
+          <BalanceAdjustModal
+            visible={balanceModalVisible}
+            onCancel={() => {
+              setBalanceModalVisible(false);
+              setSelectedAgent(null);
+            }}
+            onSuccess={() => {
               setBalanceModalVisible(false);
               setSelectedAgent(null);
               loadAgents();
             }}
+            target={selectedAgent}
+            targetType="agent"
           />
+
           <UpdateRemarkModal
             visible={remarkModalVisible}
-            agent={{
-              id: Number(selectedAgent.id),
-              remark: selectedAgent.remark
-            }}
             onClose={() => {
               setRemarkModalVisible(false);
               setSelectedAgent(null);
-              loadAgents();
+            }}
+            agent={{
+              id: Number(selectedAgent.id),
+              remark: selectedAgent.remark
             }}
           />
         </>

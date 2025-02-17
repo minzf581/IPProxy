@@ -12,7 +12,7 @@ import PriceImportExport from '@/components/PriceSettings/PriceImportExport';
 import { useRequest } from 'ahooks';
 import { useAuth } from '@/hooks/useAuth';
 import { UserRole } from '@/types/user';
-import './index.less';
+import styles from '../business/StaticBusiness.module.less';
 
 const { Option } = Select;
 
@@ -357,7 +357,7 @@ const DynamicProductPage: React.FC = () => {
   ].filter(Boolean);
 
   return (
-    <div className="dynamic-product-page">
+    <div className={styles.dynamicProductPage}>
       <Card title="动态代理产品管理" bordered={false}>
         <Alert
           message="价格说明"

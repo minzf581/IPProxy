@@ -818,4 +818,103 @@ async def deactivate_business(
     except Exception as e:
         db.rollback()
         logger.error(f"释放资源失败: {str(e)}")
-        raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)}) 
+        raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
+
+@router.post("/open/app/user/{user_id}/balance")
+async def adjust_user_balance(
+    user_id: int,
+    data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """调整用户余额"""
+    logger.info(f"[adjust_user_balance] user_id={user_id}, data={data}, current_user={current_user.id}")
+    
+    # 权限检查
+    if not current_user.is_admin and not current_user.is_agent:
+        raise HTTPException(status_code=403, detail="没有权限执行此操作")
+    
+    # 获取目标用户
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    # 代理商只能调整自己下级用户的余额
+    if current_user.is_agent and target_user.agent_id != current_user.id:
+        raise HTTPException(status_code=403, detail="没有权限调整此用户的余额")
+    
+    amount = data.get("amount")
+    remark = data.get("remark", "")
+    
+    if not amount:
+        raise HTTPException(status_code=400, detail="调整金额不能为空")
+    
+    try:
+        amount = float(amount)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="调整金额格式不正确")
+    
+    try:
+        # 如果是代理商，检查余额是否足够
+        if current_user.is_agent and amount > 0:
+            if current_user.balance < amount:
+                raise HTTPException(status_code=400, detail="代理商余额不足")
+            
+            # 扣除代理商余额
+            current_user.balance -= amount
+            
+            # 记录代理商余额变更
+            agent_transaction = Transaction(
+                transaction_no=str(uuid.uuid4()).replace("-", ""),
+                user_id=current_user.id,
+                agent_id=current_user.id,
+                order_no=str(uuid.uuid4()).replace("-", ""),
+                amount=-amount,
+                balance=current_user.balance,
+                type="consume",
+                status="success",
+                remark=f"调整用户 {target_user.username} 余额: {amount}"
+            )
+            db.add(agent_transaction)
+        
+        # 调整用户余额
+        old_balance = target_user.balance
+        target_user.balance += amount
+        
+        # 记录用户余额变更
+        transaction = Transaction(
+            transaction_no=str(uuid.uuid4()).replace("-", ""),
+            user_id=target_user.id,
+            agent_id=current_user.id,
+            order_no=str(uuid.uuid4()).replace("-", ""),
+            amount=amount,
+            balance=target_user.balance,
+            type="recharge" if amount > 0 else "consume",
+            status="success",
+            remark=remark or f"管理员调整余额: {amount}"
+        )
+        db.add(transaction)
+        
+        # 提交事务
+        db.commit()
+        logger.info(f"[adjust_user_balance] 调整成功: user_id={user_id}, old_balance={old_balance}, new_balance={target_user.balance}")
+        
+        # 返回标准响应格式
+        return {
+            "code": 0,
+            "msg": "调整成功",
+            "data": {
+                "transaction_no": transaction.transaction_no,
+                "amount": amount,
+                "old_balance": old_balance,
+                "new_balance": target_user.balance
+            }
+        }
+        
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[adjust_user_balance] 调整失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"调整失败: {str(e)}") 
