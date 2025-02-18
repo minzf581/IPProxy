@@ -87,8 +87,23 @@ export async function createProxyUser(data: {
   limitFlow: number;
   remark: string;
 }): Promise<BusinessResponse> {
-  return request('/api/business/dynamic-proxy/create-user', {
-    method: 'POST',
-    data
-  });
+  try {
+    const response = await request<BusinessResponse>('/api/business/dynamic-proxy/create-user', {
+      method: 'POST',
+      data
+    });
+    
+    // 记录响应数据，方便调试
+    console.log('[API Response]', {
+      url: '/api/business/dynamic-proxy/create-user',
+      method: 'post',
+      status: response.status,
+      data: response
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('[API Error]', error);
+    throw error;
+  }
 }

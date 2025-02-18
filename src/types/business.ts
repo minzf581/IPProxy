@@ -85,6 +85,6 @@ export interface BusinessFormState {
 
 export interface BusinessResponse {
   code: number;
-  message: string;
+  msg: string;
   data?: any;
 } 

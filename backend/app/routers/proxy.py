@@ -70,6 +70,7 @@ import logging
 import json
 from datetime import datetime
 import traceback
+from app.core.config import settings
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -596,8 +597,8 @@ async def create_dynamic_proxy_user(
                 "remark": request["remark"],
                 "platformAccount": agent.platform_account,  # 平台主账号
                 "channelAccount": agent.app_username,   # 渠道商主账号
-                "appMainUsername": agent.ipipv_username,  # IPIPV平台主账号
-                "mainUsername": agent.ipipv_username  # IPIPV平台主账号
+                "mainUsername": settings.IPPROXY_MAIN_USERNAME,  # 使用配置中的主账号
+                "appMainUsername": settings.IPPROXY_MAIN_USERNAME  # 使用配置中的主账号
             }
             
             logger.info(f"[{func_name}] 准备调用IPIPV API, 参数: {json.dumps(params, ensure_ascii=False)}")
@@ -606,11 +607,21 @@ async def create_dynamic_proxy_user(
             response = await proxy_service.create_proxy_user(params)
             logger.info(f"[{func_name}] IPIPV API响应: {json.dumps(response, ensure_ascii=False)}")
             
-            return {
-                "code": response.get("code", 500),
-                "msg": response.get("msg", "success"),
-                "data": response.get("data")
-            }
+            # 统一响应格式
+            if response.get("code") == 0:  # 服务层返回0表示成功
+                return {
+                    "code": 0,
+                    "msg": "success",
+                    "data": response.get("data")
+                }
+            else:
+                error_msg = response.get("msg", "创建代理用户失败")
+                logger.error(f"[{func_name}] {error_msg}")
+                return {
+                    "code": response.get("code", 500),
+                    "msg": error_msg,
+                    "data": None
+                }
                 
         except Exception as db_error:
             logger.error(f"[{func_name}] 数据库操作失败: {str(db_error)}")

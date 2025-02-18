@@ -32,6 +32,8 @@ from .ipipv_base_api import IPIPVBaseAPI
 import json
 import traceback
 from app.core.config import settings
+from app.database import SessionLocal
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -278,8 +280,8 @@ class ProxyService(IPIPVBaseAPI):
                 "appUsername": params["appUsername"],
                 "limitFlow": params["limitFlow"],
                 "remark": params["remark"],
-                "mainUsername": settings.IPPROXY_MAIN_USERNAME,     # 主账号
-                "appMainUsername": settings.IPPROXY_MAIN_USERNAME,  # 主账号
+                "mainUsername": params["mainUsername"],     # 使用传入的主账号
+                "appMainUsername": params["mainUsername"],  # 使用传入的主账号
                 "platformAccount": params["platformAccount"],       # 平台账号
                 "channelAccount": params["channelAccount"],        # 渠道商账号
                 "status": 1,                                       # 状态：1=正常
@@ -311,8 +313,33 @@ class ProxyService(IPIPVBaseAPI):
             
             # 检查响应状态
             if response.get("code") == 200:  # IPIPV API 返回200表示成功
+                # 获取数据库会话
+                db = SessionLocal()
+                try:
+                    # 获取代理商信息，使用 app_username 查找
+                    agent = db.query(User).filter(
+                        User.app_username == params["appUsername"],
+                        User.is_agent == True,
+                        User.status == 1
+                    ).first()
+                    
+                    if agent:
+                        # 更新代理商的 IPIPV 用户名和密码
+                        ipipv_data = response.get("data", {})
+                        agent.ipipv_username = ipipv_data.get("username")
+                        agent.ipipv_password = ipipv_data.get("password")
+                        db.commit()
+                        logger.info(f"[ProxyService] 更新代理商信息成功: {agent.username}")
+                    else:
+                        logger.warning(f"[ProxyService] 未找到代理商: app_username={params['appUsername']}")
+                except Exception as db_error:
+                    logger.error(f"[ProxyService] 更新数据库失败: {str(db_error)}")
+                    db.rollback()
+                finally:
+                    db.close()
+
                 return {
-                    "code": 0,  # 我们的API使用0表示成功
+                    "code": 0,  # 统一使用 0 表示成功
                     "msg": "success",
                     "data": response.get("data")
                 }

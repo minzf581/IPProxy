@@ -385,7 +385,7 @@ const DynamicBusiness: React.FC = () => {
         setQuantity(0);
         setRemark('');
       } else {
-        message.error(response.message || '创建代理用户失败');
+        message.error(response.msg || '创建代理用户失败');
       }
     } catch (error) {
       console.error('[动态代理页面] 创建代理用户失败:', error);
