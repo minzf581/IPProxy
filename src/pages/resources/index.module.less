@@ -1,0 +1,52 @@
+.resourceList {
+  :global {
+    .ant-card {
+      margin-top: 24px;
+    }
+
+    .ant-table-wrapper {
+      background: #fff;
+    }
+
+    .ant-table-thead > tr > th {
+      background: #fafafa;
+    }
+
+    .ant-input {
+      width: 200px;
+    }
+
+    .ant-space {
+      margin-bottom: 8px;
+    }
+  }
+}
+
+.whitelistSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.actionButtons {
+  display: flex;
+  gap: 8px;
+}
+
+@media screen and (max-width: 768px) {
+  .resourceList {
+    :global {
+      .ant-input {
+        width: 100%;
+      }
+    }
+
+    .actionButtons {
+      flex-direction: column;
+
+      :global(.ant-btn) {
+        width: 100%;
+      }
+    }
+  }
+} 

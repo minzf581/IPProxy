@@ -1,246 +1,166 @@
-import React from 'react';
-import { Card, Table, Button, Space, Tag, Modal, Form, Input, InputNumber, message } from 'antd';
-import { getResourceList, createResource, updateResource } from '@/services/resourceService';
-import { isAdmin } from '@/services/mainUser';
-import type { Resource } from '@/types/resource';
-import dayjs from 'dayjs';
+import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
+import { Card, Table, Button, Input, Space, message } from 'antd';
+import { useRequest } from 'ahooks';
+// TODO: 这个导入将被替换为 businessService 中的函数
+import { getProxyResources } from '@/services/proxyService';
+import type { ProxyResource } from '@/types/proxy';
+import styles from './index.module.less';
 
-const ResourceListPage: React.FC = () => {
-  const [loading, setLoading] = React.useState(false);
-  const [data, setData] = React.useState<{ list: Resource[]; total: number }>({ list: [], total: 0 });
-  const [pagination, setPagination] = React.useState({ current: 1, pageSize: 10 });
-  const [modalVisible, setModalVisible] = React.useState(false);
-  const [editingResource, setEditingResource] = React.useState<Resource | null>(null);
-  const [form] = Form.useForm();
+export interface ResourceListRef {
+  refresh: () => void;
+}
 
-  React.useEffect(() => {
-    loadResources();
-  }, [pagination.current, pagination.pageSize]);
+const ResourceList = forwardRef<ResourceListRef>((props, ref) => {
+  const [resources, setResources] = useState<ProxyResource[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [newWhitelist, setNewWhitelist] = useState<{ [key: string]: string }>({});
 
-  const loadResources = async () => {
-    try {
-      setLoading(true);
-      const result = await getResourceList({
-        page: pagination.current,
-        pageSize: pagination.pageSize
-      });
-      setData(result);
-    } catch (error) {
-      console.error('Failed to load resources:', error);
-      message.error('加载资源列表失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleUpdateStatus = async (resource: Resource, newStatus: string) => {
-    try {
-      await updateResource(resource.id, { status: newStatus });
-      message.success('状态更新成功');
-      loadResources();
-    } catch (error) {
-      console.error('Failed to update resource status:', error);
-      message.error('更新资源状态失败');
-    }
-  };
-
-  const handleSubmit = async () => {
-    try {
-      const values = await form.validateFields();
-      
-      if (editingResource) {
-        await updateResource(editingResource.id, values);
-        message.success('资源更新成功');
+  // 获取资源列表
+  const { data, run: fetchResources } = useRequest(getProxyResources, {
+    manual: true,
+    onSuccess: (result) => {
+      if (result.code === 200) {
+        setResources(result.data);
       } else {
-        await createResource(values);
-        message.success('资源创建成功');
+        message.error(result.msg || '获取资源列表失败');
       }
+    },
+  });
 
-      setModalVisible(false);
-      form.resetFields();
-      setEditingResource(null);
-      loadResources();
-    } catch (error) {
-      console.error('Failed to save resource:', error);
-      message.error('保存资源失败');
-    }
-  };
+  // 暴露刷新方法给父组件
+  useImperativeHandle(ref, () => ({
+    refresh: fetchResources
+  }));
 
-  const handleTableChange = (pagination: any) => {
-    setPagination(pagination);
-  };
+  useEffect(() => {
+    fetchResources();
+  }, []);
 
+  // 表格列定义
   const columns = [
     {
-      title: '名称',
-      dataIndex: 'name',
-      key: 'name',
+      title: '资源类型',
+      dataIndex: 'productNo',
+      key: 'productNo',
     },
     {
-      title: '类型',
-      dataIndex: 'type',
-      key: 'type',
-      render: (type: string) => (
-        <Tag color={type === 'dynamic' ? 'blue' : 'green'}>
-          {type === 'dynamic' ? '动态' : '静态'}
-        </Tag>
+      title: '总流量',
+      dataIndex: 'total',
+      key: 'total',
+      render: (text: number) => `${text} GB`,
+    },
+    {
+      title: '已使用流量',
+      dataIndex: 'used',
+      key: 'used',
+      render: (text: number) => `${text} GB`,
+    },
+    {
+      title: '剩余流量',
+      dataIndex: 'balance',
+      key: 'balance',
+      render: (text: number) => `${text} GB`,
+    },
+    {
+      title: 'IP白名单',
+      dataIndex: 'ipWhiteList',
+      key: 'ipWhiteList',
+      render: (whitelist: string[], record: ProxyResource) => (
+        <Space direction="vertical">
+          {whitelist.map((ip, index) => (
+            <Space key={index}>
+              <span>{ip}</span>
+              <Button 
+                size="small" 
+                type="link" 
+                danger
+                onClick={() => handleDeleteWhitelist(record.productNo, ip)}
+              >
+                删除
+              </Button>
+            </Space>
+          ))}
+          {whitelist.length < 5 && (
+            <Space>
+              <Input
+                placeholder="输入IP地址"
+                value={newWhitelist[record.productNo] || ''}
+                onChange={(e) => handleWhitelistInputChange(record.productNo, e.target.value)}
+                style={{ width: 200 }}
+              />
+              <Button 
+                type="primary" 
+                size="small"
+                onClick={() => handleAddWhitelist(record.productNo)}
+              >
+                添加
+              </Button>
+            </Space>
+          )}
+        </Space>
       ),
     },
     {
-      title: '描述',
-      dataIndex: 'description',
-      key: 'description',
-    },
-    {
-      title: '价格',
-      dataIndex: 'price',
-      key: 'price',
-      render: (price: number) => `¥${price.toFixed(2)}`,
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: string) => (
-        <Tag color={status === 'active' ? 'green' : 'red'}>
-          {status === 'active' ? '正常' : '禁用'}
-        </Tag>
+      title: 'IP使用情况',
+      key: 'ipUsage',
+      render: (_: unknown, record: ProxyResource) => (
+        `${record.ipUsed}/${record.ipTotal}`
       ),
-    },
-    {
-      title: '创建时间',
-      dataIndex: 'createdAt',
-      key: 'createdAt',
-      render: (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm:ss'),
     },
     {
       title: '操作',
       key: 'action',
-      render: (_, record: Resource) => (
+      render: (_: unknown, record: ProxyResource) => (
         <Space>
-          <Button
-            size="small"
-            onClick={() => {
-              setEditingResource(record);
-              form.setFieldsValue(record);
-              setModalVisible(true);
-            }}
-          >
-            编辑
+          <Button type="primary" onClick={() => handleApiExtract(record)}>
+            API提取
           </Button>
-          <Button
-            size="small"
-            type={record.status === 'active' ? 'default' : 'primary'}
-            onClick={() => handleUpdateStatus(record, record.status === 'active' ? 'disabled' : 'active')}
-          >
-            {record.status === 'active' ? '禁用' : '启用'}
+          <Button onClick={() => handleAccountExtract(record)}>
+            账密提取
           </Button>
         </Space>
       ),
     },
   ];
 
-  if (!isAdmin()) {
-    return <div>无权访问</div>;
-  }
+  // 处理白名单输入变化
+  const handleWhitelistInputChange = (productNo: string, value: string) => {
+    setNewWhitelist({
+      ...newWhitelist,
+      [productNo]: value,
+    });
+  };
+
+  // 添加白名单（待实现）
+  const handleAddWhitelist = (productNo: string) => {
+    message.info('添加白名单功能待实现');
+  };
+
+  // 删除白名单（待实现）
+  const handleDeleteWhitelist = (productNo: string, ip: string) => {
+    message.info('删除白名单功能待实现');
+  };
+
+  // API提取（待实现）
+  const handleApiExtract = (resource: ProxyResource) => {
+    message.info('API提取功能待实现');
+  };
+
+  // 账密提取（待实现）
+  const handleAccountExtract = (resource: ProxyResource) => {
+    message.info('账密提取功能待实现');
+  };
 
   return (
-    <Card title="资源管理">
-      <div style={{ marginBottom: 16 }}>
-        <Button
-          type="primary"
-          onClick={() => {
-            setEditingResource(null);
-            form.resetFields();
-            setModalVisible(true);
-          }}
-        >
-          添加资源
-        </Button>
-      </div>
-
+    <Card title="已购资源列表" className={styles.resourceList}>
       <Table
         columns={columns}
-        dataSource={data.list}
-        rowKey="id"
+        dataSource={resources}
+        rowKey="productNo"
         loading={loading}
-        pagination={{
-          ...pagination,
-          total: data.total,
-          showSizeChanger: true,
-          showQuickJumper: true,
-        }}
-        onChange={handleTableChange}
       />
     </Card>
-
-    <Modal
-      title={editingResource ? '编辑资源' : '添加资源'}
-      open={modalVisible}
-      onOk={handleSubmit}
-      onCancel={() => {
-        setModalVisible(false);
-        setEditingResource(null);
-        form.resetFields();
-      }}
-    >
-      <Form form={form} layout="vertical">
-        <Form.Item
-          name="name"
-          label="名称"
-          rules={[{ required: true, message: '请输入资源名称' }]}
-        >
-          <Input placeholder="请输入资源名称" />
-        </Form.Item>
-
-        <Form.Item
-          name="type"
-          label="类型"
-          rules={[{ required: true, message: '请选择资源类型' }]}
-        >
-          <Input.Group>
-            <Space>
-              <Button
-                type={form.getFieldValue('type') === 'dynamic' ? 'primary' : 'default'}
-                onClick={() => form.setFieldValue('type', 'dynamic')}
-              >
-                动态
-              </Button>
-              <Button
-                type={form.getFieldValue('type') === 'static' ? 'primary' : 'default'}
-                onClick={() => form.setFieldValue('type', 'static')}
-              >
-                静态
-              </Button>
-            </Space>
-          </Input.Group>
-        </Form.Item>
-
-        <Form.Item
-          name="description"
-          label="描述"
-        >
-          <Input.TextArea rows={4} placeholder="请输入资源描述" />
-        </Form.Item>
-
-        <Form.Item
-          name="price"
-          label="价格"
-          rules={[
-            { required: true, message: '请输入价格' },
-            { type: 'number', min: 0, message: '价格不能小于0' }
-          ]}
-        >
-          <InputNumber
-            style={{ width: '100%' }}
-            precision={2}
-            prefix="¥"
-            placeholder="请输入价格"
-          />
-        </Form.Item>
-      </Form>
-    </Modal>
   );
-};
+});
 
-export default ResourceListPage;
+export default ResourceList;

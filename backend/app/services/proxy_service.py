@@ -34,6 +34,8 @@ import traceback
 from app.core.config import settings
 from app.database import SessionLocal
 from app.models.user import User
+from app.models.product_inventory import ProductInventory
+from app.models.main_user import MainUser
 
 logger = logging.getLogger(__name__)
 
@@ -365,4 +367,155 @@ class ProxyService(IPIPVBaseAPI):
                     "error_message": str(e),
                     "timestamp": datetime.now().isoformat()
                 }
-            } 
+            }
+
+    async def get_proxy_resources(self, username: str) -> Dict[str, Any]:
+        """
+        获取代理商的资源列表
+        
+        Args:
+            username: 代理商用户名
+            
+        Returns:
+            Dict[str, Any]: 资源列表信息
+        """
+        try:
+            logger.info(f"[ProxyService] 开始获取代理商资源列表: username={username}")
+            
+            # 从数据库获取所有可用的动态代理产品
+            db = SessionLocal()
+            products = db.query(ProductInventory).filter(
+                ProductInventory.enable == 1,
+                ProductInventory.proxy_type == 104  # 动态代理类型
+            ).all()
+            
+            if not products:
+                logger.info("[ProxyService] 未找到可用的动态代理产品")
+                return {
+                    "code": 200,
+                    "msg": "success",
+                    "data": []
+                }
+            
+            # 获取主账号信息
+            main_user = db.query(MainUser).first()
+            if not main_user:
+                logger.error("[ProxyService] 主账号不存在")
+                return {
+                    "code": 500,
+                    "msg": "主账号不存在",
+                    "data": None
+                }
+            
+            # 获取代理商信息，包括 IPIPV 平台的用户名
+            agent = db.query(User).filter(
+                User.username == username,
+                User.is_agent == True,
+                User.status == 1
+            ).first()
+            
+            if not agent:
+                logger.error(f"[ProxyService] 未找到代理商信息: {username}")
+                return {
+                    "code": 404,
+                    "msg": "代理商不存在",
+                    "data": None
+                }
+            
+            if not agent.ipipv_username:
+                logger.error(f"[ProxyService] 代理商未绑定 IPIPV 账号: {username}")
+                return {
+                    "code": 400,
+                    "msg": "代理商未绑定 IPIPV 账号",
+                    "data": None
+                }
+            
+            logger.info(f"[ProxyService] 找到代理商 IPIPV 账号: {agent.ipipv_username}")
+            
+            resources = []
+            for product in products:
+                logger.info(f"[ProxyService] 处理产品: {product.product_no}")
+                
+                # 构造请求参数，使用代理商的 username 和主账号的 app_username
+                params = {
+                    "username": agent.ipipv_username,  # 使用代理商的 IPIPV 用户名
+                    "appUsername": main_user.app_username,  # 使用主账号的 app_username
+                    "proxyType": 104,  # 动态代理类型
+                    "productNo": product.product_no  # 使用数据库中的产品编号
+                }
+                
+                logger.info(f"[ProxyService] 请求参数: {params}")
+                
+                # 调用API获取代理信息
+                response = await self._make_request(
+                    "api/open/app/proxy/info/v2",
+                    params
+                )
+                
+                if response and response.get("code") in [0, 200]:
+                    proxy_info = response.get("data", {})
+                    if isinstance(proxy_info, str):
+                        try:
+                            proxy_info = json.loads(proxy_info)
+                        except json.JSONDecodeError:
+                            logger.error(f"[ProxyService] 解析代理信息失败: {proxy_info}")
+                            continue
+                    
+                    # 处理可能的空值或无效值
+                    total = proxy_info.get("total")
+                    used = proxy_info.get("used")
+                    balance = proxy_info.get("balance")
+                    ip_whitelist = proxy_info.get("ipWhiteList", [])
+                    ip_used = proxy_info.get("ipUsed")
+                    ip_total = proxy_info.get("ipTotal")
+                    
+                    try:
+                        total = float(total if total is not None else 0)
+                        used = float(used if used is not None else 0)
+                        balance = float(balance if balance is not None else 0)
+                        ip_used = int(ip_used if ip_used is not None else 0)
+                        ip_total = int(ip_total if ip_total is not None else 0)
+                        
+                        # 确保 ipWhiteList 是列表类型
+                        if ip_whitelist is None:
+                            ip_whitelist = []
+                        elif isinstance(ip_whitelist, str):
+                            try:
+                                ip_whitelist = json.loads(ip_whitelist)
+                            except json.JSONDecodeError:
+                                ip_whitelist = []
+                        
+                        resources.append({
+                            "productNo": product.product_no,
+                            "productName": product.product_name,
+                            "total": total,
+                            "used": used,
+                            "balance": balance,
+                            "ipWhiteList": ip_whitelist,
+                            "ipUsed": ip_used,
+                            "ipTotal": ip_total
+                        })
+                        logger.info(f"[ProxyService] 成功添加资源: {product.product_no}")
+                    except (ValueError, TypeError) as e:
+                        logger.error(f"[ProxyService] 转换数据类型失败: {str(e)}")
+                        continue
+                else:
+                    logger.warning(f"[ProxyService] 获取代理信息失败: {response}")
+            
+            logger.info(f"[ProxyService] 成功获取资源列表，共 {len(resources)} 个资源")
+            return {
+                "code": 200,
+                "msg": "success",
+                "data": resources
+            }
+            
+        except Exception as e:
+            logger.error(f"[ProxyService] 获取代理资源列表失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            return {
+                "code": 500,
+                "msg": f"获取代理资源列表失败: {str(e)}",
+                "data": None
+            }
+        finally:
+            db.close() 

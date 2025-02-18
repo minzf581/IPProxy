@@ -71,6 +71,7 @@ import json
 from datetime import datetime
 import traceback
 from app.core.config import settings
+from app.core.deps import get_current_user
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -640,3 +641,11 @@ async def create_dynamic_proxy_user(
             "msg": f"创建代理用户失败: {str(e)}",
             "data": None
         }
+
+@router.get("/resources")
+async def get_proxy_resources(
+    current_user: User = Depends(get_current_user),
+    proxy_service: ProxyService = Depends(get_proxy_service)
+):
+    """获取代理资源列表"""
+    return await proxy_service.get_proxy_resources(current_user.username)

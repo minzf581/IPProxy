@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, Table, Button, Space, Typography, Select, Input, InputNumber, Alert, message } from 'antd';
 import { PageContainer } from '@ant-design/pro-layout';
 import { SyncOutlined, InfoCircleOutlined } from '@ant-design/icons';
@@ -30,6 +30,7 @@ import { UserRole } from '@/types/user';
 import { getMappedValue, getUniqueValues, PRODUCT_NO_MAP, AREA_MAP, COUNTRY_MAP, CITY_MAP } from '@/constants/mappings';
 import { useRequest } from 'ahooks';
 import styles from './DynamicBusiness.module.less';
+import ResourceList, { ResourceListRef } from '@/pages/resources';
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -74,6 +75,7 @@ const DynamicBusinessContent: React.FC = () => {
   const [remark, setRemark] = useState<string>('');
   const [areaList, setAreaList] = useState<DynamicProxyArea[]>([]);
   const [userList, setUserList] = useState<AgentUser[]>([]);
+  const resourceListRef = useRef<ResourceListRef>(null);
 
   // 获取代理商列表
   const { data: agentResponse } = useRequest(
@@ -410,6 +412,9 @@ const DynamicBusinessContent: React.FC = () => {
         // 清空表单
         setQuantity(0);
         setRemark('');
+
+        // 刷新资源列表
+        resourceListRef.current?.refresh();
       } else {
         message.error(response.msg || '创建代理用户失败');
       }
@@ -570,20 +575,19 @@ const DynamicBusinessContent: React.FC = () => {
             rowKey="id"
           />
 
-          <div className={styles.actionSection}>
-            <Button
-              type="primary"
-              onClick={handleSubmit}
-              loading={loading}
-              disabled={
-                (!isAgent && !selectedAgent) || // 非代理商必须选择代理商
-                quantity <= 0 // 流量必须大于0
-              }
-            >
-              提交订单
-            </Button>
-          </div>
+          <Button
+            type="primary"
+            onClick={handleSubmit}
+            loading={loading}
+            disabled={!selectedAgent || !quantity}
+            style={{ marginTop: 16 }}
+          >
+            提交订单
+          </Button>
         </Space>
+
+        {/* 添加已购资源列表 */}
+        <ResourceList ref={resourceListRef} />
       </Card>
     </PageContainer>
   );
