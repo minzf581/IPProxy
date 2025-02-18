@@ -39,6 +39,10 @@ ENV/
 
 # Logs
 *.log
+logs/
+logs/*.log*
+backend/logs/
+backend/logs/*.log*
 
 # Node
 node_modules/

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Table, Button, Space, message, Typography, Select, Input, InputNumber, Alert } from 'antd';
+import { Card, Table, Button, Space, Typography, Select, Input, InputNumber, Alert, message } from 'antd';
 import { PageContainer } from '@ant-design/pro-layout';
 import { SyncOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import type { Key } from 'react';
@@ -52,7 +52,7 @@ interface DynamicBusinessOrderProduct {
   remark: string;
 }
 
-const DynamicBusiness: React.FC = () => {
+const DynamicBusinessContent: React.FC = () => {
   const { user } = useAuth();
   const isAgent = user?.role === UserRole.AGENT;
   const [loading, setLoading] = useState(false);
@@ -73,6 +73,7 @@ const DynamicBusiness: React.FC = () => {
   const [quantity, setQuantity] = useState<number>(0);
   const [remark, setRemark] = useState<string>('');
   const [areaList, setAreaList] = useState<DynamicProxyArea[]>([]);
+  const [userList, setUserList] = useState<AgentUser[]>([]);
 
   // 获取代理商列表
   const { data: agentResponse } = useRequest(
@@ -88,7 +89,7 @@ const DynamicBusiness: React.FC = () => {
   const agents = agentResponse?.list || [];
 
   // 获取代理商的用户列表
-  const { data: userResponse } = useRequest(
+  const { data: userListResponse } = useRequest(
     async () => {
       if (isAgent && user?.id) {
         const response = await getAgentUsers({
@@ -97,16 +98,27 @@ const DynamicBusiness: React.FC = () => {
           pageSize: 1000,
           status: 'active'
         });
+        if (response?.list) {
+          setUserList(response.list);
+        }
         return response;
       }
       return { list: [], total: 0 };
     },
     {
       cacheKey: 'agentUserList',
-      ready: !!isAgent && !!user?.id
+      ready: !!isAgent && !!user?.id,
+      onSuccess: (data) => {
+        if (data?.list) {
+          setUserList(data.list);
+          // 如果是代理商，初始化时加载自己的余额
+          if (isAgent && user?.id) {
+            loadBalance(user.id);
+          }
+        }
+      }
     }
   );
-  const userList = (userResponse?.list || []) as AgentUser[];
 
   // 加载余额
   const loadBalance = async (userId?: number) => {
@@ -127,7 +139,7 @@ const DynamicBusiness: React.FC = () => {
           availableUsers: userList.map(u => ({ id: u.id, username: u.username }))
         });
 
-        const targetUser = userList.find(u => u.id === userId);
+        const targetUser = userList.find(u => Number(u.id) === userId);
         if (targetUser) {
           console.log('[动态代理页面] [请求ID:%s] 找到目标用户', requestId, {
             userId: targetUser.id,
@@ -136,7 +148,7 @@ const DynamicBusiness: React.FC = () => {
           });
           setBalance(targetUser.balance || 0);
         } else {
-          console.warn('[动态代理页面] [请求ID:%s] 未找到目标用户', requestId, {
+          console.info('[动态代理页面] [请求ID:%s] 用户尚未创建或正在加载中', requestId, {
             userId,
             userListLength: userList.length
           });
@@ -175,7 +187,7 @@ const DynamicBusiness: React.FC = () => {
         } else {
           console.error('[动态代理页面] [请求ID:%s] 获取代理商列表失败', requestId, {
             code: response.code,
-            message: response.message
+            msg: response.msg
           });
           setBalance(0);
         }
@@ -294,7 +306,6 @@ const DynamicBusiness: React.FC = () => {
   useEffect(() => {
     if (isAgent && user?.id) {
       setSelectedAgent({ id: user.id, name: user.username || '', username: user.username || '' });
-      loadBalance(user.id);
       loadProducts(user.id);
     }
   }, [isAgent, user]);
@@ -362,7 +373,7 @@ const DynamicBusiness: React.FC = () => {
     setRemark(value);
   };
 
-  // 提交订单
+  // 处理提交订单
   const handleSubmit = async () => {
     if (!user || !quantity) {
       message.error('请输入流量');
@@ -379,8 +390,23 @@ const DynamicBusiness: React.FC = () => {
 
       if (response.code === 0) {
         message.success('创建代理用户成功');
-        // 重新加载余额
-        await loadBalance(user.id);
+        
+        // 先重新获取用户列表
+        if (isAgent && user?.id) {
+          const userResponse = await getAgentUsers({
+            agentId: user.id,
+            page: 1,
+            pageSize: 1000,
+            status: 'active'
+          });
+          
+          if (userResponse?.list) {
+            setUserList(userResponse.list);
+            // 更新完用户列表后再加载余额
+            await loadBalance(user.id);
+          }
+        }
+        
         // 清空表单
         setQuantity(0);
         setRemark('');
@@ -560,6 +586,12 @@ const DynamicBusiness: React.FC = () => {
         </Space>
       </Card>
     </PageContainer>
+  );
+};
+
+const DynamicBusiness: React.FC = () => {
+  return (
+    <DynamicBusinessContent />
   );
 };
 

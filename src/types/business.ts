@@ -1,33 +1,27 @@
-import type { ProductPrice } from './product';
+import type { AgentUser as AgentUserType, AgentInfo as AgentInfoType } from './agent';
 
-export type { ProductPrice };
+export type AgentUser = AgentUserType;
+export type AgentInfo = AgentInfoType;
 
-export interface AgentInfo {
+export interface ProductPrice {
   id: string;
-  username: string;
-  app_username: string;
-  platform_account: string;
-  email: string | null;
-  phone: string | null;
-  balance: number;
-  status: string;
-  remark: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AgentUser {
-  id: string;
-  username: string;
-  app_username: string;
-  platform_account: string;
-  email: string | null;
-  phone: string | null;
-  balance: number;
-  status: string;
-  remark: string | null;
-  created_at: string;
-  updated_at: string;
+  type: string;
+  proxyType: number;
+  area: string;
+  country?: string;
+  city?: string;
+  price: number;
+  status: number;
+  areaName: string;
+  countryName?: string;
+  cityName?: string;
+  ipRange?: string;
+  isGlobal?: boolean;
+  stock?: number;
+  minAgentPrice?: number;
+  globalPrice?: number;
+  updatedAt?: string;
+  createdAt?: string;
 }
 
 export interface AgentListResponse {

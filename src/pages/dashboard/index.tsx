@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Row, Col, Statistic, Spin, message, Button, Progress } from 'antd';
+import { Card, Row, Col, Statistic, Spin, message, Button, Progress, Select } from 'antd';
 import { api } from '@/utils/request';
 import styles from './index.module.less';
 import { DashboardData as IDashboardData, DynamicResource, StaticResource } from '@/types/dashboard';
