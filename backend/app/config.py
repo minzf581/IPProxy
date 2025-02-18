@@ -35,6 +35,16 @@ class Settings(BaseSettings):
     IPPROXY_API_ENCRYPT: str = "AES"
     IPPROXY_APP_USERNAME: str = "test_user"
     
+    # 主账号配置
+    IPPROXY_MAIN_USERNAME: str = "test1006"  # 主账号用户名
+    IPPROXY_MAIN_PASSWORD: str = "test1006"  # 主账号密码
+    IPPROXY_MAIN_PHONE: str = "13800138000"  # 主账号手机号
+    IPPROXY_MAIN_EMAIL: str = "test@example.com"  # 主账号邮箱
+    IPPROXY_MAIN_AUTH_TYPE: int = 1  # 认证类型：1=企业认证
+    IPPROXY_MAIN_AUTH_NAME: str = "测试企业"  # 认证名称
+    IPPROXY_MAIN_AUTH_NO: str = "91110000123456789A"  # 认证号码（企业统一社会信用代码）
+    IPPROXY_MAIN_STATUS: int = 1  # 账号状态：1=正常
+    
     # JWT配置
     SECRET_KEY: str = SECRET_KEY
     ALGORITHM: str = ALGORITHM

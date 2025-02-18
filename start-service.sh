@@ -89,6 +89,10 @@ if [ "$INIT_DB" = true ]; then
     PYTHONPATH=. python3 scripts/add_test_data.py 2>&1 | tee -a "$LOG_FILE"
 fi
 
+# 创建主账号
+log "创建主账号..."
+PYTHONPATH=. python3 scripts/create_main_user.py 2>&1 | tee -a "$LOG_FILE"
+
 # 启动后端服务
 log "启动后端服务..."
 PYTHONPATH=. python3 -m uvicorn app.main:app --reload --port 8000 2>&1 | tee -a "$LOG_FILE" &
@@ -110,33 +114,11 @@ npm run dev 2>&1 | tee -a "$LOG_FILE" &
 # 等待服务启动
 sleep 2
 
+# 显示服务信息
 log "服务已启动！"
 log "后端服务运行在: http://localhost:8000"
 log "前端服务运行在: http://localhost:3000"
-
-# 只有在初始化数据库时才显示默认用户信息
-if [ "$INIT_DB" = true ]; then
-    log "默认用户:"
-    log "1. 管理员"
-    log "   - 用户名: admin"
-    log "   - 密码: admin123"
-    log "2. 代理商"
-    log "   - 用户名: agent"
-    log "   - 密码: agent123"
-fi
-
 log "按 Ctrl+C 停止所有服务"
 
-# 清理函数
-cleanup() {
-    log "正在停止所有服务..."
-    pkill -f "uvicorn app.main:app"
-    pkill -f "npm run dev"
-    exit 0
-}
-
-# 捕获SIGINT信号（Ctrl+C）
-trap cleanup SIGINT SIGTERM
-
-# 等待任意子进程结束
+# 等待用户中断
 wait

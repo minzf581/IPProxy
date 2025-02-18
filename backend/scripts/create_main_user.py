@@ -11,96 +11,171 @@ python3 scripts/create_main_user.py
 import os
 import sys
 from pathlib import Path
+import asyncio
+import logging
+from app.config import settings
+from app.services.ipipv_base_api import IPIPVBaseAPI
+from app.models.main_user import MainUser
+from app.database import SessionLocal
+import traceback
 
 # 添加项目根目录到Python路径
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from app.database import SessionLocal
-from app.models.main_user import MainUser
-from app.services.ipipv_base_api import IPIPVBaseAPI
-from app.core.config import settings
-import logging
-import asyncio
-import json
-
 # 配置日志
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(name)s] %(levelname)s [%(filename)s:%(lineno)d]: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
-async def create_main_user():
+async def main():
     """创建主账号"""
-    db = SessionLocal()
     try:
-        # 检查是否已存在主账号
-        main_user = db.query(MainUser).filter(MainUser.username == settings.IPPROXY_MAIN_USERNAME).first()
+        print("="*50)
+        print("开始初始化主账号...")
+        print("="*50)
+        
+        # 初始化数据库会话
+        db = SessionLocal()
+        
+        # 检查主账号是否已存在
+        main_user = db.query(MainUser).filter(MainUser.app_username == settings.IPPROXY_MAIN_USERNAME).first()
         if main_user:
-            logger.info("主账号已存在:", main_user.app_username)
+            print(f"\n✅ 主账号已存在: {main_user.app_username}")
+            print(f"✅ 主账号用户名: {main_user.username}")
+            print(f"✅ 认证状态: {'已认证' if main_user.auth_type == 3 else '未认证'}")
+            
+            # 如果主账号未认证，进行实名认证
+            if main_user.auth_type != 3:
+                api = IPIPVBaseAPI()
+                auth_params = {
+                    "appUsername": main_user.app_username,
+                    "username": main_user.username,
+                    "authType": 3,  # 企业认证
+                    "authName": settings.IPPROXY_MAIN_AUTH_NAME,
+                    "no": settings.IPPROXY_MAIN_AUTH_NO
+                }
+                
+                print("\n开始实名认证...")
+                
+                # 发送实名认证请求
+                auth_response = await api._make_request(
+                    "api/open/app/userAuth/v2",
+                    auth_params
+                )
+                
+                if auth_response.get("code") not in [0, 200]:
+                    error_msg = auth_response.get("msg", "未知错误")
+                    print(f"❌ 实名认证失败: {error_msg}")
+                    print("="*50)
+                    return
+                
+                # 更新认证状态
+                auth_data = auth_response.get("data", {})
+                main_user.auth_type = auth_data.get("authStatus", 3)  # 企业认证
+                db.commit()
+                print(f"\n✅ 实名认证成功!")
+                print(f"✅ 认证状态: {'已认证' if main_user.auth_type == 3 else '未认证'}")
+            
+            print("="*50)
             return
-
-        # 创建 IPIPV API 实例
-        ipipv_api = IPIPVBaseAPI()
-
-        # 构建请求参数
-        request_params = {
-            "version": "v2",
-            "encrypt": "AES",
+            
+        # 如果主账号不存在，创建新账号
+        api = IPIPVBaseAPI()
+        
+        # 构造创建主账号请求参数
+        create_params = {
             "appUsername": settings.IPPROXY_MAIN_USERNAME,
             "password": settings.IPPROXY_MAIN_PASSWORD,
             "phone": settings.IPPROXY_MAIN_PHONE,
             "email": settings.IPPROXY_MAIN_EMAIL,
-            "authType": settings.IPPROXY_MAIN_AUTH_TYPE,
+            "authType": 1,  # 企业认证
             "authName": settings.IPPROXY_MAIN_AUTH_NAME,
             "no": settings.IPPROXY_MAIN_AUTH_NO,
-            "status": settings.IPPROXY_MAIN_STATUS,
-            "mainUsername": settings.IPPROXY_MAIN_USERNAME,
-            "appMainUsername": settings.IPPROXY_MAIN_USERNAME,
-            "platformAccount": settings.IPPROXY_MAIN_USERNAME,
-            "channelAccount": settings.IPPROXY_MAIN_USERNAME,
-            "limitFlow": 1024 * 1024  # 1TB流量
+            "status": 1,
+            "limitFlow": 1048576  # 1TB
         }
-
-        logger.info("开始调用 IPIPV API 创建主账号...")
-        logger.info(f"请求参数: {json.dumps(request_params, ensure_ascii=False, indent=2)}")
-
-        # 调用 IPIPV API 创建主账号
-        response = await ipipv_api._make_request(
+        
+        print("\n开始创建主账号...")
+        
+        # 发送创建主账号请求
+        response = await api._make_request(
             "api/open/app/user/v2",
-            request_params
+            create_params
         )
-
-        logger.info(f"IPIPV API 响应: {json.dumps(response, ensure_ascii=False, indent=2)}")
-
-        if response and response.get("code") == 200:
-            # 获取 IPIPV API 返回的数据
-            ipipv_data = response.get("data", {})
-            
-            # 创建主账号记录
-            main_user = MainUser(
-                username=ipipv_data.get("username", settings.IPPROXY_MAIN_USERNAME),
-                app_username=ipipv_data.get("appUsername", settings.IPPROXY_MAIN_USERNAME),
-                password=settings.IPPROXY_MAIN_PASSWORD,
-                phone=settings.IPPROXY_MAIN_PHONE,
-                email=settings.IPPROXY_MAIN_EMAIL,
-                auth_type=settings.IPPROXY_MAIN_AUTH_TYPE,
-                auth_name=settings.IPPROXY_MAIN_AUTH_NAME,
-                auth_no=settings.IPPROXY_MAIN_AUTH_NO,
-                status=settings.IPPROXY_MAIN_STATUS
-            )
-            
-            db.add(main_user)
-            db.commit()
-            logger.info("主账号创建成功: %s", main_user.app_username)
-            logger.info("IPIPV API 返回数据: %s", json.dumps(ipipv_data, ensure_ascii=False, indent=2))
-        else:
-            error_msg = response.get("msg") if response else "未知错误"
-            logger.error("创建主账号失败: %s", error_msg)
-            
+        
+        if response.get("code") not in [0, 200]:
+            error_msg = response.get("msg", "未知错误")
+            print(f"❌ 创建主账号失败: {error_msg}")
+            print("="*50)
+            return
+        
+        # 获取响应数据
+        ipipv_data = response.get("data", {})
+        
+        # 创建主账号记录
+        main_user = MainUser(
+            username=ipipv_data.get("username"),
+            app_username=settings.IPPROXY_MAIN_USERNAME,
+            password=settings.IPPROXY_MAIN_PASSWORD,
+            phone=settings.IPPROXY_MAIN_PHONE,
+            email=settings.IPPROXY_MAIN_EMAIL,
+            auth_type=1,  # 未认证
+            auth_name=settings.IPPROXY_MAIN_AUTH_NAME,
+            auth_no=settings.IPPROXY_MAIN_AUTH_NO,
+            status=1,
+            balance=0
+        )
+        
+        # 保存到数据库
+        db.add(main_user)
+        db.commit()
+        print(f"\n✅ 主账号创建成功!")
+        print(f"✅ 主账号: {main_user.app_username}")
+        print(f"✅ 用户名: {main_user.username}")
+        
+        # 实名认证
+        auth_params = {
+            "appUsername": main_user.app_username,
+            "username": main_user.username,
+            "authType": 3,  # 企业认证
+            "authName": main_user.auth_name,
+            "no": main_user.auth_no
+        }
+        
+        print("\n开始实名认证...")
+        
+        # 发送实名认证请求
+        auth_response = await api._make_request(
+            "api/open/app/userAuth/v2",
+            auth_params
+        )
+        
+        if auth_response.get("code") not in [0, 200]:
+            error_msg = auth_response.get("msg", "未知错误")
+            print(f"❌ 实名认证失败: {error_msg}")
+            print("="*50)
+            return
+        
+        # 更新认证状态
+        auth_data = auth_response.get("data", {})
+        main_user.auth_type = auth_data.get("authStatus", 3)  # 企业认证
+        db.commit()
+        print(f"\n✅ 实名认证成功!")
+        print(f"✅ 认证状态: {'已认证' if main_user.auth_type == 3 else '未认证'}")
+        
+        print("="*50)
+        print("主账号初始化完成!")
+        print("="*50)
+        
     except Exception as e:
-        logger.error("创建主账号失败: %s", str(e))
-        db.rollback()
+        print(f"\n❌ 创建主账号失败: {str(e)}")
+        logger.error(traceback.format_exc())
     finally:
         db.close()
 
 if __name__ == "__main__":
-    asyncio.run(create_main_user()) 
+    asyncio.run(main()) 
