@@ -211,6 +211,52 @@ async def check_order_status(proxy_service: ProxyService, order_no: str) -> dict
         logger.error(f"查询订单状态异常: {str(e)}")
         return None
 
+async def draw_proxy(proxy_service: ProxyService, username: str) -> dict:
+    """测试代理提取API
+    
+    Args:
+        proxy_service: 代理服务实例
+        username: 用户名
+        
+    Returns:
+        dict: 代理提取响应
+    """
+    try:
+        params = {
+            "appUsername": username,
+            "addressCode": "",  # 可选
+            "sessTime": "5",    # 默认5分钟
+            "num": 1,           # 默认1个
+            "proxyType": 104,   # 动态国外
+            "maxFlowLimit": 0,  # 可选
+            "productNo": "out_dynamic_1"  # 产品编号
+        }
+        
+        logger.info("="*50)
+        logger.info(f"开始提取代理: {username}")
+        logger.info(f"请求参数: {json.dumps(params, ensure_ascii=False)}")
+        
+        response = await proxy_service._make_request(
+            "api/open/app/proxy/draw/api/v2",
+            params
+        )
+        
+        if not response:
+            logger.error("提取代理失败: 无响应")
+            return None
+            
+        if response.get("code") not in [0, 200]:
+            error_msg = response.get("msg", "未知错误")
+            logger.error(f"提取代理失败: {error_msg}")
+            return None
+            
+        logger.info(f"提取代理响应: {json.dumps(response, ensure_ascii=False)}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"提取代理异常: {str(e)}")
+        return None
+
 async def test_new_user_instance(proxy_service: ProxyService) -> dict:
     """测试新用户开通实例的完整流程
     
@@ -244,11 +290,16 @@ async def test_new_user_instance(proxy_service: ProxyService) -> dict:
             order_status = await check_order_status(proxy_service, order_no)
             if not order_status:
                 logger.error(f"查询订单 {order_no} 状态失败")
+                
+        # 5. 测试代理提取
+        proxy_response = await draw_proxy(proxy_service, username)
+        if not proxy_response:
+            logger.error(f"用户 {username} 提取代理失败")
         
         return {
             "user_info": user_info,
             "instance_response": instance_response,
-            "order_status": order_status if order_no else None
+            "proxy_response": proxy_response
         }
         
     except Exception as e:
@@ -263,34 +314,30 @@ async def main():
         # 初始化代理服务
         proxy_service = ProxyService()
         
-        # 测试3个新用户
-        results = []
-        for i in range(3):
-            logger.info(f"\n开始测试第 {i+1} 个用户")
-            result = await test_new_user_instance(proxy_service)
-            if result:
-                results.append(result)
-                
-        # 输出测试结果汇总
-        logger.info("\n测试结果汇总:")
+        # 测试一个新用户
+        result = await test_new_user_instance(proxy_service)
+        if not result:
+            logger.error("测试失败")
+            return
+            
+        # 输出测试结果
+        logger.info("\n测试结果:")
         logger.info("="*50)
         
-        for i, result in enumerate(results, 1):
-            user_info = result["user_info"]
-            instance_response = result["instance_response"]
-            order_status = result["order_status"]
+        user_info = result["user_info"]
+        instance_response = result["instance_response"]
+        proxy_response = result["proxy_response"]
+        
+        logger.info(f"\n用户信息:")
+        logger.info(f"应用用户名: {user_info['app_username']}")
+        
+        if instance_response:
+            order_no = instance_response.get("data", {}).get("orderNo")
+            logger.info(f"订单号: {order_no}")
             
-            logger.info(f"\n用户 {i}:")
-            logger.info(f"应用用户名: {user_info['app_username']}")
+        if proxy_response:
+            logger.info(f"代理提取响应: {json.dumps(proxy_response, ensure_ascii=False)}")
             
-            if instance_response:
-                order_no = instance_response.get("data", {}).get("orderNo")
-                logger.info(f"订单号: {order_no}")
-                
-            if order_status:
-                status_data = order_status.get("data", {})
-                logger.info(f"订单状态: {json.dumps(status_data, ensure_ascii=False)}")
-                
         logger.info("\n测试完成!")
         
     except Exception as e:
