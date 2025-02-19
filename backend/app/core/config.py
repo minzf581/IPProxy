@@ -23,19 +23,17 @@ class Settings(BaseSettings):
     IPIPV_API_KEY: str = "AK20241120145620"
     IPIPV_API_SECRET: str = "bf3ffghlt0hpc4omnvc2583jt0fag6a4"
     
-    # IPIPV 主账号配置
-    IPIPV_MAIN_USERNAME: str = "agent"
+    # 认证信息配置
     IPIPV_MAIN_AUTH_TYPE: int = 1
     IPIPV_MAIN_AUTH_NAME: str = "测试公司"
     IPIPV_MAIN_AUTH_NO: str = "3101112"
     IPIPV_MAIN_PHONE: str = "13800138000"
     IPIPV_MAIN_EMAIL: str = "test1006@test.com"
     
-    # 兼容旧配置
-    IPPROXY_API_URL: str = "https://sandbox.ipipv.com"
-    IPPROXY_APP_KEY: str = "AK20241120145620"
-    IPPROXY_APP_SECRET: str = "bf3ffghlt0hpc4omnvc2583jt0fag6a4"
-    IPPROXY_MAIN_USERNAME: str = "agent"
+    # API配置
+    API_BASE_URL: str = "https://sandbox.ipipv.com"
+    API_KEY: str = "AK20241120145620"
+    API_SECRET: str = "bf3ffghlt0hpc4omnvc2583jt0fag6a4"
     
     # 日志配置
     LOGGING_CONFIG: ClassVar[Dict[str, Any]] = {

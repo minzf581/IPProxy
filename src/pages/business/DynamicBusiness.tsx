@@ -30,7 +30,7 @@ import { UserRole } from '@/types/user';
 import { getMappedValue, getUniqueValues, PRODUCT_NO_MAP, AREA_MAP, COUNTRY_MAP, CITY_MAP } from '@/constants/mappings';
 import { useRequest } from 'ahooks';
 import styles from './DynamicBusiness.module.less';
-import ResourceList, { ResourceListRef } from '@/pages/resources';
+import ProxyResourceList, { ProxyResourceListRef } from '@/components/Resource/ProxyResourceList';
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -75,17 +75,39 @@ const DynamicBusinessContent: React.FC = () => {
   const [remark, setRemark] = useState<string>('');
   const [areaList, setAreaList] = useState<DynamicProxyArea[]>([]);
   const [userList, setUserList] = useState<AgentUser[]>([]);
-  const resourceListRef = useRef<ResourceListRef>(null);
+  const resourceListRef = useRef<ProxyResourceListRef>(null);
+
+  console.log('[DynamicBusiness] 组件渲染:', {
+    user,
+    isAgent,
+    loading,
+    balance,
+    selectedAgent,
+    productsCount: products.length,
+    userListCount: userList.length,
+    timestamp: new Date().toISOString()
+  });
 
   // 获取代理商列表
   const { data: agentResponse } = useRequest(
     async () => {
+      console.log('[DynamicBusiness] 开始获取代理商列表');
       const response = await getAgentList({ page: 1, pageSize: 1000, status: 1 });
+      console.log('[DynamicBusiness] 代理商列表响应:', response);
       return response.data;
     },
     { 
       cacheKey: 'agentList',
-      ready: !isAgent
+      ready: !isAgent,
+      onSuccess: (data) => {
+        console.log('[DynamicBusiness] 获取代理商列表成功:', {
+          total: data?.total,
+          listLength: data?.list?.length
+        });
+      },
+      onError: (error) => {
+        console.error('[DynamicBusiness] 获取代理商列表失败:', error);
+      }
     }
   );
   const agents = agentResponse?.list || [];
@@ -93,6 +115,11 @@ const DynamicBusinessContent: React.FC = () => {
   // 获取代理商的用户列表
   const { data: userListResponse } = useRequest(
     async () => {
+      console.log('[DynamicBusiness] 开始获取用户列表:', {
+        isAgent,
+        userId: user?.id
+      });
+      
       if (isAgent && user?.id) {
         const response = await getAgentUsers({
           agentId: user.id,
@@ -100,6 +127,8 @@ const DynamicBusinessContent: React.FC = () => {
           pageSize: 1000,
           status: 'active'
         });
+        console.log('[DynamicBusiness] 用户列表响应:', response);
+        
         if (response?.list) {
           setUserList(response.list);
         }
@@ -111,6 +140,11 @@ const DynamicBusinessContent: React.FC = () => {
       cacheKey: 'agentUserList',
       ready: !!isAgent && !!user?.id,
       onSuccess: (data) => {
+        console.log('[DynamicBusiness] 获取用户列表成功:', {
+          total: data?.total,
+          listLength: data?.list?.length
+        });
+        
         if (data?.list) {
           setUserList(data.list);
           // 如果是代理商，初始化时加载自己的余额
@@ -118,9 +152,21 @@ const DynamicBusinessContent: React.FC = () => {
             loadBalance(user.id);
           }
         }
+      },
+      onError: (error) => {
+        console.error('[DynamicBusiness] 获取用户列表失败:', error);
       }
     }
   );
+
+  useEffect(() => {
+    console.log('[DynamicBusiness] ResourceList 组件属性:', {
+      userId: user?.id,
+      username: user?.username,
+      isAgent,
+      timestamp: new Date().toISOString()
+    });
+  }, [user, isAgent]);
 
   // 加载余额
   const loadBalance = async (userId?: number) => {
@@ -426,6 +472,30 @@ const DynamicBusinessContent: React.FC = () => {
     }
   };
 
+  // 刷新资源列表
+  const refreshResourceList = () => {
+    console.log('[DynamicBusiness] 刷新资源列表:', {
+      userId: user?.id,
+      username: user?.username,
+      timestamp: new Date().toISOString()
+    });
+    resourceListRef.current?.refresh();
+  };
+
+  // 监听用户信息变化
+  useEffect(() => {
+    console.log('[DynamicBusiness] 用户信息变化:', {
+      userId: user?.id,
+      username: user?.username,
+      isAgent,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (user?.id) {
+      refreshResourceList();
+    }
+  }, [user?.id, user?.username, isAgent]);
+
   const columns = [
     {
       title: '资源类型',
@@ -587,7 +657,11 @@ const DynamicBusinessContent: React.FC = () => {
         </Space>
 
         {/* 添加已购资源列表 */}
-        <ResourceList ref={resourceListRef} />
+        <ProxyResourceList
+          ref={resourceListRef}
+          userId={user?.id}
+          username={user?.username}
+        />
       </Card>
     </PageContainer>
   );

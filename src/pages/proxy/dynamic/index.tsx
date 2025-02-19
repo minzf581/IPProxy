@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Table, Card, Form, Input, Button, Space, Select, message, Tag, Modal, Spin, Alert, InputNumber, Tooltip } from 'antd';
 import { SearchOutlined, SyncOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import type { TablePaginationConfig } from 'antd/es/table';
@@ -8,6 +8,8 @@ import type { DynamicProxyParams, DynamicProxyPool } from '@/types/instance';
 import type { DynamicOrder } from '@/types/order';
 import ipProxyAPI from '@/utils/ipProxyAPI';
 import { formatTraffic } from '@/utils/format';
+import ProxyResourceList, { ProxyResourceListRef } from '@/components/Resource/ProxyResourceList';
+import CreateProxyModal from '@/components/Resource/CreateProxyModal';
 
 const { Option } = Select;
 
@@ -54,6 +56,7 @@ const DynamicProxyPage: React.FC = () => {
   const [openLoading, setOpenLoading] = useState(false);
   const [priceLoading, setPriceLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const proxyListRef = useRef<ProxyResourceListRef>(null);
 
   const fetchProxies = async (
     page = state.pagination.current || 1,
@@ -61,14 +64,22 @@ const DynamicProxyPage: React.FC = () => {
     params = state.searchParams
   ) => {
     try {
+      console.log('[DynamicProxyPage] 开始获取代理列表:', { page, pageSize, params });
       setState(prev => ({ ...prev, loading: true }));
+      
       const response = await ipProxyAPI.getDynamicProxies({
         page,
         pageSize,
         ...params,
       });
+      
+      console.log('[DynamicProxyPage] 获取代理列表响应:', response);
 
       if (response.code === 0 && response.data) {
+        console.log('[DynamicProxyPage] 成功获取代理列表:', {
+          total: response.data.total,
+          listLength: response.data.list.length
+        });
         setState(prev => ({
           ...prev,
           proxies: response.data.list,
@@ -79,10 +90,18 @@ const DynamicProxyPage: React.FC = () => {
           },
         }));
       } else {
-        message.error(response.msg || '获取代理列表失败');
+        console.error('[DynamicProxyPage] 获取代理列表失败:', {
+          code: response.code,
+          message: response.message
+        });
+        message.error(response.message || '获取代理列表失败');
       }
-    } catch (error) {
-      console.error('获取代理列表失败:', error);
+    } catch (error: any) {
+      console.error('[DynamicProxyPage] 获取代理列表发生异常:', {
+        error: error.message,
+        stack: error.stack,
+        response: error.response?.data
+      });
       message.error('获取代理列表失败');
     } finally {
       setState(prev => ({ ...prev, loading: false }));
@@ -95,7 +114,7 @@ const DynamicProxyPage: React.FC = () => {
       if (response.code === 0 && response.data) {
         setProxyPools(response.data);
       } else {
-        message.error(response.msg || '获取代理池列表失败');
+        message.error(response.message || '获取代理池列表失败');
       }
     } catch (error) {
       console.error('获取代理池列表失败:', error);
@@ -179,19 +198,25 @@ const DynamicProxyPage: React.FC = () => {
 
   // 处理开通代理
   const handleOpenProxy = async (values: DynamicProxyParams) => {
+    console.log('开始开通代理:', values);
     try {
       setState(prev => ({ ...prev, loading: true }));
       const response = await ipProxyAPI.openDynamicProxy(values);
+      console.log('开通代理响应:', response);
+
       if (response.code === 0) {
+        console.log('开通代理成功');
         message.success('开通成功');
         setOpenModalVisible(false);
         openForm.resetFields();
         fetchProxies();
+        proxyListRef.current?.fetchResources();
       } else {
-        message.error(response.msg || '开通失败');
+        console.error('开通代理失败:', response.message);
+        message.error(response.message || '开通失败');
       }
     } catch (error) {
-      console.error('开通代理失败:', error);
+      console.error('开通代理发生异常:', error);
       message.error('开通代理失败');
     } finally {
       setState(prev => ({ ...prev, loading: false }));
@@ -427,8 +452,16 @@ const DynamicProxyPage: React.FC = () => {
     },
   ];
 
+  const handleCreateSuccess = () => {
+    console.log('创建代理成功，开始刷新资源列表');
+    proxyListRef.current?.fetchResources();
+  };
+
   return (
-    <div className="p-6">
+    <div className="space-y-4">
+      <Card title="动态代理管理" extra={<CreateProxyModal onSuccess={handleCreateSuccess} />}>
+        <ProxyResourceList ref={proxyListRef} userId={6} username="agent" />
+      </Card>
       <Card className="mb-4">
         <div className="flex justify-between items-center mb-4">
           <Form

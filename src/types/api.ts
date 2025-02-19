@@ -22,8 +22,8 @@ export interface PaginatedData<T> {
 }
 
 export interface PaginationParams {
-  page?: number;
-  pageSize?: number;
+  page: number;
+  pageSize: number;
   sortField?: string;
   sortOrder?: 'ascend' | 'descend';
 }
@@ -235,6 +235,10 @@ export interface ProductPrice {
 }
 
 export interface ProductPriceParams {
+  regionCode: string;
+  countryCode: string;
+  cityCode: string;
+  proxyType: number;
   is_global?: boolean;
   agent_id?: number;
   type?: string;

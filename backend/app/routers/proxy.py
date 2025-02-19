@@ -598,8 +598,10 @@ async def create_dynamic_proxy_user(
                 "remark": request["remark"],
                 "platformAccount": agent.platform_account,  # 平台主账号
                 "channelAccount": agent.app_username,   # 渠道商主账号
-                "mainUsername": settings.IPPROXY_MAIN_USERNAME,  # 使用配置中的主账号
-                "appMainUsername": settings.IPPROXY_MAIN_USERNAME  # 使用配置中的主账号
+                "mainUsername": agent.app_username,  # 使用代理商自己的用户名作为主账号
+                "appMainUsername": agent.app_username,  # 使用代理商自己的用户名作为主账号
+                "user_id": agent.id,  # 添加用户ID
+                "agent_id": agent.id  # 添加代理商ID
             }
             
             logger.info(f"[{func_name}] 准备调用IPIPV API, 参数: {json.dumps(params, ensure_ascii=False)}")
@@ -649,3 +651,27 @@ async def get_proxy_resources(
 ):
     """获取代理资源列表"""
     return await proxy_service.get_proxy_resources(current_user.username)
+
+@router.get("/open/app/proxy/resources/v2")
+async def get_proxy_resources(
+    username: str,
+    agent_id: Optional[int] = None,
+    status: Optional[str] = None,
+    proxy_service: ProxyService = Depends(get_proxy_service),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """
+    获取代理资源列表
+    """
+    try:
+        logger.info(f"获取代理资源列表: username={username}, agent_id={agent_id}, status={status}")
+        return await proxy_service.get_proxy_resources(username)
+    except Exception as e:
+        logger.error(f"获取代理资源列表失败: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": 500,
+                "message": f"获取代理资源列表失败: {str(e)}"
+            }
+        )

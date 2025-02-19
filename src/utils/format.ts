@@ -40,3 +40,21 @@ export const formatUserStatus = (status: string): string => {
 export const formatPercent = (num: number): string => {
   return `${(num * 100).toFixed(2)}%`;
 };
+
+/**
+ * 格式化字节大小
+ * @param bytes 字节数
+ * @param decimals 小数位数
+ * @returns 格式化后的字符串
+ */
+export function formatBytes(bytes: number, decimals = 2): string {
+  if (bytes === 0) return '0 B';
+
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}

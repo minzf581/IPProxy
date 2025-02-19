@@ -65,3 +65,20 @@ export interface AddStaticResourceForm {
   isp?: string;
   remark?: string;
 }
+
+export interface ProxyResource {
+  orderNo: string;
+  appOrderNo: string;
+  username: string;
+  ipipvUsername: string;
+  password: string;
+  productNo: string;
+  proxyIp: string;
+  proxyPort: number;
+  protocol: string;
+  expireTime: string;
+  totalFlow: number;
+  balanceFlow: number;
+  status: string;
+  createTime: string;
+}
