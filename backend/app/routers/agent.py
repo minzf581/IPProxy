@@ -1092,3 +1092,57 @@ async def get_agent_users(
     except Exception as e:
         logger.error(f"获取代理商用户列表失败: {str(e)}")
         raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
+
+class DynamicProxyParam(BaseModel):
+    productNo: str
+    proxyType: int
+    appUsername: str
+    flow: int
+    duration: int
+    unit: int
+
+class OpenDynamicProxyRequest(BaseModel):
+    appOrderNo: str
+    params: List[DynamicProxyParam]
+
+@router.post("/open/app/instance/open/v2")
+async def open_dynamic_proxy(
+    request: OpenDynamicProxyRequest,
+    proxy_service: ProxyService = Depends(get_proxy_service),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """开通动态代理实例"""
+    try:
+        logger.info("[AgentRouter] 开始开通动态代理实例")
+        logger.info(f"[AgentRouter] 请求参数: {request.dict()}")
+
+        # 调用IPIPV API开通实例
+        response = await proxy_service._make_request(
+            "api/open/app/instance/open/v2",
+            request.dict()
+        )
+
+        if not response or response.get("code") not in [0, 200]:
+            error_msg = response.get("msg", "未知错误") if response else "API返回为空"
+            logger.error(f"[AgentRouter] 开通动态代理实例失败: {error_msg}")
+            return {
+                "code": response.get("code", 500) if response else 500,
+                "msg": error_msg,
+                "data": None
+            }
+
+        logger.info(f"[AgentRouter] 开通实例成功: {response}")
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": response.get("data")
+        }
+
+    except Exception as e:
+        logger.error(f"[AgentRouter] 开通动态代理实例失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {
+            "code": 500,
+            "msg": f"开通动态代理实例失败: {str(e)}",
+            "data": None
+        }

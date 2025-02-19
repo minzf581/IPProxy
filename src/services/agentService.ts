@@ -262,13 +262,55 @@ export async function adjustAgentBalance(agentId: number, amount: number, remark
   }
 }
 
-export async function createProxyUser(data: {
+export interface OpenDynamicProxyParams {
   appUsername: string;
-  limitFlow: number;
-  remark: string;
-}): Promise<BusinessResponse> {
-  return request(`${API_PREFIX.BUSINESS}/dynamic-proxy/create-user`, {
-    method: 'POST',
-    data
-  });
+  flow: number;
+  duration: number;
+  unit: number;
+  productNo?: string;
+}
+
+export async function openDynamicProxy(params: OpenDynamicProxyParams): Promise<ApiResponse<any>> {
+  try {
+    debugAgent.info('Opening dynamic proxy:', params);
+    
+    // 生成订单号：{appUsername}_{timestamp}_{random}
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 10000);
+    const appOrderNo = `${params.appUsername}_${timestamp}_${random}`;
+    
+    const requestData = {
+      appOrderNo,
+      params: [{
+        productNo: params.productNo || 'out_dynamic_1',
+        proxyType: 104,
+        appUsername: params.appUsername,
+        flow: params.flow,
+        duration: params.duration,
+        unit: params.unit
+      }]
+    };
+    
+    debugAgent.info('Sending open dynamic proxy request:', requestData);
+
+    const response = await agentApi.post<ApiResponse<any>>(
+      '/api/open/app/instance/open/v2',
+      requestData
+    );
+    
+    debugAgent.info('Open dynamic proxy response:', response.data);
+
+    if (!response.data) {
+      throw new Error('API返回数据格式错误');
+    }
+
+    return response.data;
+  } catch (error: any) {
+    debugAgent.error('Failed to open dynamic proxy:', error);
+    if (error.response?.data) {
+      debugAgent.error('API error response:', error.response.data);
+      throw new Error(error.response.data.msg || '开通动态代理失败');
+    }
+    throw error;
+  }
 }

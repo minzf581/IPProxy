@@ -32,6 +32,9 @@ from app.models.dashboard import ProxyInfo
 from app.core.security import get_password_hash
 import json
 import traceback
+from app.database import SessionLocal, get_db
+from app.models.product_inventory import ProductInventory
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -297,35 +300,23 @@ class ProxyService(IPIPVBaseAPI):
         try:
             logger.info(f"[ProxyService] 开始创建代理用户: {json.dumps(params, ensure_ascii=False)}")
             
-            # 验证必要参数
-            required_fields = ["appUsername", "limitFlow", "remark", "platformAccount", "channelAccount"]
-            missing_fields = [field for field in required_fields if field not in params]
-            if missing_fields:
-                error_msg = f"缺少必要参数: {', '.join(missing_fields)}"
-                logger.error(f"[ProxyService] {error_msg}")
-                return {
-                    "code": 400,
-                    "msg": error_msg,
-                    "data": None
-                }
-            
             # 构建请求参数
             request_params = {
                 "version": "v2",
                 "encrypt": "AES",
                 "appUsername": params["appUsername"],
                 "limitFlow": params["limitFlow"],
-                "remark": params["remark"],
-                "mainUsername": params["mainUsername"],     # 使用传入的主账号
-                "appMainUsername": params["mainUsername"],  # 使用传入的主账号
-                "platformAccount": params["platformAccount"],       # 平台账号
-                "channelAccount": params["channelAccount"],        # 渠道商账号
-                "status": 1,                                       # 状态：1=正常
-                "authType": settings.IPPROXY_MAIN_AUTH_TYPE,       # 认证类型
-                "authName": settings.IPPROXY_MAIN_AUTH_NAME,       # 认证名称
-                "no": settings.IPPROXY_MAIN_AUTH_NO,              # 证件号码
-                "phone": settings.IPPROXY_MAIN_PHONE,             # 手机号码
-                "email": settings.IPPROXY_MAIN_EMAIL              # 邮箱
+                "remark": params.get("remark", ""),
+                "mainUsername": params["appUsername"],     # 使用代理商自己的用户名作为主账号
+                "appMainUsername": params["appUsername"],  # 使用代理商自己的用户名作为主账号
+                "platformAccount": params.get("platformAccount", None),
+                "channelAccount": params["appUsername"],   # 使用代理商自己的用户名作为渠道账号
+                "status": 1,
+                "authType": settings.IPIPV_MAIN_AUTH_TYPE,
+                "authName": settings.IPIPV_MAIN_AUTH_NAME,
+                "no": settings.IPIPV_MAIN_AUTH_NO,
+                "phone": settings.IPIPV_MAIN_PHONE,
+                "email": settings.IPIPV_MAIN_EMAIL
             }
             
             logger.info(f"[ProxyService] 请求参数: {json.dumps(request_params, ensure_ascii=False)}")
@@ -348,34 +339,9 @@ class ProxyService(IPIPVBaseAPI):
                 }
             
             # 检查响应状态
-            if response.get("code") == 200:  # IPIPV API 返回200表示成功
-                # 获取数据库会话
-                db = SessionLocal()
-                try:
-                    # 获取代理商信息，使用 app_username 查找
-                    agent = db.query(User).filter(
-                        User.app_username == params["appUsername"],
-                        User.is_agent == True,
-                        User.status == 1
-                    ).first()
-                    
-                    if agent:
-                        # 更新代理商的 IPIPV 用户名和密码
-                        ipipv_data = response.get("data", {})
-                        agent.ipipv_username = ipipv_data.get("username")
-                        agent.ipipv_password = ipipv_data.get("password")
-                        db.commit()
-                        logger.info(f"[ProxyService] 更新代理商信息成功: {agent.username}")
-                    else:
-                        logger.warning(f"[ProxyService] 未找到代理商: app_username={params['appUsername']}")
-                except Exception as db_error:
-                    logger.error(f"[ProxyService] 更新数据库失败: {str(db_error)}")
-                    db.rollback()
-                finally:
-                    db.close()
-
+            if response.get("code") in [0, 200]:  # IPIPV API 返回0或200表示成功
                 return {
-                    "code": 0,  # 统一使用 0 表示成功
+                    "code": 0,
                     "msg": "success",
                     "data": response.get("data")
                 }
@@ -395,12 +361,7 @@ class ProxyService(IPIPVBaseAPI):
             return {
                 "code": 500,
                 "msg": error_msg,
-                "data": None,
-                "error_details": {
-                    "error_type": type(e).__name__,
-                    "error_message": str(e),
-                    "timestamp": datetime.now().isoformat()
-                }
+                "data": None
             }
 
     async def get_proxy_resources(self, username: str) -> Dict[str, Any]:
@@ -413,11 +374,14 @@ class ProxyService(IPIPVBaseAPI):
         Returns:
             Dict[str, Any]: 资源列表信息
         """
+        db = None
         try:
             logger.info(f"[ProxyService] 开始获取代理商资源列表: username={username}")
             
-            # 从数据库获取所有可用的动态代理产品
+            # 创建数据库会话
             db = SessionLocal()
+            
+            # 从数据库获取所有可用的动态代理产品
             products = db.query(ProductInventory).filter(
                 ProductInventory.enable == 1,
                 ProductInventory.proxy_type == 104  # 动态代理类型
@@ -463,7 +427,7 @@ class ProxyService(IPIPVBaseAPI):
                 # 构造请求参数，使用代理商的 username 和主账号的 app_username
                 params = {
                     "username": agent.ipipv_username,  # 使用代理商的 IPIPV 用户名
-                    "appUsername": main_user.app_username,  # 使用主账号的 app_username
+                    "appUsername": agent.username,  # 使用代理商的用户名作为 appUsername
                     "proxyType": 104,  # 动态代理类型
                     "productNo": product.product_no  # 使用数据库中的产品编号
                 }
@@ -542,4 +506,5 @@ class ProxyService(IPIPVBaseAPI):
                 "data": None
             }
         finally:
-            db.close() 
+            if db:
+                db.close() 

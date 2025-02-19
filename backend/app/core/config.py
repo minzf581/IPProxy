@@ -19,19 +19,23 @@ class Settings(BaseSettings):
     DATABASE_URL: str = f"sqlite:///{BASE_DIR}/app.db"
     
     # IPIPV API 配置
+    IPIPV_API_BASE_URL: str = "https://sandbox.ipipv.com"
+    IPIPV_API_KEY: str = "AK20241120145620"
+    IPIPV_API_SECRET: str = "bf3ffghlt0hpc4omnvc2583jt0fag6a4"
+    
+    # IPIPV 主账号配置
+    IPIPV_MAIN_USERNAME: str = "agent"
+    IPIPV_MAIN_AUTH_TYPE: int = 1
+    IPIPV_MAIN_AUTH_NAME: str = "测试公司"
+    IPIPV_MAIN_AUTH_NO: str = "3101112"
+    IPIPV_MAIN_PHONE: str = "13800138000"
+    IPIPV_MAIN_EMAIL: str = "test1006@test.com"
+    
+    # 兼容旧配置
     IPPROXY_API_URL: str = "https://sandbox.ipipv.com"
     IPPROXY_APP_KEY: str = "AK20241120145620"
     IPPROXY_APP_SECRET: str = "bf3ffghlt0hpc4omnvc2583jt0fag6a4"
-    
-    # IPIPV 主账号配置
-    IPPROXY_MAIN_USERNAME: str = "test1006"
-    IPPROXY_MAIN_PASSWORD: str = "test1006"
-    IPPROXY_MAIN_PHONE: str = "13800138000"
-    IPPROXY_MAIN_EMAIL: str = "test1006@test.com"
-    IPPROXY_MAIN_AUTH_TYPE: int = 1  # 企业认证
-    IPPROXY_MAIN_AUTH_NAME: str = "测试公司"
-    IPPROXY_MAIN_AUTH_NO: str = "3101112"
-    IPPROXY_MAIN_STATUS: int = 1  # 正常状态
+    IPPROXY_MAIN_USERNAME: str = "agent"
     
     # 日志配置
     LOGGING_CONFIG: ClassVar[Dict[str, Any]] = {
@@ -93,6 +97,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "allow"  # 允许额外的字段
 
 settings = Settings()
 
