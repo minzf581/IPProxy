@@ -1,4 +1,5 @@
 import type { AgentInfo, AgentStatistics, CreateAgentForm, UpdateAgentForm, AgentUser } from '@/types/agent';
+import type { BusinessResponse } from '@/types/business';
 import axios from 'axios';
 import { debug } from '@/utils/debug';
 import { API_ROUTES, API_PREFIX } from '@/shared/routes';
@@ -130,7 +131,7 @@ export async function createAgent(params: CreateAgentForm): Promise<ApiResponse<
     });
 
     const response = await agentApi.post<ApiResponse<AgentInfo>>(
-      API_ROUTES.AGENT.CREATE,
+      '/api/open/app/proxy/user/v2',  // 使用新的API路径
       requestData
     );
     

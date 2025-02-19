@@ -80,6 +80,7 @@ from app.models.dynamic_order import DynamicOrder
 from app.models.static_order import StaticOrder
 from sqlalchemy import or_
 import re
+from app.core.security import get_password_hash
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -163,34 +164,62 @@ async def create_agent(
                 detail=f"用户名 '{request.username}' 已存在，请使用其他用户名"
             )
 
-        # 准备用户参数
-        user_params = {
-            "username": request.username,
+        # 准备IPIPV API请求参数
+        ipipv_params = {
+            "appUsername": request.username,
             "password": request.password,
+            "phone": request.phone,
             "email": request.email,
-            "phone": request.phone,  # 添加联系方式
-            "is_agent": True,  # 标识为代理商
-            "balance": float(request.balance) if request.balance is not None else 0.0,
-            "remark": request.remark
+            "status": 1,  # 默认启用状态
+            "authType": 1  # 默认认证类型
         }
             
         # 记录日志时排除敏感信息
-        log_params = user_params.copy()
+        log_params = ipipv_params.copy()
         log_params.pop("password", None)
-        logger.info(f"[AgentRouter] 调用 create_user 的参数: {json.dumps(log_params, ensure_ascii=False)}")
+        logger.info(f"[AgentRouter] 调用 IPIPV API 的参数: {json.dumps(log_params, ensure_ascii=False)}")
         
-        # 调用用户服务创建用户
-        response = await user_service.create_user(**user_params)
+        # 调用IPIPV API创建用户
+        response = await user_service._make_request(
+            "api/open/app/user/v2",
+            ipipv_params
+        )
         
         if not response:
-            error_msg = "创建代理商失败：用户服务返回空响应"
+            error_msg = "创建代理商失败：IPIPV API返回空响应"
             logger.error(f"[AgentRouter] {error_msg}")
             raise HTTPException(status_code=400, detail=error_msg)
+            
+        if response.get("code") not in [0, 200]:
+            error_msg = f"创建代理商失败：{response.get('msg', '未知错误')}"
+            logger.error(f"[AgentRouter] {error_msg}")
+            raise HTTPException(status_code=400, detail=error_msg)
+
+        # 准备用户数据
+        user_params = {
+            "username": request.username,
+            "password": get_password_hash(request.password),
+            "email": request.email,
+            "phone": request.phone,
+            "is_agent": True,
+            "balance": float(request.balance) if request.balance is not None else 0.0,
+            "remark": request.remark,
+            "status": 1,
+            "app_username": request.username,  # 使用相同的用户名作为app_username
+            "ipipv_username": response.get("data", {}).get("username"),  # 保存IPIPV返回的用户名
+            "ipipv_password": response.get("data", {}).get("password")   # 保存IPIPV返回的密码
+        }
+
+        # 创建数据库用户记录
+        new_user = User(**user_params)
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
             
         return {
             "code": 0,
             "message": "代理商创建成功",
-            "data": response.to_dict()
+            "data": new_user.to_dict()
         }
         
     except HTTPException:
