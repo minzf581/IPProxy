@@ -1,13 +1,13 @@
-from sqlalchemy import Column, Integer, String, DECIMAL, TIMESTAMP, SmallInteger, Text, Float, CheckConstraint
+from sqlalchemy import Column, Integer, String, DECIMAL, TIMESTAMP, SmallInteger, Text, Float, CheckConstraint, Index
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from app.models.base import Base
+from app.models.base import Base, TimestampMixin
 
-class ProductInventory(Base):
+class ProductInventory(Base, TimestampMixin):
     __tablename__ = "product_inventory"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    product_no = Column(String(50), nullable=False, index=True, comment='产品编号')
+    product_no = Column(String(50), nullable=False, index=True, comment='产品编号', unique=True)
     product_name = Column(String(100), nullable=False, comment='商品名称')
     proxy_type = Column(SmallInteger, nullable=False, index=True, comment='代理类型')
     use_type = Column(String(20), nullable=False, comment='使用类型(1=账密,2=白名单,3=uuid)')
@@ -48,7 +48,14 @@ class ProductInventory(Base):
     ip_end = Column(String(15), comment='IP段结束地址')
 
     # 移除原有的价格约束
-    __table_args__ = ()
+    __table_args__ = (
+        Index('ix_product_inventory_product_no', 'product_no'),
+        Index('ix_product_inventory_proxy_type', 'proxy_type'),
+        Index('ix_product_inventory_area_code', 'area_code'),
+        Index('ix_product_inventory_country_code', 'country_code'),
+        Index('ix_product_inventory_city_code', 'city_code'),
+        Index('ix_product_inventory_supplier_code', 'supplier_code'),
+    )
 
     def to_dict(self):
         return {

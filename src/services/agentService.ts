@@ -118,11 +118,12 @@ export async function createAgent(params: CreateAgentForm): Promise<ApiResponse<
     const requestData = {
       username: params.username,
       password: params.password,
-      ...(params.email ? { email: params.email } : {}),
-      ...(params.remark ? { remark: params.remark } : {}),
-      ...(params.balance ? { balance: params.balance } : { balance: 1000.0 }),
-      ...(params.phone ? { phone: params.phone } : {}),
-      status: params.status ? (params.status === 'active' ? 1 : 0) : 1
+      email: params.email || undefined,
+      phone: params.phone || undefined,
+      remark: params.remark || undefined,
+      status: params.status === 'active' ? 1 : 0,
+      balance: params.balance || 0.0,
+      is_agent: true
     };
     
     debugAgent.info('Sending create agent request:', {
@@ -131,7 +132,7 @@ export async function createAgent(params: CreateAgentForm): Promise<ApiResponse<
     });
 
     const response = await agentApi.post<ApiResponse<AgentInfo>>(
-      '/api/open/app/proxy/user/v2',  // 使用新的API路径
+      '/api/open/app/proxy/user/v2',
       requestData
     );
     

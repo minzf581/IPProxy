@@ -259,11 +259,27 @@ async def create_user(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """创建新用户"""
+    return await create_user_handler(request, user_data, current_user, db)
+
+@router.post("/open/app/user/v2", response_model=UserResponse)
+async def create_user_v2(
+    request: Request,
+    user_data: UserCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """创建新用户（新版本）"""
+    return await create_user_handler(request, user_data, current_user, db)
+
+async def create_user_handler(
+    request: Request,
+    user_data: UserCreate,
+    current_user: User,
+    db: Session
+) -> UserResponse:
     """
-    创建新用户
-    - 管理员可以创建代理商和普通用户
-    - 代理商只能创建普通用户
-    - 普通用户不能创建用户
+    创建新用户的处理函数
     """
     logger.info(f"[用户创建] 收到请求: {user_data}")
 
@@ -348,8 +364,8 @@ async def create_user(
         logger.info(f"[用户创建] 成功创建用户: {new_user.username}")
         return new_user
 
-    except HTTPException as e:
-        raise e
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[用户创建] 发生错误: {str(e)}")
         db.rollback()

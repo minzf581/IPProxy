@@ -37,7 +37,9 @@ class User(Base, TimestampMixin):
     static_orders = relationship("StaticOrder", foreign_keys="StaticOrder.user_id", back_populates="user")
     agent_dynamic_orders = relationship("DynamicOrder", foreign_keys="DynamicOrder.agent_id", back_populates="agent")
     agent_static_orders = relationship("StaticOrder", foreign_keys="StaticOrder.agent_id", back_populates="agent")
-    prices = relationship("AgentPrice", back_populates="agent", cascade="all, delete-orphan")
+    agent_prices = relationship("AgentPrice", foreign_keys="[AgentPrice.agent_id]", back_populates="agent", cascade="all, delete-orphan")
+    user_prices = relationship("UserPrice", foreign_keys="[UserPrice.user_id]", back_populates="user")
+    managed_user_prices = relationship("UserPrice", foreign_keys="[UserPrice.agent_id]", back_populates="agent")
 
     def to_dict(self):
         return {

@@ -89,7 +89,6 @@ from app.config import settings
 from app.models.instance import Instance
 from app.services import ProxyService, UserService
 from app.routers.instance import sync_instances
-from app.models.main_user import MainUser
 from app.models.user import User
 from app.services.auth import get_current_user
 from app.services.dashboard import DashboardService
@@ -181,22 +180,22 @@ def update_resource_usage_from_api(db: Session, dynamic_resources: List[Resource
         pass
     return dynamic_resources, static_resources
 
-def sync_proxy_info(db: Session, main_user: MainUser):
+def sync_proxy_info(db: Session):
     """同步代理信息到数据库"""
     try:
         service = IPProxyService()
         
         # 同步住宅代理信息
         residential_info = service._make_request("/api/open/app/proxy/info/v2", {
-            "appUsername": main_user.app_username,
-            "username": main_user.username,
+            "appUsername": settings.IPPROXY_MAIN_USERNAME,
+            "username": settings.IPPROXY_MAIN_USERNAME,
             "proxyType": 1
         })
         
         # 同步数据中心代理信息
         datacenter_info = service._make_request("/api/open/app/proxy/info/v2", {
-            "appUsername": main_user.app_username,
-            "username": main_user.username,
+            "appUsername": settings.IPPROXY_MAIN_USERNAME,
+            "username": settings.IPPROXY_MAIN_USERNAME,
             "proxyType": 2
         })
         
@@ -217,15 +216,15 @@ def sync_proxy_info(db: Session, main_user: MainUser):
         logger.error(f"同步代理信息失败: {str(e)}")
         # 同步失败不抛出异常，继续使用数据库中的数据
 
-def sync_resource_usage(db: Session, main_user: MainUser):
+def sync_resource_usage(db: Session):
     """同步资源使用信息到数据库"""
     try:
         service = IPProxyService()
         
         # 获取流量使用统计
         statistics = service._make_request("/api/open/app/proxy/flow/use/log/v2", {
-            "appUsername": main_user.app_username,
-            "username": main_user.username,
+            "appUsername": settings.IPPROXY_MAIN_USERNAME,
+            "username": settings.IPPROXY_MAIN_USERNAME,
             "proxyType": 0,
             "page": 1,
             "pageSize": 10

@@ -2,14 +2,11 @@
 代理服务模块
 ==========
 
-此模块处理所有与代理相关的功能，包括：
-1. 动态代理管理
-2. 静态代理管理
-3. 代理池操作
-4. IP范围查询
-5. 价格计算
-
-此模块继承自IPIPVBaseAPI，使用其提供的基础通信功能。
+此模块提供所有与代理相关的功能，包括：
+1. 代理管理（创建、更新、查询）
+2. 代理统计
+3. 代理监控
+4. 代理配置
 
 使用示例：
 --------
@@ -29,19 +26,74 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from .ipipv_base_api import IPIPVBaseAPI
+from sqlalchemy.orm import Session
+from app.models.user import User
+from app.models.dashboard import ProxyInfo
+from app.core.security import get_password_hash
 import json
 import traceback
-from app.core.config import settings
-from app.database import SessionLocal
-from app.models.user import User
-from app.models.product_inventory import ProductInventory
-from app.models.main_user import MainUser
 
 logger = logging.getLogger(__name__)
 
 class ProxyService(IPIPVBaseAPI):
     """代理服务类，处理所有代理相关的操作"""
     
+    async def get_proxy_info(self, proxy_id: str) -> Optional[Dict[str, Any]]:
+        """获取代理信息"""
+        try:
+            logger.info(f"[ProxyService] 获取代理信息: proxy_id={proxy_id}")
+            return await self._make_request(f"api/open/app/proxy/{proxy_id}/v2")
+        except Exception as e:
+            logger.error(f"[ProxyService] 获取代理信息失败: {str(e)}")
+            return None
+            
+    async def create_proxy(self, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """创建代理"""
+        try:
+            logger.info(f"[ProxyService] 开始创建代理: {json.dumps(params, ensure_ascii=False)}")
+            return await self._make_request("api/open/app/proxy/v2", params)
+        except Exception as e:
+            logger.error(f"[ProxyService] 创建代理失败: {str(e)}")
+            return None
+            
+    async def update_proxy(self, proxy_id: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """更新代理信息"""
+        try:
+            logger.info(f"[ProxyService] 更新代理信息: proxy_id={proxy_id}")
+            return await self._make_request(f"api/open/app/proxy/{proxy_id}/v2", params)
+        except Exception as e:
+            logger.error(f"[ProxyService] 更新代理信息失败: {str(e)}")
+            return None
+            
+    async def delete_proxy(self, proxy_id: str) -> bool:
+        """删除代理"""
+        try:
+            logger.info(f"[ProxyService] 删除代理: proxy_id={proxy_id}")
+            result = await self._make_request(f"api/open/app/proxy/{proxy_id}/v2", method="DELETE")
+            return result is not None
+        except Exception as e:
+            logger.error(f"[ProxyService] 删除代理失败: {str(e)}")
+            return False
+            
+    async def get_proxy_list(self, params: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """获取代理列表"""
+        try:
+            logger.info(f"[ProxyService] 获取代理列表: {json.dumps(params, ensure_ascii=False)}")
+            result = await self._make_request("api/open/app/proxy/list/v2", params)
+            return result.get("list", []) if isinstance(result, dict) else []
+        except Exception as e:
+            logger.error(f"[ProxyService] 获取代理列表失败: {str(e)}")
+            return []
+            
+    async def get_proxy_statistics(self) -> Optional[Dict[str, Any]]:
+        """获取代理统计信息"""
+        try:
+            logger.info("[ProxyService] 获取代理统计信息")
+            return await self._make_request("api/open/app/proxy/statistics/v2")
+        except Exception as e:
+            logger.error(f"[ProxyService] 获取代理统计信息失败: {str(e)}")
+            return None
+
     async def create_dynamic_proxy(self, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         创建动态代理
@@ -63,24 +115,6 @@ class ProxyService(IPIPVBaseAPI):
             return await self._make_request("api/open/app/proxy/open/v2", params)
         except Exception as e:
             logger.error(f"创建动态代理失败: {str(e)}")
-            return None
-    
-    async def get_proxy_info(self, proxy_id: str) -> Optional[Dict[str, Any]]:
-        """
-        获取代理信息
-        
-        Args:
-            proxy_id: 代理ID
-            
-        Returns:
-            dict: 代理详细信息
-            None: 获取失败
-        """
-        try:
-            logger.info(f"获取代理信息: {proxy_id}")
-            return await self._make_request("api/open/app/proxy/info/v2", {"proxyId": proxy_id})
-        except Exception as e:
-            logger.error(f"获取代理信息失败: {str(e)}")
             return None
     
     async def refresh_proxy(self, proxy_id: str) -> bool:
@@ -395,16 +429,6 @@ class ProxyService(IPIPVBaseAPI):
                     "code": 200,
                     "msg": "success",
                     "data": []
-                }
-            
-            # 获取主账号信息
-            main_user = db.query(MainUser).first()
-            if not main_user:
-                logger.error("[ProxyService] 主账号不存在")
-                return {
-                    "code": 500,
-                    "msg": "主账号不存在",
-                    "data": None
                 }
             
             # 获取代理商信息，包括 IPIPV 平台的用户名

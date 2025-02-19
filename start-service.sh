@@ -89,10 +89,6 @@ if [ "$INIT_DB" = true ]; then
     PYTHONPATH=. python3 scripts/add_test_data.py 2>&1 | tee -a "$LOG_FILE"
 fi
 
-# 创建主账号
-log "创建主账号..."
-PYTHONPATH=. python3 scripts/create_main_user.py 2>&1 | tee -a "$LOG_FILE"
-
 # 启动后端服务
 log "启动后端服务..."
 PYTHONPATH=. python3 -m uvicorn app.main:app --reload --port 8000 2>&1 | tee -a "$LOG_FILE" &

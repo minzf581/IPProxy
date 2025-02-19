@@ -610,57 +610,6 @@ export class IPProxyAPI {
     }
   }
 
-  // 创建主账号
-  async createMainUser(params: {
-    phone: string;
-    email: string;
-    authType: number;
-    authName: string;
-    no: string;
-    status: number;
-  }): Promise<{
-    appUsername: string;
-    username: string;
-    password: string;
-    status: number;
-    authStatus: number;
-  }> {
-    try {
-      const response = await this.request<{
-        appUsername: string;
-        username: string;
-        password: string;
-        status: number;
-        authStatus: number;
-      }>('open/app/user/v2', {
-        ...params,
-        authType: 2,  // 个人实名
-        status: 1     // 正常状态
-      });
-      return response;
-    } catch (error) {
-      console.error('Failed to create main user:', error);
-      throw error;
-    }
-  }
-
-  // 创建主账号的产品
-  async createMainUserProduct(username: string, appUsername: string): Promise<void> {
-    try {
-      await this.request('open/app/product/create/v2', {
-        proxyType: 104,
-        productNo: 'PROXY_DYNAMIC',
-        username,
-        appUsername,
-        count: 1,
-        autoRenew: 0
-      });
-    } catch (error) {
-      console.error('Failed to create product for main user:', error);
-      throw error;
-    }
-  }
-
   // 获取用户列表
   async getUserList(params: {
     page: number;

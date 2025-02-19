@@ -34,6 +34,11 @@ const debug = {
   }
 };
 
+// 扩展 ApiResponse 接口
+interface ExtendedApiResponse<T> extends ApiResponse<T> {
+  msg?: string;
+}
+
 // 创建用户服务专用的 axios 实例
 const userApi = axios.create({
   baseURL: `${import.meta.env.VITE_API_URL}/api`,
@@ -89,7 +94,7 @@ export interface CreateUserParams {
   agent_id?: number;  // 代理商ID
 }
 
-export async function createUser(data: CreateUserParams): Promise<ApiResponse<User>> {
+export async function createUser(data: CreateUserParams): Promise<ExtendedApiResponse<User>> {
   try {
     debug.log('Creating user with data:', {
       ...data,
@@ -116,7 +121,7 @@ export async function createUser(data: CreateUserParams): Promise<ApiResponse<Us
       password: '******' // 隐藏密码
     });
 
-    const response = await userApi.post<ApiResponse<User>>('/open/app/user/create/v2', cleanData);
+    const response = await userApi.post<ExtendedApiResponse<User>>('/api/open/app/user/v2', cleanData);
     debug.log('Create user API response:', response.data);
 
     if (response.data.code !== 0) {
@@ -219,7 +224,7 @@ export async function deactivateBusinessUser(id: number): Promise<ApiResponse<vo
  * - 后端函数: get_user_profile (user.py)
  */
 export async function getCurrentUser(): Promise<User> {
-  const response = await api.get<ApiResponse<User>>('/auth/current-user');
+  const response = await api.get<ExtendedApiResponse<User>>('/auth/current-user');
   if (!response.data || response.data.code !== 0) {
     throw new Error(response.data?.msg || '获取用户信息失败');
   }

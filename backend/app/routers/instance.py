@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.main_user import MainUser
 from app.models.instance import Instance
 from app.services import ProxyService
+from app.core.config import settings
 import logging
 
 router = APIRouter(prefix="/api/open/app")
@@ -12,14 +12,9 @@ logger = logging.getLogger(__name__)
 @router.get("/instance/sync/v2")
 async def sync_instances(db: Session = Depends(get_db)):
     try:
-        # 获取主账号信息
-        main_user = db.query(MainUser).filter(MainUser.app_username == "admin").first()
-        if not main_user:
-            raise HTTPException(status_code=404, detail="Main user not found")
-
-        # 使用主账号的 app_username 作为实例编号
+        # 使用配置中的主账号
         params = {
-            "instanceNo": main_user.app_username,
+            "instanceNo": settings.IPPROXY_MAIN_USERNAME,
             "page": 1,
             "pageSize": 100
         }

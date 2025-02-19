@@ -17,7 +17,6 @@
 # - 数据模型：
 #   - User (app/models/user.py)
 #   - Transaction (app/models/transaction.py)
-#   - MainUser (app/models/main_user.py)
 # - 服务：
 #   - UserService (app/services/user_service.py)
 #   - ProxyService (app/services/proxy_service.py)
@@ -66,7 +65,6 @@ from typing import Dict, Any, List
 from pydantic import BaseModel, Field, validator
 from typing import Optional
 from app.services import UserService, ProxyService, AreaService
-from app.models.main_user import MainUser
 from app.services.auth import get_current_user
 from datetime import datetime, timedelta
 import logging
