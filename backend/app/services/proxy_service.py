@@ -38,6 +38,7 @@ from app.models.product_inventory import ProductInventory
 from app.core.config import settings
 from app.models.dynamic_order import DynamicOrder
 import uuid
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -281,77 +282,57 @@ class ProxyService(IPIPVBaseAPI):
             logger.error(f"获取IP范围列表失败: {str(e)}")
             return []
 
-    async def query_product(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        查询产品信息
-        
-        Args:
-            params: 请求参数
-            
-        Returns:
-            Dict[str, Any]: 产品信息
-        """
+    async def query_product(self, params: Dict[str, Any], db: Session) -> Dict[str, Any]:
+        """查询产品信息"""
         try:
-            logger.info("[ProxyService] 开始查询产品信息")
-            logger.info(f"[ProxyService] 原始请求参数: {params}")
+            logger.info(f"[ProxyService] 开始查询产品: {params}")
             
-            # 验证并规范化参数
-            required_params = ["regionCode", "countryCode", "cityCode", "proxyType"]
-            for param in required_params:
-                if param not in params:
-                    error_msg = f"缺少必要参数: {param}"
-                    logger.error(f"[ProxyService] {error_msg}")
-                    return {"code": 400, "msg": error_msg, "data": []}
+            # 构建基础查询
+            query = db.query(ProductInventory)
             
-            # 确保 proxyType 是整数
-            try:
-                if isinstance(params["proxyType"], str):
-                    params["proxyType"] = int(params["proxyType"])
-            except ValueError:
-                error_msg = f"proxyType 参数无法转换为整数: {params['proxyType']}"
-                logger.error(f"[ProxyService] {error_msg}")
-                return {"code": 400, "msg": error_msg, "data": []}
+            # 添加过滤条件
+            if "proxyType" in params:
+                proxy_type = params["proxyType"]
+                if isinstance(proxy_type, list):
+                    query = query.filter(ProductInventory.proxy_type.in_(proxy_type))
+                else:
+                    query = query.filter(ProductInventory.proxy_type == proxy_type)
+                
+            # 获取产品列表
+            products = query.filter(ProductInventory.enable == True).all()
             
-            # 构建请求参数
-            request_params = {
-                "regionCode": params["regionCode"],
-                "countryCode": params["countryCode"],
-                "cityCode": params["cityCode"],
-                "proxyType": params["proxyType"],
-                "appUsername": "test_user"
+            # 格式化响应数据
+            formatted_products = []
+            for product in products:
+                formatted_product = {
+                    "productNo": product.product_no,
+                    "name": product.product_name,
+                    "proxyType": product.proxy_type,
+                    "area": product.area_code,
+                    "country": product.country_code,
+                    "city": product.city_code,
+                    "price": float(product.global_price) if product.global_price else 0,
+                    "minAgentPrice": float(product.min_agent_price) if product.min_agent_price else 0,
+                    "stock": product.inventory,
+                    "status": product.enable,
+                    "flow": product.flow,
+                    "duration": product.duration,
+                    "unit": product.unit
+                }
+                formatted_products.append(formatted_product)
+            
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": formatted_products
             }
             
-            logger.info(f"[ProxyService] 处理后的请求参数: {request_params}")
-            
-            # 调用IPIPV API
-            try:
-                response = await self._make_request(
-                    path="/api/open/app/product/query/v2",
-                    params=request_params
-                )
-                logger.info(f"[ProxyService] API响应: {response}")
-                
-                return {
-                    "code": 0,
-                    "msg": "success",
-                    "data": response
-                }
-                
-            except Exception as e:
-                logger.error(f"[ProxyService] API调用失败: {str(e)}")
-                logger.error("[ProxyService] 错误堆栈:", exc_info=True)
-                return {
-                    "code": 500,
-                    "msg": f"API调用失败: {str(e)}",
-                    "data": []
-                }
-            
         except Exception as e:
-            logger.error(f"[ProxyService] 查询产品信息失败: {str(e)}")
-            logger.error("[ProxyService] 错误堆栈:", exc_info=True)
+            logger.error(f"[ProxyService] 查询产品失败: {str(e)}")
+            logger.error(traceback.format_exc())
             return {
                 "code": 500,
-                "msg": f"查询失败: {str(e)}",
+                "msg": f"查询产品失败: {str(e)}",
                 "data": []
             }
 
@@ -669,4 +650,208 @@ class ProxyService(IPIPVBaseAPI):
                 "code": 500,
                 "msg": f"获取已购资源列表失败: {str(e)}",
                 "data": None
-            } 
+            }
+
+    async def extract_proxy_by_password(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        通过账密方式提取代理
+        
+        Args:
+            params: 提取参数，包括：
+                - appUsername: 渠道商子账号名
+                - addressCode: 地址代码
+                - sessTime: 会话有效时间（分钟）
+                - num: 提取数量
+                - proxyType: 代理类型
+                - maxFlowLimit: 最大流量限制
+                
+        Returns:
+            Dict[str, Any]: 提取结果
+        """
+        try:
+            logger.info(f"[ProxyService] 开始账密提取代理: {json.dumps(params, ensure_ascii=False)}")
+            result = await self._make_request("api/open/app/proxy/draw/pwd/v2", params)
+            if result and result.get("code") == 0:
+                return {
+                    "code": 0,
+                    "message": "success",
+                    "data": {
+                        "url": result.get("data", {}).get("url", "")
+                    }
+                }
+            return {
+                "code": result.get("code", 500),
+                "message": result.get("msg", "提取失败"),
+                "data": None
+            }
+        except Exception as e:
+            error_msg = f"账密提取代理失败: {str(e)}"
+            logger.error(f"[ProxyService] {error_msg}")
+            logger.error(traceback.format_exc())
+            return {
+                "code": 500,
+                "message": error_msg,
+                "data": None
+            }
+
+    async def extract_proxy_by_api(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        通过API方式提取代理
+        
+        Args:
+            params: 提取参数，包括：
+                - appUsername: 渠道商主账号
+                - proxyType: 代理类型
+                - num: 提取数量
+                - addressCode: 地址代码
+                - protocol: 协议类型
+                - returnType: 返回数据格式
+                - delimiter: 分隔符
+                - maxFlowLimit: 最大流量限制
+                
+        Returns:
+            Dict[str, Any]: 提取结果
+        """
+        try:
+            logger.info(f"[ProxyService] 开始API提取代理: {json.dumps(params, ensure_ascii=False)}")
+            result = await self._make_request("api/open/app/proxy/draw/api/v2", params)
+            if result and result.get("code") == 0:
+                return {
+                    "code": 0,
+                    "message": "success",
+                    "data": {
+                        "url": result.get("data", {}).get("url", "")
+                    }
+                }
+            return {
+                "code": result.get("code", 500),
+                "message": result.get("msg", "提取失败"),
+                "data": None
+            }
+        except Exception as e:
+            error_msg = f"API提取代理失败: {str(e)}"
+            logger.error(f"[ProxyService] {error_msg}")
+            logger.error(traceback.format_exc())
+            return {
+                "code": 500,
+                "message": error_msg,
+                "data": None
+            }
+
+    async def sync_inventory(self, db: Session) -> Dict[str, Any]:
+        """同步代理产品库存"""
+        try:
+            logger.info("[ProxyService] 开始同步代理产品库存")
+            total_products = []
+            
+            # 定义需要同步的代理类型
+            proxy_types = [
+                {"type": 103, "productNo": "static_residential"},
+                {"type": 104, "productNo": "out_dynamic_1"},
+                {"type": 105, "productNo": "dynamic_residential"}
+            ]
+            
+            for proxy_config in proxy_types:
+                logger.info(f"[ProxyService] 开始同步代理类型 {proxy_config['type']} 的库存数据")
+                
+                # 构建请求参数，注意proxyType使用数组格式
+                params = {
+                    "appUsername": "test_user",
+                    "proxyType": [proxy_config['type']],  # 改为数组格式
+                    "productNo": proxy_config['productNo']
+                }
+                
+                logger.info(f"[ProxyService] 请求IPIPV API，参数: {json.dumps(params, ensure_ascii=False)}")
+                
+                # 调用API
+                result = await self._make_request("api/open/app/product/query/v2", params)
+                logger.info(f"[ProxyService] IPIPV API响应: {json.dumps(result, ensure_ascii=False)}")
+                
+                # 检查响应状态
+                if result.get("code") not in [0, 200]:
+                    logger.error(f"[ProxyService] API返回错误: {result.get('msg', '未知错误')}")
+                    continue
+                    
+                # 获取产品数据
+                products = result.get("data", [])
+                if not products:
+                    logger.info(f"[ProxyService] 未获取到代理类型 {proxy_config['type']} 的库存数据")
+                    continue
+                    
+                if isinstance(products, list):
+                    total_products.extend(products)
+                elif isinstance(products, dict):
+                    total_products.append(products)
+                    
+            logger.info(f"[ProxyService] 总共获取到 {len(total_products)} 个库存数据")
+            
+            # 更新数据库
+            for product in total_products:
+                try:
+                    # 查找现有记录
+                    inventory = db.query(ProductInventory).filter(
+                        ProductInventory.product_no == product["productNo"]
+                    ).first()
+                    
+                    # 准备更新数据
+                    product_data = {
+                        "product_no": product["productNo"],
+                        "product_name": product.get("productName", ""),
+                        "proxy_type": product.get("proxyType", 0),
+                        "use_type": product.get("useType", ""),
+                        "protocol": product.get("protocol", ""),
+                        "use_limit": product.get("useLimit", 0),
+                        "sell_limit": product.get("sellLimit", 0),
+                        "area_code": product.get("areaCode", ""),
+                        "country_code": product.get("countryCode", ""),
+                        "state_code": product.get("stateCode", ""),
+                        "city_code": product.get("cityCode", ""),
+                        "detail": product.get("detail", ""),
+                        "cost_price": Decimal(str(product.get("costPrice", "0"))),
+                        "inventory": product.get("inventory", 0),
+                        "enable": product.get("enable", 1),
+                        "updated_at": datetime.now()
+                    }
+                    
+                    if inventory:
+                        # 更新现有记录
+                        for key, value in product_data.items():
+                            setattr(inventory, key, value)
+                    else:
+                        # 创建新记录
+                        inventory = ProductInventory(**product_data)
+                        db.add(inventory)
+                        
+                except Exception as e:
+                    logger.error(f"[ProxyService] 处理产品数据失败: {str(e)}, product={product}")
+                    continue
+                    
+            db.commit()
+            logger.info("[ProxyService] 库存数据同步完成")
+            
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "total": len(total_products)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"[ProxyService] 同步库存数据失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            db.rollback()
+            return {
+                "code": 500,
+                "msg": f"同步库存数据失败: {str(e)}",
+                "data": None
+            }
+
+def get_proxy_service() -> ProxyService:
+    """
+    工厂函数，用于创建 ProxyService 实例
+    
+    Returns:
+        ProxyService: 代理服务实例
+    """
+    return ProxyService() 

@@ -56,22 +56,25 @@
    - 考虑并发请求处理
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
+from typing import Dict, Any, List, Optional
+import logging
+import traceback
+import json
+from datetime import datetime
+from app.core.config import settings
+
 from app.database import get_db
+from app.models.user import User
 from app.models.dashboard import ProxyInfo
 from app.models.transaction import FlowUsage
 from app.models.product_inventory import ProductInventory
-from app.models.user import User
-from app.core.deps import get_proxy_service
-from app.services import ProxyService
-from typing import Dict, Any, List, Optional
-import logging
-import json
-from datetime import datetime
-import traceback
-from app.core.config import settings
-from app.core.deps import get_current_user
+from app.services.auth import get_current_user
+from app.core.deps import get_proxy_service, get_area_service, get_product_service
+from app.services.proxy_service import ProxyService
+from app.services.area_service import AreaService
+from app.services.product_service import ProductService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -290,214 +293,88 @@ async def query_product(
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """查询产品信息"""
-    func_name = "query_product"
     try:
-        logger.info(f"[{func_name}] 开始处理请求")
-        logger.info(f"[{func_name}] 请求参数类型: {type(request)}")
-        logger.info(f"[{func_name}] 请求参数内容: {json.dumps(request, ensure_ascii=False)}")
-        
-        # 处理加密参数
-        if "params" in request:
-            try:
-                encrypted_params = request.get("params")
-                logger.info(f"[{func_name}] 收到加密参数: {encrypted_params}")
-                decrypted_params = proxy_service._decrypt_response(encrypted_params)
-                logger.info(f"[{func_name}] 解密后参数: {decrypted_params}")
-                if not isinstance(decrypted_params, dict):
-                    logger.error(f"[{func_name}] 解密后参数格式错误: {type(decrypted_params)}")
-                    return {
-                        "code": 400,
-                        "msg": "参数格式错误",
-                        "data": []
-                    }
-                request = decrypted_params
-            except Exception as e:
-                logger.error(f"[{func_name}] 解密参数失败: {str(e)}")
-                return {
-                    "code": 400,
-                    "msg": "参数解密失败",
-                    "data": []
-                }
-
-        # 参数名称映射
-        param_mapping = {
-            "regionCode": "regionCode",
-            "countryCode": "countryCode",
-            "cityCode": "cityCode",
-            "proxyType": "proxyType"
-        }
-        
-        mapped_request = {}
-        for frontend_key, backend_key in param_mapping.items():
-            if frontend_key in request:
-                mapped_request[backend_key] = request[frontend_key]
-        
-        # 验证必要参数
-        required_fields = ["regionCode", "countryCode", "cityCode", "proxyType"]
-        missing_fields = [field for field in required_fields if field not in mapped_request]
-        if missing_fields:
-            error_msg = f"缺少必要参数: {', '.join(missing_fields)}"
-            logger.error(f"[{func_name}] {error_msg}")
-            return {
-                "code": 400,
-                "msg": error_msg,
-                "data": []
-            }
-            
-        # 处理 proxyType 参数
-        try:
-            proxy_type = mapped_request["proxyType"]
-            if isinstance(proxy_type, str):
-                if proxy_type.lower() == "static":
-                    proxy_type = 1
-                elif proxy_type.lower() == "dynamic":
-                    proxy_type = 2
-                else:
-                    proxy_type = int(proxy_type)
-            mapped_request["proxyType"] = [proxy_type]  # 转换为数组格式
-        except (ValueError, TypeError) as e:
-            logger.error(f"[{func_name}] proxyType 转换失败: {str(e)}")
-            return {
-                "code": 400,
-                "msg": "proxyType 参数格式错误",
-                "data": []
-            }
-            
-        # 调用服务
-        try:
-            response = await proxy_service.query_product(mapped_request)
-            logger.info(f"[{func_name}] 服务调用成功")
-            logger.info(f"[{func_name}] 响应内容: {json.dumps(response, ensure_ascii=False)}")
-            
-            # 如果没有找到IP段，返回默认的ALL选项
-            if not response or len(response) == 0:
-                default_response = [{
-                    "ipStart": "ALL",
-                    "ipEnd": "ALL",
-                    "ipCount": 0,
-                    "stock": 999999,
-                    "staticType": request.get("staticType", "1"),
-                    "countryCode": mapped_request["countryCode"],
-                    "cityCode": mapped_request["cityCode"],
-                    "regionCode": mapped_request["regionCode"],
-                    "price": 0,
-                    "status": 1
-                }]
-                return {
-                    "code": 0,
-                    "msg": "success",
-                    "data": default_response
-                }
-                
-            return {
-                "code": 0,
-                "msg": "success",
-                "data": response
-            }
-        except Exception as e:
-            logger.error(f"[{func_name}] 服务调用失败: {str(e)}")
-            logger.error(f"[{func_name}] 错误堆栈:", exc_info=True)
-            return {
-                "code": 500,
-                "msg": f"服务调用失败: {str(e)}",
-                "data": []
-            }
-            
+        logger.info(f"[query_product] 开始查询产品: {request}")
+        return await proxy_service.query_product(request, db)
     except Exception as e:
-        logger.error(f"[{func_name}] Error: {str(e)}")
+        logger.error(f"[query_product] 查询产品失败: {str(e)}")
+        logger.error(traceback.format_exc())
         return {
             "code": 500,
-            "msg": str(e),
+            "msg": f"查询产品失败: {str(e)}",
             "data": []
         }
 
 @router.get("/business/dynamic-proxy/products")
 async def get_dynamic_proxy_products(
     proxy_service: ProxyService = Depends(get_proxy_service),
+    product_service: ProductService = Depends(get_product_service),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """获取动态代理产品区域列表"""
-    func_name = "get_dynamic_proxy_products"
+    """获取动态代理产品列表"""
     try:
-        log_request_info(func_name)
+        logger.debug("[get_dynamic_proxy_products] 开始查询动态代理产品")
         
-        # 记录数据库会话信息
-        logger.debug(f"[{func_name}] Database session: {db}")
+        # 从数据库查询动态代理产品
+        products = db.query(ProductInventory).filter(
+            ProductInventory.proxy_type == 104,  # 动态代理类型
+            ProductInventory.enable == True
+        ).all()
         
-        # 从数据库中获取已同步的动态代理区域列表
-        logger.debug(f"[{func_name}] 开始查询动态代理产品")
-        query = db.query(ProductInventory).filter(
-            ProductInventory.enable == 1,
-            ProductInventory.proxy_type == 104  # 动态代理类型
-        )
+        # 如果没有产品数据，直接返回空数组
+        if not products:
+            logger.info("[get_dynamic_proxy_products] 未找到产品数据")
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": []
+            }
         
-        # 记录SQL查询语句
-        logger.debug(f"[{func_name}] SQL Query: {query.statement}")
+        logger.debug(f"[get_dynamic_proxy_products] 查询到 {len(products)} 个产品")
         
-        products = query.all()
-        
-        # 记录查询结果
-        logger.debug(f"[{func_name}] 查询到 {len(products)} 个产品")
-        
-        # 记录每个产品的详细信息
+        # 格式化产品数据
+        formatted_products = []
         for product in products:
-            logger.debug(f"[{func_name}] 产品详细信息:")
-            logger.debug(f"  - product_no: {product.product_no}")
-            logger.debug(f"  - area_code: {product.area_code}")
-            logger.debug(f"  - country_code: {product.country_code}")
-            logger.debug(f"  - city_code: {product.city_code}")
-            logger.debug(f"  - global_price: {product.global_price}")
-            logger.debug(f"  - enable: {product.enable}")
-            logger.debug(f"  - proxy_type: {product.proxy_type}")
-            logger.debug(f"  - 所有属性: {vars(product)}")
+            logger.debug(f"[get_dynamic_proxy_products] 处理产品: {product.product_no}")
+            formatted_product = {
+                "id": product.id,
+                "type": product.product_no,
+                "proxyType": product.proxy_type,
+                "area": product.area_code or "",
+                "country": product.country_code or "",
+                "city": product.city_code or "",
+                "ipRange": product.ip_start + "-" + product.ip_end if product.ip_start and product.ip_end else "",
+                "price": float(product.global_price) if product.global_price else 0,
+                "isGlobal": True,  # 默认为全局产品
+                "stock": product.inventory,
+                "minAgentPrice": float(product.min_agent_price) if product.min_agent_price else 0,
+                "globalPrice": float(product.global_price) if product.global_price else 0,
+                "updatedAt": product.updated_at.isoformat() if product.updated_at else None,
+                "createdAt": product.created_at.isoformat() if product.created_at else None,
+                "key": product.id,
+                "name": product.product_name,
+                "flow": product.flow,
+                "duration": product.duration,
+                "unit": product.unit
+            }
+            formatted_products.append(formatted_product)
         
-        # 转换为前端需要的格式，添加默认区域信息
-        result = []
-        for product in products:
-            logger.debug(f"[{func_name}] 处理产品: {product.product_no}")
-            if product.product_no == 'out_dynamic_1':
-                result.append({
-                    "productNo": product.product_no,
-                    "areaCode": "GLOBAL",  # 默认全球
-                    "countryCode": "ALL",   # 默认所有国家
-                    "cityCode": "ALL",      # 默认所有城市
-                    "price": float(product.global_price or 0),
-                    "status": product.enable,
-                    "name": product.product_name or "海外动态代理"
-                })
-            else:
-                result.append({
-                    "productNo": product.product_no,
-                    "areaCode": product.area_code or "",
-                    "countryCode": product.country_code or "",
-                    "cityCode": product.city_code or "",
-                    "price": float(product.global_price or 0),
-                    "status": product.enable,
-                    "name": product.product_name
-                })
-            
         response = {
             "code": 0,
             "msg": "success",
-            "data": result
+            "data": formatted_products
         }
         
-        # 记录响应信息
-        log_response_info(func_name, response)
+        logger.info(f"[get_dynamic_proxy_products] Response: {json.dumps(response)}")
         return response
         
     except Exception as e:
-        logger.error(f"[{func_name}] Error: {str(e)}", exc_info=True)
-        logger.error(f"[{func_name}] Stack trace:", stack_info=True)
+        logger.error(f"[get_dynamic_proxy_products] 获取产品列表失败: {str(e)}")
+        logger.error(traceback.format_exc())
         return {
             "code": 500,
             "msg": f"获取产品列表失败: {str(e)}",
-            "data": None,
-            "error_details": {
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "timestamp": datetime.now().isoformat()
-            }
+            "data": []
         }
 
 @router.post("/business/dynamic-proxy/create-user")
@@ -675,3 +552,152 @@ async def get_proxy_resources(
                 "message": f"获取代理资源列表失败: {str(e)}"
             }
         )
+
+@router.post("/business/dynamic-proxy/extract")
+async def extract_dynamic_proxy(
+    request: Dict[str, Any],
+    proxy_service: ProxyService = Depends(get_proxy_service),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """提取动态代理"""
+    func_name = "extract_dynamic_proxy"
+    try:
+        log_request_info(func_name, request=request)
+        
+        # 验证请求参数
+        if not request.get("extractConfig"):
+            raise HTTPException(status_code=400, detail="提取配置不能为空")
+            
+        extract_config = request["extractConfig"]
+        method = extract_config.get("method")
+        if not method:
+            raise HTTPException(status_code=400, detail="提取方式不能为空")
+            
+        # 构建基础参数
+        base_params = {
+            "appUsername": current_user.username,
+            "proxyType": 104,  # 动态代理类型
+            "addressCode": request.get("addressCode"),
+            "maxFlowLimit": request.get("maxFlowLimit")
+        }
+        
+        # 根据提取方式调用不同的API
+        if method == "password":
+            params = {
+                **base_params,
+                "sessTime": extract_config.get("validTime", 5),
+                "num": extract_config.get("quantity", 1)
+            }
+            response = await proxy_service.extract_proxy_by_password(params)
+        else:  # method == "api"
+            params = {
+                **base_params,
+                "protocol": extract_config.get("protocol", "socks5"),
+                "returnType": extract_config.get("dataFormat", "txt"),
+                "delimiter": extract_config.get("delimiter", "1") if extract_config.get("dataFormat") == "txt" else None
+            }
+            response = await proxy_service.extract_proxy_by_api(params)
+            
+        log_response_info(func_name, response)
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = f"提取动态代理失败: {str(e)}"
+        logger.error(f"[{func_name}] {error_msg}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=error_msg)
+
+@router.get("/open/app/product/area/v2")
+async def get_product_area_list(
+    proxyType: int,
+    productNo: str,
+    proxy_service: ProxyService = Depends(get_proxy_service),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """获取产品区域列表"""
+    func_name = "get_product_area_list"
+    try:
+        logger.info(f"[{func_name}] 开始获取产品区域列表: proxyType={proxyType}, productNo={productNo}")
+        
+        # 调用IPIPV API获取区域列表
+        response = await proxy_service._make_request(
+            "api/open/app/product/area/v2",
+            {
+                "proxyType": proxyType,
+                "productNo": productNo,
+                "version": "v2"
+            }
+        )
+        
+        logger.info(f"[{func_name}] API响应: {json.dumps(response, ensure_ascii=False)}")
+        
+        # 确保返回的数据是数组格式
+        area_data = []
+        if isinstance(response, dict) and "data" in response:
+            area_data = response["data"]
+        elif isinstance(response, list):
+            area_data = response
+            
+        if not isinstance(area_data, list):
+            area_data = []
+            
+        logger.info(f"[{func_name}] 处理后的区域数据: {json.dumps(area_data, ensure_ascii=False)}")
+        
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": area_data
+        }
+        
+    except Exception as e:
+        logger.error(f"[{func_name}] 获取产品区域列表失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {
+            "code": 500,
+            "msg": f"获取产品区域列表失败: {str(e)}",
+            "data": []
+        }
+
+@router.post("/business/dynamic-proxy/sync-inventory")
+async def sync_inventory(
+    proxy_service: ProxyService = Depends(get_proxy_service),
+    area_service: AreaService = Depends(get_area_service),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """同步库存和地域数据"""
+    try:
+        logger.info("[ProxyRouter] 开始同步库存和地域数据")
+        
+        # 同步地域数据
+        area_result = await area_service.sync_area_data(db)
+        if area_result["code"] != 0:
+            logger.error(f"[ProxyRouter] 同步地域数据失败: {area_result['msg']}")
+            return area_result
+            
+        logger.info("[ProxyRouter] 地域数据同步完成，开始同步库存")
+        
+        # 同步库存数据
+        inventory_result = await proxy_service.sync_inventory(db)
+        if inventory_result["code"] != 0:
+            logger.error(f"[ProxyRouter] 同步库存失败: {inventory_result['msg']}")
+            return inventory_result
+            
+        logger.info("[ProxyRouter] 库存同步完成")
+        
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": "同步完成"
+        }
+        
+    except Exception as e:
+        error_msg = f"同步失败: {str(e)}"
+        logger.error(f"[ProxyRouter] {error_msg}")
+        logger.error(traceback.format_exc())
+        return {
+            "code": 500,
+            "msg": error_msg,
+            "data": None
+        }

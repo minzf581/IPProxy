@@ -1033,19 +1033,24 @@ async def get_agent_users(
 ) -> Dict[str, Any]:
     """获取代理商名下的用户列表"""
     try:
-        logger.info(f"获取代理商用户列表: agent_id={id}, page={page}, pageSize={pageSize}, status={status}")
+        logger.info(f"[AgentRouter] 开始获取代理商用户列表: agent_id={id}, page={page}, pageSize={pageSize}, status={status}")
         
         # 检查代理商是否存在
         agent = db.query(User).filter(User.id == id, User.is_agent == True).first()
-        if not agent:
-            raise HTTPException(status_code=404, detail={"code": 404, "message": "代理商不存在"})
+        logger.info(f"[AgentRouter] 查询代理商结果: {agent.to_dict() if agent else None}")
         
-        # 检查权限：管理员可以查看所有代理商的用户，代理商只能查看自己的用户
+        if not agent:
+            logger.error(f"[AgentRouter] 代理商不存在: id={id}")
+            return {"code": 404, "message": "代理商不存在", "data": None}
+        
+        # 检查权限
         if not current_user.is_admin and current_user.id != id:
-            raise HTTPException(status_code=403, detail={"code": 403, "message": "没有权限查看此代理商的用户"})
+            logger.error(f"[AgentRouter] 权限不足: current_user_id={current_user.id}, agent_id={id}")
+            return {"code": 403, "message": "没有权限查看此代理商的用户", "data": None}
         
         # 构建查询
         query = db.query(User).filter(User.agent_id == id)
+        logger.info(f"[AgentRouter] 基础查询SQL: {str(query)}")
         
         # 添加状态过滤
         if status:
@@ -1053,15 +1058,19 @@ async def get_agent_users(
                 query = query.filter(User.status == 1)
             elif status == 'disabled':
                 query = query.filter(User.status == 0)
+            logger.info(f"[AgentRouter] 添加状态过滤后的SQL: {str(query)}")
         
         # 计算总数
         total = query.count()
+        logger.info(f"[AgentRouter] 查询到的总记录数: {total}")
         
         # 分页查询
         users = query.order_by(User.created_at.desc()) \
             .offset((page - 1) * pageSize) \
             .limit(pageSize) \
             .all()
+        
+        logger.info(f"[AgentRouter] 查询到的用户数量: {len(users)}")
         
         # 转换为响应格式
         user_list = []
@@ -1074,24 +1083,30 @@ async def get_agent_users(
                 "balance": float(user.balance) if user.balance is not None else 0.0,
                 "remark": user.remark,
                 "created_at": user.created_at.isoformat() if user.created_at else None,
-                "updated_at": user.updated_at.isoformat() if user.updated_at else None
+                "updated_at": user.updated_at.isoformat() if user.updated_at else None,
+                "app_username": user.app_username,
+                "phone": user.phone
             }
             user_list.append(user_dict)
+            logger.info(f"[AgentRouter] 处理用户数据: {user_dict}")
+        
+        logger.info(f"[AgentRouter] 返回用户列表成功: total={total}, current_page={page}, page_size={pageSize}")
         
         return {
             "code": 0,
             "message": "获取用户列表成功",
             "data": {
                 "list": user_list,
-                "total": total
+                "total": total,
+                "page": page,
+                "pageSize": pageSize
             }
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"获取代理商用户列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
+        logger.error(f"[AgentRouter] 获取代理商用户列表失败: {str(e)}")
+        logger.error(f"[AgentRouter] 错误详情: {traceback.format_exc()}")
+        return {"code": 500, "message": f"获取用户列表失败: {str(e)}", "data": None}
 
 class DynamicProxyParam(BaseModel):
     productNo: str

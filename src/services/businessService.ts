@@ -4,6 +4,7 @@ import type {
   StaticBusinessOrder, 
   BusinessResponse 
 } from '@/types/business';
+import type { ExtractConfig } from '@/types/dynamicProxy';
 import { API_PREFIX } from '@/shared/routes';
 
 export async function submitDynamicOrder(data: DynamicBusinessOrder): Promise<BusinessResponse> {
@@ -77,9 +78,27 @@ export async function saveDynamicProxyAreas(data: {
 }
 
 export async function getDynamicProxyProducts(): Promise<BusinessResponse> {
-  return request('/api/business/dynamic-proxy/products', {
-    method: 'GET'
-  });
+  try {
+    const response = await request<BusinessResponse>('/api/business/dynamic-proxy/products', {
+      method: 'GET'
+    });
+    
+    // 记录响应数据，方便调试
+    console.log('[API Response] getDynamicProxyProducts:', {
+      status: response.status,
+      data: response.data
+    });
+    
+    // 确保返回正确的数据结构
+    return {
+      code: response.data?.code || 0,
+      msg: response.data?.msg || 'success',
+      data: response.data?.data || []
+    };
+  } catch (error) {
+    console.error('[API Error] getDynamicProxyProducts:', error);
+    throw error;
+  }
 }
 
 export async function createProxyUser(data: {
@@ -106,4 +125,15 @@ export async function createProxyUser(data: {
     console.error('[API Error]', error);
     throw error;
   }
+}
+
+export async function extractDynamicProxy(data: {
+  addressCode: string;
+  maxFlowLimit?: number;
+  extractConfig: ExtractConfig;
+}): Promise<BusinessResponse> {
+  return request(`${API_PREFIX.BUSINESS}/dynamic-proxy/extract`, {
+    method: 'POST',
+    data
+  });
 }

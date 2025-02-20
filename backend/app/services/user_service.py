@@ -242,3 +242,12 @@ class UserService(IPIPVBaseAPI):
         except Exception as e:
             logger.error(f"获取用户列表失败: {str(e)}")
             return [] 
+
+def get_user_service() -> UserService:
+    """
+    工厂函数，用于创建 UserService 实例
+    
+    Returns:
+        UserService: 用户服务实例
+    """
+    return UserService() 

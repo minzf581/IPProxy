@@ -503,109 +503,106 @@ async def get_agent_dashboard(
     try:
         logger.info(f"[DashboardRouter] 获取代理商仪表盘: agent_id={agent_id}")
         
-        # 权限检查
-        if not current_user.is_admin and current_user.id != agent_id:
-            raise HTTPException(status_code=403, detail="没有权限查看此代理商的仪表盘")
-            
-        # 查找代理商
+        # 从数据库获取代理商信息
         agent = db.query(User).filter(
             User.id == agent_id,
             User.is_agent == True
         ).first()
         
         if not agent:
-            raise HTTPException(status_code=404, detail="代理商不存在")
+            return {
+                "code": 404,
+                "msg": "代理商不存在",
+                "data": None
+            }
             
-        # 获取当前月份的开始和结束时间
-        now = datetime.now()
-        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        # 获取代理商统计数据
+        total_recharge = get_total_recharge(db, agent_id)
+        total_consumption = get_total_consumption(db, agent_id)
+        month_recharge = get_month_recharge(db, agent_id)
+        month_consumption = get_month_consumption(db, agent_id)
+        last_month_consumption = get_last_month_consumption(db, agent_id)
         
-        # 查询累计充值（所有增加额度的订单总和）
-        total_recharge = db.query(func.sum(Transaction.amount)).filter(
-            Transaction.agent_id == agent_id,
-            Transaction.user_id == Transaction.agent_id,  # 确保是代理商自己的交易
-            Transaction.type == "recharge",
-            Transaction.status == "success"
-        ).scalar() or 0
+        # 获取资源使用情况
+        dynamic_resources = get_dynamic_resources_usage(db, agent_id)
+        static_resources = get_static_resources_usage(db, agent_id)
         
-        # 查询本月充值
-        monthly_recharge = db.query(func.sum(Transaction.amount)).filter(
-            Transaction.agent_id == agent_id,
-            Transaction.user_id == Transaction.agent_id,  # 确保是代理商自己的交易
-            Transaction.type == "recharge",
-            Transaction.status == "success",
-            Transaction.created_at >= month_start
-        ).scalar() or 0
+        response_data = {
+            "agent": {
+                "id": agent.id,
+                "username": agent.username,
+                "balance": float(agent.balance),
+                "status": "active" if agent.status == 1 else "inactive",
+                "created_at": agent.created_at.isoformat() if agent.created_at else None
+            },
+            "statistics": {
+                "totalRecharge": float(total_recharge),
+                "totalConsumption": float(total_consumption),
+                "monthRecharge": float(month_recharge),
+                "monthConsumption": float(month_consumption),
+                "lastMonthConsumption": float(last_month_consumption),
+                "balance": float(agent.balance)
+            },
+            "dynamicResources": dynamic_resources,
+            "staticResources": static_resources
+        }
         
-        # 查询累计消费
-        total_consumption = db.query(func.sum(Transaction.amount)).filter(
-            Transaction.agent_id == agent_id,
-            Transaction.type == "consume",
-            Transaction.status == "success"
-        ).scalar() or 0
-        
-        # 查询本月消费
-        monthly_consumption = db.query(func.sum(Transaction.amount)).filter(
-            Transaction.agent_id == agent_id,
-            Transaction.type == "consume",
-            Transaction.status == "success",
-            Transaction.created_at >= month_start
-        ).scalar() or 0
-        
-        # 查询用户数量
-        total_users = db.query(func.count(User.id)).filter(
-            User.agent_id == agent_id
-        ).scalar() or 0
-        
-        # 查询活跃用户数（本月有消费记录的用户）
-        active_users = db.query(func.count(distinct(Transaction.user_id))).filter(
-            Transaction.agent_id == agent_id,
-            Transaction.type == "consume",
-            Transaction.status == "success",
-            Transaction.created_at >= month_start
-        ).scalar() or 0
-        
-        # 查询订单数量
-        total_orders = db.query(func.count(Transaction.id)).filter(
-            Transaction.agent_id == agent_id,
-            Transaction.type == "consume",
-            Transaction.status == "success"
-        ).scalar() or 0
-        
-        # 查询本月订单数
-        monthly_orders = db.query(func.count(Transaction.id)).filter(
-            Transaction.agent_id == agent_id,
-            Transaction.type == "consume",
-            Transaction.status == "success",
-            Transaction.created_at >= month_start
-        ).scalar() or 0
+        logger.info(f"[DashboardRouter] 返回代理商仪表盘数据: {json.dumps(response_data, ensure_ascii=False)}")
         
         return {
             "code": 0,
-            "message": "获取仪表盘数据成功",
-            "data": {
-                "agent": {
-                    "id": agent.id,
-                    "username": agent.username,
-                    "balance": float(agent.balance or 0)
-                },
-                "statistics": {
-                    "total_recharge": float(total_recharge),
-                    "monthly_recharge": float(monthly_recharge),
-                    "total_consumption": float(total_consumption),
-                    "monthly_consumption": float(monthly_consumption),
-                    "total_users": total_users,
-                    "active_users": active_users,
-                    "total_orders": total_orders,
-                    "monthly_orders": monthly_orders,
-                    "balance": float(agent.balance or 0)
-                }
-            }
+            "msg": "success",
+            "data": response_data
         }
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"[DashboardRouter] 获取代理商仪表盘失败: {str(e)}")
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "code": 500,
+            "msg": f"获取代理商仪表盘失败: {str(e)}",
+            "data": None
+        }
+
+@router.get("/dashboard/agent/statistics")
+async def get_agent_statistics(
+    agentId: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """获取代理商统计数据"""
+    try:
+        logger.info(f"[Dashboard] 开始获取代理商统计数据: agentId={agentId}")
+        
+        # 获取代理商信息
+        agent = db.query(User).filter(
+            User.id == agentId,
+            User.is_agent == True
+        ).first()
+        
+        if not agent:
+            logger.error(f"[Dashboard] 代理商不存在: agentId={agentId}")
+            return {
+                "code": 404,
+                "msg": "代理商不存在",
+                "data": None
+            }
+            
+        # 返回代理商统计数据
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "balance": float(agent.balance or 0),
+                "totalUsers": len(agent.users) if agent.users else 0,
+                "activeUsers": len([u for u in agent.users if u.status == 'active']) if agent.users else 0
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"[Dashboard] 获取代理商统计数据失败: {str(e)}")
+        return {
+            "code": 500,
+            "msg": f"获取代理商统计数据失败: {str(e)}",
+            "data": None
+        }

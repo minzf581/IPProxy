@@ -25,6 +25,10 @@ from app.config import settings
 from app.core.security import verify_token
 from app.models.user import User
 import logging
+from app.services.proxy_service import get_proxy_service
+from app.services.area_service import get_area_service
+from app.services.user_service import get_user_service
+from app.services.product_service import get_product_service
 
 logger = logging.getLogger(__name__)
 

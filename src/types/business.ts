@@ -8,11 +8,13 @@ export interface ProductPrice {
   type: string;
   proxyType: number;
   area: string;
+  state?: string;
   country?: string;
   city?: string;
   price: number;
   status: number;
   areaName: string;
+  stateName?: string;
   countryName?: string;
   cityName?: string;
   ipRange?: string;
@@ -22,6 +24,8 @@ export interface ProductPrice {
   globalPrice?: number;
   updatedAt?: string;
   createdAt?: string;
+  flow?: number;
+  productNo: string;
 }
 
 export interface AgentListResponse {
@@ -81,4 +85,9 @@ export interface BusinessResponse {
   code: number;
   msg: string;
   data?: any;
+}
+
+export interface FilterOption {
+  value: string;
+  text: string;
 } 

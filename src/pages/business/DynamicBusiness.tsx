@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Card, Table, Button, Space, Typography, Select, Input, InputNumber, Alert, message } from 'antd';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Card, Table, Button, Space, Typography, Select, Input, InputNumber, Alert, message, Modal } from 'antd';
 import { PageContainer } from '@ant-design/pro-layout';
 import { SyncOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import type { Key } from 'react';
 import type { ColumnType } from 'antd/es/table';
 import { useAuth } from '@/hooks/useAuth';
+import request from '@/utils/request';
 import { 
   getDynamicProxyProducts,
-  createProxyUser 
+  createProxyUser,
+  extractDynamicProxy
 } from '@/services/businessService';
 import { 
   getAgentList,
@@ -17,20 +19,28 @@ import type {
   ProductPrice,
   AgentInfo,
   AgentUser,
-  DynamicBusinessOrder
+  DynamicBusinessOrder,
+  BusinessResponse
 } from '@/types/business';
 import type {
   DynamicProxyProduct,
   DynamicProxyResponse,
   DynamicProxyArea,
   DynamicProxyCountry,
-  DynamicProxyCity
+  DynamicProxyCity,
+  ExtractConfig,
+  ExtractResponse
+} from '@/types/dynamicProxy';
+import {
+  ExtractMethod,
+  Protocol,
+  DataFormat,
+  Delimiter
 } from '@/types/dynamicProxy';
 import { UserRole } from '@/types/user';
 import { getMappedValue, getUniqueValues, PRODUCT_NO_MAP, AREA_MAP, COUNTRY_MAP, CITY_MAP } from '@/constants/mappings';
 import { useRequest } from 'ahooks';
 import styles from './DynamicBusiness.module.less';
-import ProxyResourceList, { ProxyResourceListRef } from '@/components/Resource/ProxyResourceList';
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -50,7 +60,58 @@ interface DynamicBusinessOrderProduct {
   productId: string;
   quantity: number;
   duration: number;
-  remark: string;
+  extractConfig: ExtractConfig;
+}
+
+interface AreaResponse {
+  areaCode?: string;
+  areaName?: string;
+  countries?: Array<{
+    countryCode?: string;
+    countryName?: string;
+    states?: Array<{
+      code?: string;
+      stateCode?: string;
+      name?: string;
+      stateName?: string;
+    }>;
+    cities?: Array<{
+      cityCode?: string;
+      code?: string;
+      cityName?: string;
+      name?: string;
+    }>;
+  }>;
+}
+
+interface DynamicProxyAreaData {
+  areaCode: string;
+  areaName: string;
+  countries: Array<{
+    countryCode: string;
+    countryName: string;
+    states: Array<{
+      code: string;
+      name: string;
+    }>;
+    cities: Array<{
+      cityCode: string;
+      cityName: string;
+    }>;
+  }>;
+}
+
+interface FilterOption {
+  value: string;
+  text: string;
+}
+
+interface FilterOptions {
+  types: FilterOption[];
+  areas: FilterOption[];
+  countries: FilterOption[];
+  states: FilterOption[];
+  cities: FilterOption[];
 }
 
 const DynamicBusinessContent: React.FC = () => {
@@ -63,19 +124,31 @@ const DynamicBusinessContent: React.FC = () => {
   const [filterOptions, setFilterOptions] = useState<{
     types: { text: string; value: string }[];
     areas: { text: string; value: string }[];
+    states: { text: string; value: string }[];
     countries: { text: string; value: string }[];
     cities: { text: string; value: string }[];
   }>({
     types: [],
     areas: [],
+    states: [],
     countries: [],
     cities: [],
   });
   const [quantity, setQuantity] = useState<number>(0);
   const [remark, setRemark] = useState<string>('');
-  const [areaList, setAreaList] = useState<DynamicProxyArea[]>([]);
+  const [areaList, setAreaList] = useState<DynamicProxyAreaData[]>([]);
   const [userList, setUserList] = useState<AgentUser[]>([]);
-  const resourceListRef = useRef<ProxyResourceListRef>(null);
+  const [extractConfig, setExtractConfig] = useState<ExtractConfig>({
+    method: ExtractMethod.PASSWORD,
+    quantity: 1,
+    validTime: 5,
+    protocol: Protocol.SOCKS5,
+    dataFormat: DataFormat.TXT,
+    delimiter: Delimiter.CRLF
+  });
+  const [extractedUrl, setExtractedUrl] = useState<string>('');
+  const [showUrlModal, setShowUrlModal] = useState<boolean>(false);
+  const [selectedProduct, setSelectedProduct] = useState<ProductPrice | null>(null);
 
   console.log('[DynamicBusiness] 组件渲染:', {
     user,
@@ -170,180 +243,60 @@ const DynamicBusinessContent: React.FC = () => {
 
   // 加载余额
   const loadBalance = async (userId?: number) => {
-    const requestId = new Date().getTime().toString();
-    console.log('[动态代理页面] [请求ID:%s] 开始加载余额', requestId, {
-      userId,
-      isAgent,
-      currentUserId: user?.id,
-      timestamp: new Date().toISOString()
-    });
-
     try {
-      if (isAgent && userId) {
-        // 如果是代理商，加载选中用户的余额
-        console.log('[动态代理页面] [请求ID:%s] 代理商加载用户余额', requestId, {
-          userId,
-          userListLength: userList.length,
-          availableUsers: userList.map(u => ({ id: u.id, username: u.username }))
+      if (isAgent && user?.id) {
+        const response = await request<BusinessResponse>(`/api/dashboard/agent/${user.id}`, {
+          method: 'GET'
         });
-
-        const targetUser = userList.find(u => Number(u.id) === userId);
-        if (targetUser) {
-          console.log('[动态代理页面] [请求ID:%s] 找到目标用户', requestId, {
-            userId: targetUser.id,
-            username: targetUser.username,
-            balance: targetUser.balance
-          });
-          setBalance(targetUser.balance || 0);
+        
+        if (response.data?.code === 0 && response.data?.data) {
+          setBalance(response.data.data.agent.balance || 0);
         } else {
-          console.info('[动态代理页面] [请求ID:%s] 用户尚未创建或正在加载中', requestId, {
-            userId,
-            userListLength: userList.length
-          });
-          setBalance(0);
+          message.error('获取余额失败');
         }
-      } else if (!isAgent && userId) {
-        // 如果是管理员，加载选中代理商的余额
-        console.log('[动态代理页面] [请求ID:%s] 管理员加载代理商余额', requestId, {
-          userId,
-          timestamp: new Date().toISOString()
-        });
-
-        const response = await getAgentList({ page: 1, pageSize: 100, status: 1 });
-        console.log('[动态代理页面] [请求ID:%s] 获取代理商列表响应', requestId, {
-          code: response.code,
-          total: response.data?.total,
-          listLength: response.data?.list?.length
-        });
-
-        if (response.code === 0 && response.data) {
-          const agent = response.data.list.find((a: AgentInfo) => Number(a.id) === userId);
-          if (agent) {
-            console.log('[动态代理页面] [请求ID:%s] 找到目标代理商', requestId, {
-              agentId: agent.id,
-              username: agent.username,
-              balance: agent.balance
-            });
-            setBalance(agent.balance || 0);
-          } else {
-            console.warn('[动态代理页面] [请求ID:%s] 未找到目标代理商', requestId, {
-              userId,
-              agentListLength: response.data.list.length
-            });
-            setBalance(0);
-          }
-        } else {
-          console.error('[动态代理页面] [请求ID:%s] 获取代理商列表失败', requestId, {
-            code: response.code,
-            msg: response.msg
-          });
-          setBalance(0);
-        }
-      } else {
-        console.log('[动态代理页面] [请求ID:%s] 重置余额为0', requestId, {
-          reason: '未提供用户ID或非代理商角色'
-        });
-        setBalance(0);
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[动态代理页面] [请求ID:%s] 获取余额失败', requestId, {
-        error,
-        errorMessage,
-        stack: error instanceof Error ? error.stack : undefined,
-        timestamp: new Date().toISOString()
-      });
+      console.error('获取余额失败:', error);
       message.error('获取余额失败');
     }
   };
 
-  // 加载产品列表
+  // 修改 loadProducts 函数
   const loadProducts = async (userId?: number) => {
-    console.log('[动态代理页面] 开始加载产品列表, 用户ID:', userId);
     try {
       setLoading(true);
-      
-      // 调用新的动态代理产品列表API
       const response = await getDynamicProxyProducts();
-      console.log('[动态代理页面] API响应:', response);
+      console.log('[DynamicBusiness] 获取产品响应:', response);
       
-      // 检查response.data是否存在
-      if (!response || !response.data) {
-        console.warn('[动态代理页面] 响应数据为空:', response);
-        message.error('获取产品列表失败: 响应数据为空');
-        return;
-      }
-      
-      // 检查response.data.data是否存在（因为axios会自动包装一层data）
-      const productData = response.data.data;
-      if (!productData) {
-        console.warn('[动态代理页面] 产品数据为空:', response.data);
-        message.error('获取产品列表失败: 产品数据为空');
-        return;
-      }
-      
-      console.log('[动态代理页面] 获取到产品数据:', productData);
-      
-      // 确保productData是数组
-      if (!Array.isArray(productData)) {
-        console.warn('[动态代理页面] 产品数据不是数组:', productData);
-        message.error('获取产品列表失败: 数据格式错误');
-        return;
-      }
-      
-      // 直接使用返回的产品数据
-      const formattedProducts = productData.map((product: any) => ({
-        id: product.productNo,
-        type: product.productNo,
-        proxyType: 104,
-        area: product.areaCode || 'GLOBAL',
-        country: product.countryCode || 'ALL',
-        city: product.cityCode || 'ALL',
-        price: product.price || 0,
-        status: product.status || 1,
-        areaName: product.areaCode === 'GLOBAL' ? '全球' : (AREA_MAP[product.areaCode] || product.areaCode || '全球'),
-        countryName: product.countryCode === 'ALL' ? '所有国家' : (COUNTRY_MAP[product.countryCode] || product.countryCode || '所有国家'),
-        cityName: product.cityCode === 'ALL' ? '所有城市' : (CITY_MAP[product.cityCode] || product.cityCode || '所有城市')
-      }));
-      
-      console.log('[动态代理页面] 格式化后的产品数据:', formattedProducts);
-      
-      // 提取所有筛选选项
-      const areas = getUniqueValues(formattedProducts, 'area').map(code => ({
-        text: code === 'GLOBAL' ? '全球' : (AREA_MAP[code] || code || '全球'),
-        value: code
-      }));
-      
-      const countries = getUniqueValues(formattedProducts, 'country').map(code => ({
-        text: code === 'ALL' ? '所有国家' : (COUNTRY_MAP[code] || code || '所有国家'),
-        value: code
-      }));
-      
-      const cities = getUniqueValues(formattedProducts, 'city').map(code => ({
-        text: code === 'ALL' ? '所有城市' : (CITY_MAP[code] || code || '所有城市'),
-        value: code
-      }));
-      
-      setProducts(formattedProducts);
-      setFilterOptions({
-        ...filterOptions,
-        areas,
-        countries,
-        cities
-      });
-      
-      console.log('[动态代理页面] 更新后的状态:', {
-        products: formattedProducts,
-        filterOptions: {
-          ...filterOptions,
-          areas,
-          countries,
-          cities
+      if (response.code === 0 && response.data) {
+        const products = response.data.map((item: any) => ({
+          id: item.id,
+          key: item.id,
+          name: item.name || item.productName,
+          type: item.type || item.productNo,
+          proxyType: item.proxyType || 104,
+          flow: item.flow || 0,
+          duration: item.duration || 0,
+          unit: item.unit || 1,
+          area: item.area || '',
+          country: item.country || '',
+          state: item.state || '',
+          city: item.city || '',
+          price: item.price || 0,
+          status: item.status || 1
+        }));
+        
+        console.log('[DynamicBusiness] 处理后的产品数据:', products);
+        setProducts(products);
+        
+        // 如果有产品，自动加载第一个产品的区域列表并设置为选中产品
+        if (products.length > 0) {
+          const firstProduct = products[0];
+          setSelectedProduct(firstProduct);
         }
-      });
-      
+      }
     } catch (error) {
-      console.error('[动态代理页面] 加载产品列表失败:', error);
+      console.error('[DynamicBusiness] 加载产品列表失败:', error);
       message.error('加载产品列表失败');
     } finally {
       setLoading(false);
@@ -394,6 +347,7 @@ const DynamicBusinessContent: React.FC = () => {
           setFilterOptions({
             types: [],
             areas: [],
+            states: [],
             countries: [],
             cities: []
           });
@@ -421,165 +375,522 @@ const DynamicBusinessContent: React.FC = () => {
     setRemark(value);
   };
 
-  // 处理提交订单
+  const handleExtractMethodChange = (value: ExtractMethod) => {
+    setExtractConfig(prev => ({
+      ...prev,
+      method: value,
+      // 重置相关字段为默认值
+      quantity: value === ExtractMethod.PASSWORD ? 1 : undefined,
+      validTime: value === ExtractMethod.PASSWORD ? 5 : undefined,
+      protocol: value === ExtractMethod.API ? Protocol.SOCKS5 : undefined,
+      dataFormat: value === ExtractMethod.API ? DataFormat.TXT : undefined,
+      delimiter: value === ExtractMethod.API ? Delimiter.CRLF : undefined
+    }));
+  };
+
   const handleSubmit = async () => {
-    if (!user || !quantity) {
-      message.error('请输入流量');
-      return;
-    }
+    console.log('[DynamicBusiness] 开始提取代理:', {
+      selectedAgent,
+      extractConfig,
+      timestamp: new Date().toISOString()
+    });
 
     try {
       setLoading(true);
-      const response = await createProxyUser({
-        appUsername: String(user.id),
-        limitFlow: quantity,
-        remark
+      const response = await extractDynamicProxy({
+        addressCode: selectedProduct?.area || '',
+        maxFlowLimit: selectedProduct?.flow || 1000,
+        extractConfig
       });
 
-      if (response.code === 0) {
-        message.success('创建代理用户成功');
-        
-        // 先重新获取用户列表
-        if (isAgent && user?.id) {
-          const userResponse = await getAgentUsers({
-            agentId: user.id,
-            page: 1,
-            pageSize: 1000,
-            status: 'active'
-          });
-          
-          if (userResponse?.list) {
-            setUserList(userResponse.list);
-            // 更新完用户列表后再加载余额
-            await loadBalance(user.id);
-          }
-        }
-        
-        // 清空表单
-        setQuantity(0);
-        setRemark('');
-
-        // 刷新资源列表
-        resourceListRef.current?.refresh();
+      if (response.code === 0 && response.data?.url) {
+        setExtractedUrl(response.data.url);
+        setShowUrlModal(true);
+        message.success('提取成功');
       } else {
-        message.error(response.msg || '创建代理用户失败');
+        message.error(response.msg || '提取失败');
       }
     } catch (error) {
-      console.error('[动态代理页面] 创建代理用户失败:', error);
-      message.error('创建代理用户失败');
+      console.error('[DynamicBusiness] 提取失败:', error);
+      message.error('提取失败，请稍后重试');
     } finally {
       setLoading(false);
     }
   };
 
-  // 刷新资源列表
-  const refreshResourceList = () => {
-    console.log('[DynamicBusiness] 刷新资源列表:', {
-      userId: user?.id,
-      username: user?.username,
-      timestamp: new Date().toISOString()
+  // 添加数据监控
+  useEffect(() => {
+    console.log('[DynamicBusiness] 产品数据更新:', {
+      productsCount: products.length,
+      products: products.map(p => ({
+        id: p.id,
+        area: p.area,
+        country: p.country,
+        state: p.state,
+        city: p.city
+      }))
     });
-    resourceListRef.current?.refresh();
+  }, [products]);
+
+  useEffect(() => {
+    console.log('[DynamicBusiness] 过滤选项更新:', {
+      areas: filterOptions.areas.length,
+      countries: filterOptions.countries.length,
+      states: filterOptions.states.length,
+      cities: filterOptions.cities.length,
+      areaOptions: filterOptions.areas
+    });
+  }, [filterOptions]);
+
+  useEffect(() => {
+    console.log('[DynamicBusiness] 选中产品更新:', selectedProduct);
+  }, [selectedProduct]);
+
+  // 修改区域列表加载函数
+  const loadAreaList = async (proxyType: number, productNo?: string) => {
+    try {
+      if (!proxyType || !productNo) {
+        console.warn('[DynamicBusiness] 加载区域列表缺少必要参数:', { proxyType, productNo });
+        return;
+      }
+
+      console.log('[DynamicBusiness] 开始加载区域列表:', { proxyType, productNo });
+      const response = await request.get('/api/business/areas', {
+        params: { proxyType, productNo }
+      });
+      console.log('[DynamicBusiness] 区域列表原始响应:', response);
+
+      if (response.data?.data) {
+        const areas = response.data.data;
+        setAreaList(areas); // 保存原始区域数据
+
+        const options = buildFilterOptions(areas);
+        setFilterOptions(options);
+      }
+    } catch (error) {
+      console.error('[DynamicBusiness] 加载区域列表失败:', error);
+      message.error('加载区域列表失败');
+    }
   };
 
-  // 监听用户信息变化
-  useEffect(() => {
-    console.log('[DynamicBusiness] 用户信息变化:', {
-      userId: user?.id,
-      username: user?.username,
-      isAgent,
-      timestamp: new Date().toISOString()
-    });
-    
-    if (user?.id) {
-      refreshResourceList();
-    }
-  }, [user?.id, user?.username, isAgent]);
+  // 添加构建过滤选项的函数
+  const buildFilterOptions = (areas: DynamicProxyAreaData[]): FilterOptions => {
+    const options: FilterOptions = {
+      types: [],
+      areas: [],
+      countries: [],
+      states: [],
+      cities: []
+    };
 
-  const columns = [
-    {
-      title: '资源类型',
-      dataIndex: 'type',
-      key: 'type',
-      width: 120,
-      filters: filterOptions.types,
-      onFilter: (value: any, record: ProductPrice) => record.type === value,
-      render: (type: string) => (
-        <span style={{ 
-          color: type.includes('dynamic') ? '#1890ff' : '#52c41a',
-          fontWeight: 500
-        }}>
-          {getMappedValue(PRODUCT_NO_MAP, type)}
-        </span>
-      )
-    },
-    {
-      title: '区域',
-      dataIndex: 'area',
-      key: 'area',
-      width: 120,
-      filters: filterOptions.areas,
-      onFilter: (value: any, record: ProductPrice) => record.area === value,
-      render: (area: string) => getMappedValue(AREA_MAP, area)
-    },
-    {
-      title: '国家',
-      dataIndex: 'country',
-      key: 'country',
-      width: 120,
-      filters: filterOptions.countries,
-      onFilter: (value: any, record: ProductPrice) => record.country === value,
-      render: (country: string) => getMappedValue(COUNTRY_MAP, country)
-    },
-    {
-      title: '城市',
-      dataIndex: 'city',
-      key: 'city',
-      width: 120,
-      render: (city: string) => getMappedValue(CITY_MAP, city),
-      filters: filterOptions.cities,
-      onFilter: (value: any, record: ProductPrice) => record.city === value
-    },
-    {
-      title: '单价',
-      dataIndex: 'price',
-      key: 'price',
-      width: 120,
-      render: (price: number) => `¥${price}`
-    },
-    {
-      title: '流量(GB)',
-      dataIndex: 'quantity',
-      render: (_: unknown, record: ProductPrice) => (
-        <InputNumber
-          min={1}
-          value={quantity}
-          onChange={handleQuantityChange}
-          style={{ width: '100%' }}
-          placeholder="请输入流量"
-        />
-      )
-    },
-    {
-      title: '总价(元)',
-      dataIndex: 'totalPrice',
-      render: (_: unknown, record: ProductPrice) => {
-        const totalPrice = quantity * record.price;
-        return <Text strong>¥{totalPrice.toFixed(2)}</Text>;
+    areas.forEach((area: DynamicProxyAreaData) => {
+      if (area.areaCode) {
+        options.areas.push({
+          value: area.areaCode,
+          text: area.areaName || area.areaCode
+        });
       }
-    },
-    {
-      title: '备注',
-      dataIndex: 'remark',
-      render: (_: unknown, record: ProductPrice) => (
-        <Input
-          value={remark}
-          onChange={(e) => handleRemarkChange(e.target.value)}
-          placeholder="请输入备注"
-        />
-      )
+
+      area.countries?.forEach(country => {
+        if (country.countryCode) {
+          options.countries.push({
+            value: country.countryCode,
+            text: country.countryName || country.countryCode
+          });
+        }
+
+        country.states?.forEach(state => {
+          if (state.code) {
+            options.states.push({
+              value: state.code,
+              text: state.name || state.code
+            });
+          }
+        });
+
+        country.cities?.forEach(city => {
+          if (city.cityCode) {
+            options.cities.push({
+              value: city.cityCode,
+              text: city.cityName || city.cityCode
+            });
+          }
+        });
+      });
+    });
+
+    return options;
+  };
+
+  // 添加 memo 优化
+  const AreaSelector = React.memo(({ record, filterOptions, onAreaChange }: {
+    record: ProductPrice;
+    filterOptions: FilterOptions;
+    onAreaChange: (value: string, record: ProductPrice) => void;
+  }) => {
+    if (!record || !record.type) {
+      return null;
     }
-  ];
+
+    const currentArea = record.area || '';
+    const currentCountry = record.country || '';
+    const currentState = record.state || '';
+    const currentCity = record.city || '';
+
+    return (
+      <Space>
+        <Select
+          value={currentArea}
+          style={{ width: 120 }}
+          onChange={(value) => onAreaChange(value, record)}
+          options={filterOptions.areas}
+          placeholder="选择区域"
+        />
+        {currentArea && (
+          <Select
+            value={currentCountry}
+            style={{ width: 120 }}
+            onChange={(value) => handleCountryChange(value, record)}
+            options={filterOptions.countries.filter(c => c.value.startsWith(currentArea))}
+            placeholder="选择国家"
+          />
+        )}
+        {currentCountry && (
+          <Select
+            value={currentState}
+            style={{ width: 120 }}
+            onChange={(value) => handleStateChange(value, record)}
+            options={filterOptions.states.filter(s => s.value.startsWith(currentCountry))}
+            placeholder="选择州/省"
+          />
+        )}
+        {currentCountry && (
+          <Select
+            value={currentCity}
+            style={{ width: 120 }}
+            onChange={(value) => handleCityChange(value, record)}
+            options={filterOptions.cities.filter(c => c.value.startsWith(currentCountry))}
+            placeholder="选择城市"
+          />
+        )}
+      </Space>
+    );
+  });
+
+  // 修改 columns 定义
+  const columns = useMemo(() => {
+    // 处理区域变更
+    const handleAreaChange = useCallback((value: string, record: ProductPrice) => {
+      if (!record || !record.type) {
+        return;
+      }
+
+      const updatedProducts = products.map(p => {
+        if (p.type === record.type) {
+          return {
+            ...p,
+            area: value,
+            country: '',
+            state: '',
+            city: ''
+          };
+        }
+        return p;
+      });
+
+      setProducts(updatedProducts);
+      setSelectedProduct(updatedProducts.find(p => p.type === record.type) || null);
+    }, [products]);
+
+    return [
+      {
+        title: '资源类型',
+        dataIndex: 'type',
+        key: 'type',
+        width: 120,
+        render: (type: string) => getMappedValue(PRODUCT_NO_MAP, type)
+      },
+      {
+        title: '区域',
+        dataIndex: 'area',
+        key: 'area',
+        width: 120,
+        render: (_: any, record: ProductPrice) => (
+          <AreaSelector
+            record={record}
+            filterOptions={filterOptions}
+            onAreaChange={handleAreaChange}
+          />
+        )
+      },
+      {
+        title: '州/省',
+        dataIndex: 'state',
+        key: 'state',
+        width: 120,
+        render: (_: any, record: ProductPrice) => (
+          <Select
+            style={{ width: '100%' }}
+            value={record.state}
+            onChange={(value) => handleStateChange(value, record)}
+          >
+            {filterOptions.states
+              .filter(option => {
+                // 只显示当前选中区域和国家的州
+                const area = areaList.find(a => a.areaCode === record.area);
+                const country = area?.countries?.find(c => c.countryCode === record.country);
+                return country?.states?.some(s => s.code === option.value);
+              })
+              .map(option => (
+                <Option key={option.value} value={option.value}>
+                  {option.text}
+                </Option>
+              ))}
+          </Select>
+        )
+      },
+      {
+        title: '国家',
+        dataIndex: 'country',
+        key: 'country',
+        width: 120,
+        render: (_: any, record: ProductPrice) => (
+          <Select
+            style={{ width: '100%' }}
+            value={record.country}
+            onChange={(value) => handleCountryChange(value, record)}
+          >
+            {filterOptions.countries
+              .filter(option => {
+                // 只显示当前选中区域的国家
+                const area = areaList.find(a => a.areaCode === record.area);
+                return area?.countries?.some(c => c.countryCode === option.value);
+              })
+              .map(option => (
+                <Option key={option.value} value={option.value}>
+                  {option.text}
+                </Option>
+              ))}
+          </Select>
+        )
+      },
+      {
+        title: '城市',
+        dataIndex: 'city',
+        key: 'city',
+        width: 120,
+        render: (_: any, record: ProductPrice) => (
+          <Select
+            style={{ width: '100%' }}
+            value={record.city}
+            onChange={(value) => handleCityChange(value, record)}
+          >
+            {filterOptions.cities
+              .filter(option => {
+                // 只显示当前选中国家的城市
+                const area = areaList.find(a => a.areaCode === record.area);
+                const country = area?.countries?.find(c => c.countryCode === record.country);
+                return country?.cities?.some(c => c.cityCode === option.value);
+              })
+              .map(option => (
+                <Option key={option.value} value={option.value}>
+                  {option.text}
+                </Option>
+              ))}
+          </Select>
+        )
+      },
+      {
+        title: '流量(M)',
+        dataIndex: 'flow',
+        key: 'flow',
+        width: 120,
+        render: (flow: number, record: ProductPrice) => (
+          <InputNumber
+            min={1}
+            value={flow || 0}
+            onChange={(value) => handleFlowChange(value, record)}
+            style={{ width: '100%' }}
+          />
+        )
+      },
+      {
+        title: '单价',
+        dataIndex: 'price',
+        key: 'price',
+        width: 120,
+        render: (price: number) => `¥${price}`
+      },
+      {
+        title: '总价(元)',
+        dataIndex: 'price',
+        key: 'totalPrice',
+        width: 120,
+        render: (price: number, record: ProductPrice) => 
+          `¥${((record.flow || 0) * price / 1024).toFixed(2)}`  // 将M转换为G计算价格
+      }
+    ];
+  }, [products, filterOptions]);
+
+  // 在加载产品列表后调用获取区域列表
+  useEffect(() => {
+    if (products.length > 0) {
+      const firstProduct = products[0];
+      loadAreaList(104, firstProduct.type);
+    }
+  }, [products]);
+
+  useEffect(() => {
+    if (selectedProduct?.proxyType && selectedProduct?.type) {
+      loadAreaList(selectedProduct.proxyType, selectedProduct.type);
+    }
+  }, [selectedProduct?.proxyType, selectedProduct?.type]);
+
+  useEffect(() => {
+    if (areaList.length > 0) {
+      console.log('[DynamicBusiness] 开始处理区域列表数据:', areaList);
+      
+      const areas: FilterOption[] = [];
+      const countries: FilterOption[] = [];
+      const states: FilterOption[] = [];
+      const cities: FilterOption[] = [];
+
+      areaList.forEach(area => {
+        console.log('[DynamicBusiness] 处理区域:', {
+          areaCode: area.areaCode,
+          areaName: area.areaName,
+          countriesCount: area.countries?.length
+        });
+
+        areas.push({
+          value: area.areaCode,
+          text: area.areaName
+        });
+
+        area.countries?.forEach(country => {
+          console.log('[DynamicBusiness] 处理国家:', {
+            countryCode: country.countryCode,
+            countryName: country.countryName,
+            statesCount: country.states?.length,
+            citiesCount: country.cities?.length
+          });
+
+          countries.push({
+            value: country.countryCode,
+            text: country.countryName
+          });
+
+          country.states?.forEach(state => {
+            states.push({
+              value: state.code,
+              text: state.name
+            });
+          });
+
+          country.cities?.forEach(city => {
+            cities.push({
+              value: city.cityCode,
+              text: city.cityName
+            });
+          });
+        });
+      });
+
+      console.log('[DynamicBusiness] 过滤选项统计:', {
+        areas: areas.length,
+        countries: countries.length,
+        states: states.length,
+        cities: cities.length
+      });
+
+      setFilterOptions(prev => ({
+        ...prev,
+        areas,
+        countries,
+        states,
+        cities
+      }));
+    }
+  }, [areaList]);
+
+  // 处理国家变更
+  const handleCountryChange = useCallback((value: string, record: ProductPrice) => {
+    if (!record || !record.type) {
+      return;
+    }
+
+    const updatedProducts = products.map(p => {
+      if (p.type === record.type) {
+        return {
+          ...p,
+          country: value,
+          state: '',
+          city: ''
+        };
+      }
+      return p;
+    });
+
+    setProducts(updatedProducts);
+  }, [products]);
+
+  // 处理州/省变更
+  const handleStateChange = useCallback((value: string, record: ProductPrice) => {
+    if (!record || !record.type) {
+      return;
+    }
+
+    const updatedProducts = products.map(p => {
+      if (p.type === record.type) {
+        return {
+          ...p,
+          state: value,
+          city: ''
+        };
+      }
+      return p;
+    });
+
+    setProducts(updatedProducts);
+  }, [products]);
+
+  // 处理城市变更
+  const handleCityChange = useCallback((value: string, record: ProductPrice) => {
+    if (!record || !record.type) {
+      return;
+    }
+
+    const updatedProducts = products.map(p => {
+      if (p.type === record.type) {
+        return {
+          ...p,
+          city: value
+        };
+      }
+      return p;
+    });
+
+    setProducts(updatedProducts);
+  }, [products]);
+
+  // 处理流量变更
+  const handleFlowChange = useCallback((value: number | null, record: ProductPrice) => {
+    if (!record || !record.type) {
+      return;
+    }
+
+    const updatedProducts = products.map(p => {
+      if (p.type === record.type) {
+        return {
+          ...p,
+          flow: value || 0
+        };
+      }
+      return p;
+    });
+
+    setProducts(updatedProducts);
+  }, [products]);
 
   return (
     <PageContainer>
@@ -645,23 +956,102 @@ const DynamicBusinessContent: React.FC = () => {
             rowKey="id"
           />
 
-          <Button
-            type="primary"
-            onClick={handleSubmit}
-            loading={loading}
-            disabled={!selectedAgent || !quantity}
-            style={{ marginTop: 16 }}
-          >
-            提交订单
-          </Button>
+          <Card title="提取配置">
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Space>
+                <Select
+                  style={{ width: 120 }}
+                  value={extractConfig.method}
+                  onChange={handleExtractMethodChange}
+                >
+                  <Option value={ExtractMethod.PASSWORD}>帐密提取</Option>
+                  <Option value={ExtractMethod.API}>API提取</Option>
+                </Select>
+
+                {extractConfig.method === ExtractMethod.PASSWORD && (
+                  <>
+                    <InputNumber
+                      min={1}
+                      max={100}
+                      value={extractConfig.quantity}
+                      onChange={value => setExtractConfig(prev => ({ ...prev, quantity: value || 1 }))}
+                      placeholder="数量"
+                      addonAfter="个"
+                    />
+                    <InputNumber
+                      min={1}
+                      max={120}
+                      value={extractConfig.validTime}
+                      onChange={value => setExtractConfig(prev => ({ ...prev, validTime: value || 5 }))}
+                      placeholder="有效时间"
+                      addonAfter="分钟"
+                    />
+                  </>
+                )}
+
+                {extractConfig.method === ExtractMethod.API && (
+                  <>
+                    <Select
+                      style={{ width: 120 }}
+                      value={extractConfig.protocol}
+                      onChange={value => setExtractConfig(prev => ({ ...prev, protocol: value }))}
+                    >
+                      <Option value={Protocol.SOCKS5}>SOCKS5</Option>
+                      <Option value={Protocol.HTTP}>HTTP</Option>
+                    </Select>
+                    <Select
+                      style={{ width: 120 }}
+                      value={extractConfig.dataFormat}
+                      onChange={value => setExtractConfig(prev => ({ ...prev, dataFormat: value }))}
+                    >
+                      <Option value={DataFormat.TXT}>TXT</Option>
+                      <Option value={DataFormat.JSON}>JSON</Option>
+                    </Select>
+                    {extractConfig.dataFormat === DataFormat.TXT && (
+                      <Select
+                        style={{ width: 120 }}
+                        value={extractConfig.delimiter}
+                        onChange={value => setExtractConfig(prev => ({ ...prev, delimiter: value }))}
+                      >
+                        <Option value={Delimiter.CRLF}>\\r\\n</Option>
+                        <Option value={Delimiter.BR}>/br</Option>
+                        <Option value={Delimiter.CR}>\\r</Option>
+                        <Option value={Delimiter.LF}>\\n</Option>
+                        <Option value={Delimiter.TAB}>\\t</Option>
+                      </Select>
+                    )}
+                  </>
+                )}
+              </Space>
+
+              <Button 
+                type="primary" 
+                onClick={handleSubmit}
+                loading={loading}
+                disabled={!selectedAgent || !selectedProduct}
+              >
+                提取
+              </Button>
+            </Space>
+          </Card>
         </Space>
 
-        {/* 添加已购资源列表 */}
-        <ProxyResourceList
-          ref={resourceListRef}
-          userId={user?.id}
-          username={user?.username}
-        />
+        <Modal
+          title="提取结果"
+          open={showUrlModal}
+          onOk={() => {
+            navigator.clipboard.writeText(extractedUrl);
+            message.success('已复制到剪贴板');
+            setShowUrlModal(false);
+          }}
+          onCancel={() => setShowUrlModal(false)}
+          okText="复制"
+          cancelText="关闭"
+        >
+          <Typography.Paragraph copyable>
+            {extractedUrl}
+          </Typography.Paragraph>
+        </Modal>
       </Card>
     </PageContainer>
   );

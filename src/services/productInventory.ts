@@ -43,7 +43,7 @@ export async function getProductPrices(params: GetPricesParams): Promise<ApiResp
     }
     
     // 添加代理类型数组
-    const proxyTypes = params.proxy_types || [104, 105, 201];
+    const proxyTypes = params.proxy_types || [104];
     proxyTypes.forEach(type => {
       queryParams.append('proxy_types', String(type));
     });
@@ -85,7 +85,7 @@ export async function syncProductPrices(): Promise<ApiResponse<void>> {
 export async function syncProductStock(): Promise<ApiResponse<void>> {
   try {
     console.log('开始同步库存');
-    const response = await request.post<ApiResponse<void>>('/api/proxy/inventory/sync');
+    const response = await request.post<ApiResponse<void>>('/api/business/dynamic-proxy/sync-inventory');
     console.log('同步库存响应:', response.data);
     return response.data;
   } catch (error) {

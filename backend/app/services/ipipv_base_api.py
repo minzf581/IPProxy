@@ -229,19 +229,20 @@ class IPIPVBaseAPI:
             if self.mock_api:
                 return await self.mock_api.make_request(path, params)
             
-            self.logger.debug(f"[IPIPVBaseAPI] 开始发送请求: {path}")
-            self.logger.debug(f"[IPIPVBaseAPI] 原始请求参数: {json.dumps(params, ensure_ascii=False)}")
+            self.logger.info(f"[IPIPVBaseAPI] 开始发送请求: {path}")
+            self.logger.info(f"[IPIPVBaseAPI] 原始请求参数: {json.dumps(params, ensure_ascii=False)}")
+            self.logger.info(f"[IPIPVBaseAPI] API配置: base_url={self.base_url}, app_key={self.app_key[:8]}***")
             
             # 处理业务参数
             business_params = params.copy()
             if "version" not in business_params:
                 business_params["version"] = self.api_version
             
-            self.logger.debug(f"[IPIPVBaseAPI] 处理后的业务参数: {json.dumps(business_params, ensure_ascii=False)}")
+            self.logger.info(f"[IPIPVBaseAPI] 处理后的业务参数: {json.dumps(business_params, ensure_ascii=False)}")
             
             # 加密业务参数
             params_str = json.dumps(business_params, ensure_ascii=False)
-            self.logger.debug(f"[IPIPVBaseAPI] 待加密的参数字符串: {params_str}")
+            self.logger.info(f"[IPIPVBaseAPI] 待加密的参数字符串: {params_str}")
             encrypted_params = self._encrypt_params(params_str)
             
             # 构建基础请求参数
@@ -260,8 +261,8 @@ class IPIPVBaseAPI:
             
             # 构建完整URL
             url = f"{self.base_url}/{path}"
-            self.logger.debug(f"[IPIPVBaseAPI] 请求URL: {url}")
-            self.logger.debug(f"[IPIPVBaseAPI] 最终请求参数: {json.dumps(base_params, ensure_ascii=False)}")
+            self.logger.info(f"[IPIPVBaseAPI] 请求URL: {url}")
+            self.logger.info(f"[IPIPVBaseAPI] 最终请求参数: {json.dumps(base_params, ensure_ascii=False)}")
             
             # 发送请求
             async with aiohttp.ClientSession() as session:
@@ -273,11 +274,23 @@ class IPIPVBaseAPI:
                         "Accept": "application/json"
                     }
                 ) as response:
-                    self.logger.debug(f"[IPIPVBaseAPI] 响应状态码: {response.status}")
+                    self.logger.info(f"[IPIPVBaseAPI] 响应状态码: {response.status}")
                     
                     # 读取响应内容
                     content = await response.text()
-                    self.logger.debug(f"[IPIPVBaseAPI] 原始响应内容: {content}")
+                    self.logger.info(f"[IPIPVBaseAPI] 原始响应内容: {content}")
+                    
+                    # 处理非200状态码
+                    if response.status != 200:
+                        error_msg = f"API请求失败: HTTP {response.status}"
+                        if content:
+                            error_msg += f" - {content}"
+                        self.logger.error(f"[IPIPVBaseAPI] {error_msg}")
+                        return {
+                            "code": response.status,
+                            "msg": error_msg,
+                            "data": None
+                        }
                     
                     # 解析响应内容
                     try:
@@ -286,13 +299,16 @@ class IPIPVBaseAPI:
                         
                         # 解析JSON
                         response_data = json.loads(content)
-                        self.logger.debug(f"[IPIPVBaseAPI] 解析后的响应内容: {json.dumps(response_data, ensure_ascii=False)}")
+                        self.logger.info(f"[IPIPVBaseAPI] 解析后的响应内容: {json.dumps(response_data, ensure_ascii=False)}")
                         
-                        # 检查响应状态
-                        if response_data.get("code") not in [0, 200]:
-                            error_msg = response_data.get("msg", "未知错误")
-                            self.logger.error(f"[IPIPVBaseAPI] API返回错误: {error_msg}")
-                            return response_data
+                        # 检查响应格式
+                        if not isinstance(response_data, dict):
+                            self.logger.error(f"[IPIPVBaseAPI] 意外的响应格式: {response_data}")
+                            return {
+                                "code": -1,
+                                "msg": "响应格式错误",
+                                "data": None
+                            }
                         
                         # 处理加密响应
                         if response_data.get("data"):
@@ -305,11 +321,11 @@ class IPIPVBaseAPI:
                                     # 尝试Base64解码
                                     base64.b64decode(cleaned_data)
                                     # 如果能成功解码，说明是加密数据
-                                    self.logger.debug("[IPIPVBaseAPI] 检测到加密响应，开始解密")
+                                    self.logger.info("[IPIPVBaseAPI] 检测到加密响应，开始解密")
                                     decrypted_data = self._decrypt_response(cleaned_data)
                                     response_data["data"] = decrypted_data
                                 except Exception as e:
-                                    self.logger.debug(f"[IPIPVBaseAPI] 响应未加密或解密失败: {str(e)}")
+                                    self.logger.info(f"[IPIPVBaseAPI] 响应未加密或解密失败: {str(e)}")
                         
                         return response_data
                         
@@ -324,9 +340,65 @@ class IPIPVBaseAPI:
                     
         except Exception as e:
             self.logger.error(f"[IPIPVBaseAPI] 请求失败: {str(e)}")
-            self.logger.exception(e)
+            self.logger.error(traceback.format_exc())
             return {
                 "code": 500,
                 "msg": f"请求失败: {str(e)}",
+                "data": None
+            }
+
+    async def _handle_response(self, response: aiohttp.ClientResponse, raw_content: str) -> Dict[str, Any]:
+        """处理API响应"""
+        try:
+            logger.debug(f"[IPIPVBaseAPI] 响应状态码: {response.status}")
+            logger.debug(f"[IPIPVBaseAPI] 原始响应内容: {raw_content}")
+            
+            # 处理非200状态码
+            if response.status != 200:
+                error_msg = f"API请求失败: HTTP {response.status}"
+                if raw_content:
+                    error_msg += f" - {raw_content}"
+                logger.error(f"[IPIPVBaseAPI] {error_msg}")
+                return {
+                    "code": response.status,
+                    "msg": error_msg,
+                    "data": None
+                }
+                
+            # 尝试解析JSON响应
+            try:
+                result = json.loads(raw_content)
+            except json.JSONDecodeError as e:
+                logger.error(f"[IPIPVBaseAPI] 解析响应内容失败: {str(e)}")
+                logger.error(f"[IPIPVBaseAPI] 无效的响应内容: {raw_content}")
+                return {
+                    "code": -1,
+                    "msg": f"无效的响应格式: {str(e)}",
+                    "data": None
+                }
+                
+            # 检查响应格式
+            if not isinstance(result, dict):
+                logger.error(f"[IPIPVBaseAPI] 意外的响应格式: {result}")
+                return {
+                    "code": -1,
+                    "msg": "响应格式错误",
+                    "data": None
+                }
+                
+            # 处理业务错误
+            if result.get("code", -1) != 0:
+                error_msg = result.get("msg", "未知错误")
+                logger.error(f"[IPIPVBaseAPI] 业务错误: {error_msg}")
+                return result
+                
+            return result
+            
+        except Exception as e:
+            logger.error(f"[IPIPVBaseAPI] 处理响应失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            return {
+                "code": -1,
+                "msg": f"处理响应异常: {str(e)}",
                 "data": None
             }

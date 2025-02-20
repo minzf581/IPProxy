@@ -25,10 +25,14 @@
 
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, Body, HTTPException
-from app.services import IPIPVBaseAPI
-from app.core.deps import get_ipipv_api
+from app.services import IPIPVBaseAPI, AreaService
+from app.core.deps import get_ipipv_api, get_area_service, get_db
 import logging
 import traceback
+import json
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.services.area_service import AreaService
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -272,5 +276,82 @@ async def get_area_list():
         return {
             "code": 500,
             "msg": "获取地区列表失败",
+            "data": []
+        }
+
+@router.get("/open/app/product/area/v2")
+async def get_area_list(
+    proxyType: int,
+    productNo: str,
+    area_service: AreaService = Depends(get_area_service),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """获取区域列表"""
+    func_name = "get_area_list"
+    try:
+        logger.info(f"[{func_name}] 开始获取区域列表: proxyType={proxyType}, productNo={productNo}")
+        
+        # 调用IPIPV API获取区域列表
+        response = await area_service.get_area_list(proxyType, productNo)
+        logger.info(f"[{func_name}] API响应: {json.dumps(response, ensure_ascii=False)}")
+        
+        # 确保返回的数据是数组格式
+        area_data = []
+        if isinstance(response, dict):
+            if "data" in response:
+                area_data = response["data"]
+            else:
+                area_data = [response]
+        elif isinstance(response, list):
+            area_data = response
+            
+        # 确保每个区域对象都有正确的结构
+        formatted_areas = []
+        for area in area_data:
+            if isinstance(area, dict):
+                formatted_area = {
+                    "areaCode": area.get("areaCode") or area.get("code") or "UNKNOWN",
+                    "areaName": area.get("areaName") or area.get("name") or "未知区域",
+                    "countries": []
+                }
+                
+                # 处理国家列表
+                countries = area.get("countries") or area.get("countryList") or []
+                for country in countries:
+                    if isinstance(country, dict):
+                        formatted_country = {
+                            "countryCode": country.get("countryCode") or country.get("code") or "UNKNOWN",
+                            "countryName": country.get("countryName") or country.get("name") or "未知国家",
+                            "cities": []
+                        }
+                        
+                        # 处理城市列表
+                        cities = country.get("cities") or country.get("cityList") or []
+                        for city in cities:
+                            if isinstance(city, dict):
+                                formatted_city = {
+                                    "cityCode": city.get("cityCode") or city.get("code") or "UNKNOWN",
+                                    "cityName": city.get("cityName") or city.get("name") or "未知城市"
+                                }
+                                formatted_country["cities"].append(formatted_city)
+                                
+                        formatted_area["countries"].append(formatted_country)
+                        
+                formatted_areas.append(formatted_area)
+                
+        logger.info(f"[{func_name}] 格式化后的区域数据: {json.dumps(formatted_areas, ensure_ascii=False)}")
+        
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": formatted_areas
+        }
+        
+    except Exception as e:
+        logger.error(f"[{func_name}] 获取区域列表失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        return {
+            "code": 500,
+            "msg": f"获取区域列表失败: {str(e)}",
             "data": []
         } 

@@ -1,1 +1,33 @@
- 
+.dynamicBusinessPage {
+  :global {
+    .ant-card {
+      margin-bottom: 24px;
+    }
+
+    .ant-table-tbody > tr.ant-table-row:hover > td {
+      cursor: pointer;
+    }
+  }
+}
+
+.selectedRow {
+  background-color: #e6f7ff;
+}
+
+.extractConfig {
+  margin-top: 16px;
+  
+  :global {
+    .ant-space {
+      width: 100%;
+    }
+    
+    .ant-input-number {
+      width: 120px;
+    }
+    
+    .ant-alert {
+      margin: 16px 0;
+    }
+  }
+} 
