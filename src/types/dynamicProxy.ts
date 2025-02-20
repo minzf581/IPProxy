@@ -3,10 +3,9 @@ export interface DynamicProxyState {
   name: string;
 }
 
-export interface DynamicProxyArea {
-  areaCode: string;
-  areaName: string;
-  countries: DynamicProxyCountry[];
+export interface DynamicProxyCity {
+  cityCode: string;
+  cityName: string;
 }
 
 export interface DynamicProxyCountry {
@@ -16,9 +15,10 @@ export interface DynamicProxyCountry {
   cities: DynamicProxyCity[];
 }
 
-export interface DynamicProxyCity {
-  cityCode: string;
-  cityName: string;
+export interface DynamicProxyArea {
+  areaCode: string;
+  areaName: string;
+  countries: DynamicProxyCountry[];
 }
 
 export interface DynamicProxyProduct {
