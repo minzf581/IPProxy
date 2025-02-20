@@ -569,37 +569,27 @@ async def extract_dynamic_proxy(
         if not request.get("extractConfig"):
             raise HTTPException(status_code=400, detail="提取配置不能为空")
             
-        extract_config = request["extractConfig"]
-        method = extract_config.get("method")
-        if not method:
-            raise HTTPException(status_code=400, detail="提取方式不能为空")
+        # 获取用户信息
+        user_info = await get_user_info(db, current_user.id)
+        if not user_info:
+            raise HTTPException(status_code=400, detail="用户信息不存在")
             
-        # 构建基础参数
-        base_params = {
-            "appUsername": current_user.username,
-            "proxyType": 104,  # 动态代理类型
+        # 构建提取参数
+        extract_params = {
+            "username": "agent1",  # 使用agent1作为用户名
             "addressCode": request.get("addressCode"),
-            "maxFlowLimit": request.get("maxFlowLimit")
+            "maxFlowLimit": request.get("maxFlowLimit", 1000),  # 默认1000MB
+            "phone": user_info.phone,
+            "email": user_info.email
         }
         
-        # 根据提取方式调用不同的API
-        if method == "password":
-            params = {
-                **base_params,
-                "sessTime": extract_config.get("validTime", 5),
-                "num": extract_config.get("quantity", 1)
-            }
-            response = await proxy_service.extract_proxy_by_password(params)
-        else:  # method == "api"
-            params = {
-                **base_params,
-                "protocol": extract_config.get("protocol", "socks5"),
-                "returnType": extract_config.get("dataFormat", "txt"),
-                "delimiter": extract_config.get("delimiter", "1") if extract_config.get("dataFormat") == "txt" else None
-            }
-            response = await proxy_service.extract_proxy_by_api(params)
-            
+        # 调用完整提取方法
+        response = await proxy_service.extract_proxy_complete(extract_params)
+        
         log_response_info(func_name, response)
+        if response.get("code") != 0:
+            raise HTTPException(status_code=500, detail=response.get("message", "提取失败"))
+            
         return response
     except HTTPException:
         raise
@@ -701,3 +691,21 @@ async def sync_inventory(
             "msg": error_msg,
             "data": None
         }
+
+async def get_user_info(db: Session, user_id: int) -> Optional[User]:
+    """
+    获取用户信息
+    
+    Args:
+        db: 数据库会话
+        user_id: 用户ID
+        
+    Returns:
+        Optional[User]: 用户信息，如果不存在返回None
+    """
+    try:
+        return db.query(User).filter(User.id == user_id).first()
+    except Exception as e:
+        logger.error(f"获取用户信息失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        return None

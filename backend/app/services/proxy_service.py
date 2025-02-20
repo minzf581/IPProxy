@@ -39,6 +39,8 @@ from app.core.config import settings
 from app.models.dynamic_order import DynamicOrder
 import uuid
 from decimal import Decimal
+import asyncio
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -400,115 +402,82 @@ class ProxyService(IPIPVBaseAPI):
                     "data": None
                 }
             
-            # 2. 开通代理实例
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-            app_order_no = f"APP{timestamp}"
+            # 1.1 进行实名认证
+            auth_params = {
+                "username": params["username"],
+                "appUsername": params["username"],
+                "authType": 1,
+                "authName": "飞蚁",  # 实名认证名称
+                "no": "00000000000",  # 认证号码
+                "vsp": "vsp"  # vsp信息
+            }
+            auth_result = await self._make_request("api/open/app/userAuth/v2", auth_params)
+            if auth_result.get("code") not in [0, 200]:
+                raise Exception(f"实名认证失败: {auth_result.get('msg')}")
+            logger.info(f"[ProxyService] 实名认证成功: {json.dumps(auth_result, ensure_ascii=False)}")
             
-            # 构建请求参数
-            request_data = {
+            # 等待5秒，确保主账户创建和实名认证完成
+            await asyncio.sleep(5)
+            logger.info("[ProxyService] 等待5秒后开始创建代理子账户")
+            
+            # 2. 创建代理子账户
+            proxy_user_params = {
+                "appUsername": f"{params['username']}son1",
+                "limitFlow": params["maxFlowLimit"],
+                "appMainUsername": params["username"],  # 使用appMainUsername
+                "status": 1,
+                "remark": "Auto created proxy user"
+            }
+            proxy_user_result = await self._make_request("api/open/app/proxy/user/v2", proxy_user_params)
+            if proxy_user_result.get("code") not in [0, 200]:
+                raise Exception(f"创建代理子账户失败: {proxy_user_result.get('msg')}")
+            logger.info(f"[ProxyService] 创建代理子账户成功: {json.dumps(proxy_user_result, ensure_ascii=False)}")
+            
+            # 3. 开通代理
+            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            app_order_no = f"TEST_{timestamp}_{random.randint(1000, 9999)}"
+            
+            open_proxy_params = {
                 "appOrderNo": app_order_no,
                 "params": [{
-                    "productNo": params.get("productNo", "out_dynamic_1"),
-                    "proxyType": 104,
-                    "appUsername": params["appUsername"],
-                    "flow": params.get("limitFlow", 1000),  # 使用 limitFlow 参数
-                    "duration": params.get("duration", 30),
-                    "unit": params.get("unit", 1)
+                    "productNo": "out_dynamic_1",  # 动态代理产品编号
+                    "proxyType": 104,  # 动态国外代理
+                    "appUsername": params["username"],
+                    "flow": 300,  # 使用固定流量
+                    "duration": 1,  # 使用固定时长
+                    "unit": 1  # 默认单位
                 }]
             }
+            open_proxy_result = await self._make_request("api/open/app/instance/open/v2", open_proxy_params)
+            if open_proxy_result.get("code") not in [0, 200]:
+                raise Exception(f"开通代理失败: {open_proxy_result.get('msg')}")
+            logger.info(f"[ProxyService] 开通代理成功: {json.dumps(open_proxy_result, ensure_ascii=False)}")
             
-            logger.info(f"[ProxyService] 开通代理请求参数: {json.dumps(request_data)}")
+            # 4. 账密提取
+            draw_params = {
+                "appUsername": params["username"],  # 使用主账号进行提取
+                "addressCode": params["addressCode"],
+                "sessTime": "5",  # 默认5分钟，使用字符串类型
+                "num": 1,
+                "proxyType": 104,  # 动态国外代理
+                "maxFlowLimit": params["maxFlowLimit"],
+                "productNo": "out_dynamic_1"  # 添加必要的产品编号参数
+            }
+            draw_result = await self._make_request("api/open/app/proxy/draw/pwd/v2", draw_params)
+            if draw_result.get("code") not in [0, 200]:
+                raise Exception(f"账密提取失败: {draw_result.get('msg')}")
+            logger.info(f"[ProxyService] 账密提取成功: {json.dumps(draw_result, ensure_ascii=False)}")
             
-            # 调用IPIPV API创建代理
-            response = await self._make_request(
-                "api/open/app/instance/open/v2",
-                request_data
-            )
-            
-            logger.info(f"[ProxyService] API响应: {json.dumps(response)}")
-            
-            if not response or response.get("code") not in [0, 200]:
-                error_msg = response.get("msg", "未知错误") if response else "API返回为空"
-                logger.error(f"[ProxyService] 创建代理失败: {error_msg}")
-                return {
-                    "code": response.get("code", 500) if response else 500,
-                    "msg": error_msg,
-                    "data": None
+            return {
+                "code": 0,
+                "message": "success",
+                "data": {
+                    "mainAccount": user_response.get("data"),
+                    "authInfo": auth_result.get("data"),
+                    "proxyInstance": open_proxy_result.get("data"),
+                    "proxyInfo": draw_result.get("data")
                 }
-            
-            # 获取IPIPV平台返回的orderNo
-            ipipv_order_no = response.get("data", {}).get("orderNo")
-            if not ipipv_order_no:
-                logger.error("[ProxyService] API返回数据中没有orderNo")
-                return {
-                    "code": 500,
-                    "msg": "API返回数据中没有orderNo",
-                    "data": None
-                }
-            
-            # 3. 创建本地订单记录
-            db = None
-            try:
-                db = SessionLocal()
-                
-                # 准备用户和代理数据
-                ipipv_user_data = {
-                    "appUsername": params["appUsername"],
-                    "ipipvUsername": ipipv_username,
-                    "password": params["password"],
-                    **ipipv_data
-                }
-                
-                ipipv_proxy_data = response.get("data", {})
-                
-                # 创建订单记录
-                order = DynamicOrder(
-                    id=f"DO{int(time.time() * 1000)}",  # 生成唯一ID
-                    order_no=ipipv_order_no,
-                    app_order_no=app_order_no,
-                    user_id=int(params.get("user_id")) if params.get("user_id") else None,
-                    agent_id=int(params.get("agent_id")) if params.get("agent_id") else None,
-                    pool_type="dynamic",
-                    traffic=int(params.get("limitFlow", 1000)),
-                    unit_price=0.0,
-                    total_amount=0.0,
-                    proxy_type="dynamic",
-                    status="active",
-                    remark=params.get("remark", ""),
-                    proxy_info={
-                        "user": ipipv_user_data,
-                        "proxy": ipipv_proxy_data
-                    }
-                )
-                
-                db.add(order)
-                db.commit()
-                logger.info(f"[ProxyService] 成功创建动态订单: {ipipv_order_no}")
-                
-                return {
-                    "code": 0,
-                    "msg": "success",
-                    "data": {
-                        "orderNo": ipipv_order_no,
-                        "appOrderNo": app_order_no,
-                        "appUsername": params["appUsername"],  # 返回创建时输入的用户名
-                        "ipipvUsername": ipipv_username,  # 同时返回IPIPV平台的用户名
-                        "proxyInfo": response.get("data")
-                    }
-                }
-                
-            except Exception as e:
-                if db:
-                    db.rollback()
-                logger.error(f"[ProxyService] 数据库操作失败: {str(e)}")
-                return {
-                    "code": 500,
-                    "msg": f"数据库操作失败: {str(e)}",
-                    "data": None
-                }
-            finally:
-                if db:
-                    db.close()
+            }
             
         except Exception as e:
             error_msg = f"创建代理用户失败: {str(e)}"
@@ -844,6 +813,121 @@ class ProxyService(IPIPVBaseAPI):
             return {
                 "code": 500,
                 "msg": f"同步库存数据失败: {str(e)}",
+                "data": None
+            }
+
+    async def extract_proxy_complete(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        完整的提取流程，包括创建主账户、创建代理子账户、开通代理和账密提取
+        
+        Args:
+            params: 提取参数，包括：
+                - username: 用户名
+                - addressCode: 地址代码
+                - maxFlowLimit: 最大流量限制
+                - phone: 用户手机号
+                - email: 用户邮箱
+                
+        Returns:
+            Dict[str, Any]: 提取结果
+        """
+        try:
+            logger.info(f"[ProxyService] 开始完整提取流程: {json.dumps(params, ensure_ascii=False)}")
+            
+            # 1. 创建主账户
+            main_account_params = {
+                "appUsername": params["username"],
+                "password": "12345678",  # 使用固定密码
+                "version": "v2"
+            }
+            main_account_result = await self._make_request("api/open/app/user/v2", main_account_params)
+            if main_account_result.get("code") not in [0, 200]:
+                raise Exception(f"创建主账户失败: {main_account_result.get('msg')}")
+            logger.info(f"[ProxyService] 创建主账户成功: {json.dumps(main_account_result, ensure_ascii=False)}")
+            
+            # 2. 验证用户状态
+            verify_params = {
+                "appUsername": params["username"],
+                "version": "v2"
+            }
+            verify_result = await self._make_request("api/open/app/user/v2", verify_params)
+            if verify_result.get("code") not in [0, 200]:
+                raise Exception(f"验证用户状态失败: {verify_result.get('msg')}")
+            
+            user_data = verify_result.get("data", {})
+            if isinstance(user_data, dict):
+                status = user_data.get("status")
+                auth_status = user_data.get("authStatus")
+                logger.info(f"[ProxyService] 用户状态: status={status}, authStatus={auth_status}")
+                if status != 1:
+                    raise Exception("用户状态异常")
+            
+            # 3. 开通代理
+            timestamp = int(time.time())
+            app_order_no = f"TEST_{timestamp}_{random.randint(1000, 9999)}"
+            
+            open_proxy_params = {
+                "appOrderNo": app_order_no,
+                "params": [{
+                    "productNo": "out_dynamic_1",  # 动态代理产品编号
+                    "proxyType": 104,  # 动态国外代理
+                    "appUsername": params["username"],
+                    "flow": 300,  # 使用固定流量
+                    "duration": 1,  # 使用固定时长
+                    "unit": 1  # 默认单位
+                }]
+            }
+            logger.info(f"[ProxyService] 开通代理请求参数: {json.dumps(open_proxy_params, ensure_ascii=False)}")
+            open_proxy_result = await self._make_request("api/open/app/instance/open/v2", open_proxy_params)
+            if open_proxy_result.get("code") not in [0, 200]:
+                raise Exception(f"开通代理失败: {open_proxy_result.get('msg')}")
+            logger.info(f"[ProxyService] 开通代理成功: {json.dumps(open_proxy_result, ensure_ascii=False)}")
+            
+            # 4. 检查订单状态
+            order_no = open_proxy_result.get("data", {}).get("orderNo")
+            if order_no:
+                order_params = {
+                    "orderNo": order_no,
+                    "version": "v2"
+                }
+                logger.info(f"[ProxyService] 检查订单状态: {order_no}")
+                order_status = await self._make_request("api/open/app/order/v2", order_params)
+                if order_status.get("code") not in [0, 200]:
+                    logger.warning(f"[ProxyService] 查询订单状态异常: {order_status.get('msg')}")
+            
+            # 5. 账密提取
+            draw_params = {
+                "appUsername": params["username"],  # 使用主账号进行提取
+                "addressCode": params.get("addressCode", ""),
+                "sessTime": "5",  # 默认5分钟，使用字符串类型
+                "num": 1,
+                "proxyType": 104,  # 动态国外代理
+                "maxFlowLimit": params.get("maxFlowLimit", 0),
+                "productNo": "out_dynamic_1"  # 添加必要的产品编号参数
+            }
+            logger.info(f"[ProxyService] 账密提取请求参数: {json.dumps(draw_params, ensure_ascii=False)}")
+            draw_result = await self._make_request("api/open/app/proxy/draw/api/v2", draw_params)
+            if draw_result.get("code") not in [0, 200]:
+                raise Exception(f"账密提取失败: {draw_result.get('msg')}")
+            logger.info(f"[ProxyService] 账密提取成功: {json.dumps(draw_result, ensure_ascii=False)}")
+            
+            return {
+                "code": 0,
+                "message": "success",
+                "data": {
+                    "mainAccount": main_account_result.get("data"),
+                    "orderInfo": open_proxy_result.get("data"),
+                    "proxyInfo": draw_result.get("data")
+                }
+            }
+            
+        except Exception as e:
+            error_msg = f"完整提取流程失败: {str(e)}"
+            logger.error(f"[ProxyService] {error_msg}")
+            logger.error(traceback.format_exc())
+            return {
+                "code": 500,
+                "message": error_msg,
                 "data": None
             }
 
