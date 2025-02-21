@@ -79,7 +79,7 @@ export const getCurrentUser = async (): Promise<ApiResponse<User | null>> => {
       };
     }
 
-    const { data: backendResponse } = await apiRequest.get<BackendResponse<User>>(API_ROUTES.AUTH.PROFILE);
+    const { data: backendResponse } = await apiRequest.get<BackendResponse<User>>('/api/auth/current-user');
     debug.log('获取用户信息成功:', backendResponse);
     
     if (backendResponse.code === 0) {
@@ -110,7 +110,7 @@ export const updatePassword = async (data: { oldPassword: string; newPassword: s
   try {
     debug.log('更新密码');
     const { data: backendResponse } = await apiRequest.post<BackendResponse<void>>(
-      API_ROUTES.AUTH.PROFILE, 
+      '/api/auth/password',
       data
     );
     debug.log('密码更新成功');

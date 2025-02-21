@@ -216,4 +216,44 @@ async def get_dynamic_proxy_products(
             "code": 500,
             "msg": f"获取动态代理产品列表失败: {str(e)}",
             "data": []
+        }
+
+@router.get("/business/dynamic-proxy/inventory")
+async def get_dynamic_proxy_inventory(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """获取动态代理库存信息"""
+    try:
+        logger.info("[Business] 开始获取动态代理库存信息")
+        
+        # 查询动态代理产品库存
+        products = db.query(ProductInventory).filter(
+            ProductInventory.proxy_type == 104,  # 动态代理类型
+            ProductInventory.enable == True
+        ).all()
+        
+        logger.info(f"[Business] 查询到 {len(products)} 个动态代理产品库存")
+        
+        # 格式化响应数据
+        formatted_products = []
+        for product in products:
+            formatted_products.append({
+                "productId": product.product_no,
+                "stock": product.inventory,
+                "updatedAt": product.updated_at.isoformat() if product.updated_at else None
+            })
+            
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": formatted_products
+        }
+        
+    except Exception as e:
+        logger.error(f"[Business] 获取动态代理库存信息失败: {str(e)}")
+        return {
+            "code": 500,
+            "msg": f"获取动态代理库存信息失败: {str(e)}",
+            "data": []
         } 

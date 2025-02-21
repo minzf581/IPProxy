@@ -162,6 +162,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
             "data": {
                 "id": current_user.id,
                 "username": current_user.username,
+                "app_username": current_user.app_username or current_user.username,
                 "email": current_user.email,
                 "is_admin": current_user.is_admin,
                 "is_agent": current_user.is_agent,

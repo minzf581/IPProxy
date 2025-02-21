@@ -192,20 +192,23 @@ async def get_user_list(
     pageSize: int = Query(10, ge=1, le=100),
     username: Optional[str] = None,
     status: Optional[str] = None,
+    agentId: Optional[int] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """获取用户列表"""
     try:
-        logger.info(f"Getting user list. Page: {page}, PageSize: {pageSize}, Username: {username}, Status: {status}")
+        logger.info(f"Getting user list. Page: {page}, PageSize: {pageSize}, Username: {username}, Status: {status}, AgentId: {agentId}")
         logger.info(f"Current user: {current_user.username}, Is admin: {current_user.is_admin}")
         
         # 如果是代理商，只能查看自己创建的用户
         if current_user.is_agent:
             query = db.query(User).filter(User.agent_id == current_user.id)
         else:
-            # 管理员可以看到所有用户
+            # 管理员可以看到所有用户，或者根据指定的代理商ID筛选
             query = db.query(User)
+            if agentId:
+                query = query.filter(User.agent_id == agentId)
         
         # 添加搜索条件
         if username:

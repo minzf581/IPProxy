@@ -39,7 +39,7 @@ def get_prices(
         
         # 如果是代理商查询，获取代理商价格设置
         agent_prices = {}
-        if agent_id:  # 移除 not is_global 条件
+        if agent_id:
             logger.info(f"查询代理商 {agent_id} 的价格设置")
             prices = db.query(AgentPrice).filter(
                 AgentPrice.agent_id == agent_id
@@ -50,33 +50,20 @@ def get_prices(
         result = []
         for product in products:
             try:
-                if proxy_types and product.proxy_type not in proxy_types:
-                    continue
+                # 确定价格
+                price = None
+                min_agent_price = float(product.min_agent_price) if product.min_agent_price else 0
                 
-                # 默认使用全局价格和最低代理商价格
-                price = product.global_price
-                min_agent_price = product.min_agent_price
+                if agent_id and product.id in agent_prices:
+                    logger.info(f"使用代理商价格: product_id={product.id}, price={agent_prices[product.id]}")
+                    price = float(agent_prices[product.id])
+                else:
+                    logger.info(f"使用全局价格: product_id={product.id}, price={product.global_price}")
+                    price = float(product.global_price) if product.global_price else float(product.cost_price)
                 
-                # 如果是代理商查询且找到了对应产品的价格设置
-                if agent_id:  # 移除 not is_global 条件
-                    if product.id in agent_prices:
-                        price = agent_prices[product.id]
-                        logger.info(f"使用代理商价格: product_id={product.id}, price={price}")
-                    else:
-                        # 如果没有找到代理商价格设置，创建一个新的
-                        new_price = AgentPrice(
-                            agent_id=agent_id,
-                            product_id=product.id,
-                            price=product.global_price
-                        )
-                        db.add(new_price)
-                        try:
-                            db.commit()
-                            price = new_price.price
-                            logger.info(f"创建代理商价格设置: product_id={product.id}, price={price}")
-                        except Exception as e:
-                            db.rollback()
-                            logger.error(f"创建代理商价格设置失败: {str(e)}")
+                # 记录IP白名单信息
+                ip_whitelist = product.ip_whitelist if product.ip_whitelist else []
+                logger.info(f"产品 {product.id} 的IP白名单: {ip_whitelist}")
                 
                 price_info = ProductPriceBase(
                     id=product.id,
@@ -90,7 +77,8 @@ def get_prices(
                     minAgentPrice=Decimal(str(min_agent_price)) if min_agent_price else Decimal('0'),
                     isGlobal=is_global,
                     createdAt=product.created_at,
-                    updatedAt=product.updated_at
+                    updatedAt=product.updated_at,
+                    ipWhitelist=ip_whitelist
                 )
                 
                 result.append(price_info)

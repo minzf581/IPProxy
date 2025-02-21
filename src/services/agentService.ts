@@ -4,8 +4,9 @@ import axios from 'axios';
 import { debug } from '@/utils/debug';
 import { API_ROUTES, API_PREFIX } from '@/shared/routes';
 import request from '@/utils/request';
+import type { ApiResponse } from '@/types/api';
 
-const { dashboard: debugAgent } = debug;
+const { agent: debugAgent } = debug;
 
 // 创建代理商服务专用的 axios 实例
 const agentApi = axios.create({
@@ -37,12 +38,6 @@ agentApi.interceptors.request.use((config) => {
   return config;
 });
 
-interface ApiResponse<T> {
-  code: number;
-  msg: string;
-  data: T;
-}
-
 interface AgentOrder {
   id: string;
   order_no: string;
@@ -67,7 +62,7 @@ export interface AgentListResponse {
 
 export async function getAgentList(params: AgentListParams = { page: 1, pageSize: 20 }): Promise<ApiResponse<AgentListResponse>> {
   try {
-    console.log('获取代理商列表, 参数:', params);
+    debugAgent.log('获取代理商列表, 参数:', params);
     const response = await request.get<ApiResponse<AgentListResponse>>('/api/open/app/agent/list', { 
       params: {
         page: params.page || 1,
@@ -82,14 +77,14 @@ export async function getAgentList(params: AgentListParams = { page: 1, pageSize
     
     return response.data;
   } catch (error) {
-    console.error('获取代理商列表失败:', error);
+    debugAgent.error('获取代理商列表失败:', error);
     throw error;
   }
 }
 
 export async function getAgentById(agentId: number): Promise<AgentInfo> {
   debugAgent.info('Getting agent by id:', agentId);
-  const response = await agentApi.get<ApiResponse<AgentInfo>>(
+  const response = await request.get<ApiResponse<AgentInfo>>(
     API_ROUTES.AGENT.UPDATE.replace('{id}', String(agentId))
   );
   debugAgent.info('Agent details response:', response.data);
@@ -101,7 +96,7 @@ export async function getAgentById(agentId: number): Promise<AgentInfo> {
 
 export async function getAgentStatistics(agentId: number): Promise<AgentStatistics> {
   debugAgent.info('Getting agent statistics for id:', agentId);
-  const response = await agentApi.get<ApiResponse<AgentStatistics>>(
+  const response = await request.get<ApiResponse<AgentStatistics>>(
     API_ROUTES.AGENT.STATISTICS.replace('{id}', String(agentId))
   );
   debugAgent.info('Agent statistics response:', response.data);

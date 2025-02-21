@@ -16,6 +16,7 @@ class ProductPriceBase(BaseModel):
     isGlobal: bool = True
     createdAt: Optional[datetime] = None
     updatedAt: Optional[datetime] = None
+    ipWhitelist: Optional[List[str]] = None  # 修改字段名为 ipWhitelist
 
     class Config:
         from_attributes = True

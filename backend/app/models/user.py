@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, DateTime, Boolean, DECIMAL, TIMESTAMP
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, DateTime, Boolean, DECIMAL, TIMESTAMP, Text
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
@@ -9,7 +9,7 @@ class User(Base, TimestampMixin):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, index=True, nullable=False)
-    app_username = Column(String(50), unique=True, nullable=True)  # 添加 app_username 字段
+    app_username = Column(String(50), unique=True, index=True, nullable=True)
     platform_account = Column(String(50), unique=True, nullable=True)  # 添加 platform_account 字段
     password = Column(String(255), nullable=False)
     email = Column(String(255), index=True, nullable=True)  # 允许为空的邮箱字段
@@ -18,7 +18,7 @@ class User(Base, TimestampMixin):
     is_admin = Column(Boolean, default=False)
     is_agent = Column(Boolean, default=False)
     balance = Column(Float, nullable=False, default=0.0)
-    remark = Column(String(255), nullable=True)
+    remark = Column(Text)
     last_login_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.now)
     updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
@@ -45,8 +45,8 @@ class User(Base, TimestampMixin):
         return {
             "id": self.id,
             "username": self.username,
-            "app_username": self.app_username,  # 添加 app_username
-            "platform_account": self.platform_account,  # 添加 platform_account
+            "app_username": self.app_username,
+            "platform_account": self.platform_account,
             "email": self.email,
             "phone": self.phone,
             "status": self.status,

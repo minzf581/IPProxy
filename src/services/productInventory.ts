@@ -3,12 +3,14 @@ import type { ProductPrice, ProductPriceParams } from '@/types/product';
 import type { ApiResponse } from '@/types/api';
 import { useAuth } from '@/hooks/useAuth';
 import { UserRole } from '@/types/user';
+import type { ProductStock } from '@/types/product';
 
 interface GetPricesParams {
   is_global: boolean;
   agent_id?: number | null;
   user_id?: number | null;
   proxy_types?: number[];
+  app_username?: string;
 }
 
 export async function getProductPrices(params: GetPricesParams): Promise<ApiResponse<ProductPrice[]>> {
@@ -26,9 +28,10 @@ export async function getProductPrices(params: GetPricesParams): Promise<ApiResp
       queryParams.append('is_global', 'false');
       // 不需要传agent_id，后端会自动使用当前登录的代理商ID
     } else {
-      // 如果指定了用户ID，则获取该用户的价格
-      if (params.user_id) {
+      // 如果指定了用户ID和用户名，则获取该用户的价格
+      if (params.user_id && params.app_username) {
         queryParams.append('user_id', String(params.user_id));
+        queryParams.append('app_username', params.app_username);
         queryParams.append('is_global', 'false');
       } 
       // 如果指定了代理商ID，则获取该代理商的价格
@@ -102,16 +105,22 @@ export interface PriceUpdateItem {
   min_agent_price: number;
   is_global: boolean;
   agent_id?: number;
+  ip_whitelist?: string[];
+  app_username?: string;
 }
 
-interface BatchUpdateRequest {
+export async function batchUpdateProductPriceSettings(data: {
   prices: PriceUpdateItem[];
   agent_id?: number;
-}
-
-export async function batchUpdateProductPriceSettings(data: BatchUpdateRequest): Promise<ApiResponse<void>> {
+  app_username?: string;
+  user_id?: number;
+}): Promise<ApiResponse<void>> {
   try {
-    console.log('批量更新价格数据(原始):', JSON.stringify(data, null, 2));
+    console.log('批量更新价格和IP白名单数据(原始):', JSON.stringify(data, null, 2));
+    
+    if (!data.app_username) {
+      throw new Error('缺少必要的用户名参数');
+    }
     
     // 确保所有必要字段都存在
     const modifiedData = {
@@ -120,10 +129,15 @@ export async function batchUpdateProductPriceSettings(data: BatchUpdateRequest):
         price: Number(item.price),
         min_agent_price: Number(item.min_agent_price || 0),
         type: item.type,
-        proxy_type: Number(item.proxy_type)
+        proxy_type: Number(item.proxy_type),
+        ip_whitelist: item.ip_whitelist || [],
+        app_username: data.app_username,  // 使用传入的用户名
+        user_id: data.user_id
       })),
-      is_global: !data.agent_id,
-      agent_id: data.agent_id ? Number(data.agent_id) : undefined
+      is_global: false,  // 默认为非全局更新
+      agent_id: data.agent_id ? Number(data.agent_id) : undefined,
+      app_username: data.app_username,
+      user_id: data.user_id
     };
     
     console.log('发送到后端的数据:', JSON.stringify(modifiedData, null, 2));
@@ -131,7 +145,18 @@ export async function batchUpdateProductPriceSettings(data: BatchUpdateRequest):
     console.log('后端响应:', response.data);
     return response.data;
   } catch (error) {
-    console.error('批量更新价格失败:', error);
+    console.error('批量更新价格和IP白名单失败:', error);
+    throw error;
+  }
+}
+
+// 获取产品库存
+export async function getProductStock(): Promise<ApiResponse<ProductStock[]>> {
+  try {
+    const response = await request.get<ApiResponse<ProductStock[]>>('/api/business/dynamic-proxy/inventory');
+    return response.data;
+  } catch (error) {
+    console.error('获取产品库存失败:', error);
     throw error;
   }
 } 

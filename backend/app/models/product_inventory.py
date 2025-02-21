@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DECIMAL, TIMESTAMP, SmallInteger, Text, Float, CheckConstraint, Index
+from sqlalchemy import Column, Integer, String, DECIMAL, TIMESTAMP, SmallInteger, Text, Float, CheckConstraint, Index, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.models.base import Base, TimestampMixin
@@ -46,6 +46,7 @@ class ProductInventory(Base, TimestampMixin):
     updated_at = Column(TIMESTAMP, default=datetime.now, onupdate=datetime.now)
     ip_start = Column(String(15), comment='IP段起始地址')
     ip_end = Column(String(15), comment='IP段结束地址')
+    ip_whitelist = Column(JSON, default=list, comment='IP白名单列表')
 
     __table_args__ = (
         Index('ix_product_inventory_product_no', 'product_no'),
@@ -97,6 +98,7 @@ class ProductInventory(Base, TimestampMixin):
             'last_sync_time': self.last_sync_time.isoformat() if self.last_sync_time else None,
             'ip_start': self.ip_start,
             'ip_end': self.ip_end,
+            'ip_whitelist': self.ip_whitelist or [],
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         } 

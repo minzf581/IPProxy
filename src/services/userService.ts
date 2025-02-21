@@ -239,7 +239,13 @@ export async function getAgentList(): Promise<User[]> {
 
 // 搜索用户
 export async function searchUsers(params: any): Promise<ApiResponse<UserListResponse>> {
-  const response = await api.get<ApiResponse<UserListResponse>>('/open/app/user/list', { params });
+  // 确保 pageSize 不超过100
+  const safeParams = {
+    ...params,
+    pageSize: Math.min(params.pageSize || 10, 100)
+  };
+  // 使用统一的路由配置
+  const response = await api.get<ApiResponse<UserListResponse>>(API_ROUTES.USER.LIST, { params: safeParams });
   return response.data;
 }
 
