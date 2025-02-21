@@ -139,8 +139,6 @@ async def get_dynamic_orders(
     user_id: Optional[int] = None,
     order_no: Optional[str] = None,
     pool_type: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
@@ -152,55 +150,68 @@ async def get_dynamic_orders(
         # 构建基础查询
         query = db.query(DynamicOrder)
         
-        # 代理商只能查看自己的订单
+        # 权限处理
         if current_user.is_agent:
-            logger.debug(f"代理商查询自己的订单: agent_id={current_user.id}")
-            query = query.filter(DynamicOrder.agent_id == current_user.id)
-        
-        # 应用过滤条件
-        if user_id:
+            logger.debug(f"代理商查询订单: agent_id={current_user.id}")
+            if user_id:
+                # 验证用户是否属于该代理商
+                target_user = db.query(User).filter(User.id == user_id).first()
+                if not target_user or target_user.agent_id != current_user.id:
+                    raise HTTPException(
+                        status_code=403,
+                        detail={"code": 403, "message": "无权查看此用户的订单"}
+                    )
+                logger.debug(f"代理商查询指定用户订单: user_id={user_id}")
+                query = query.filter(DynamicOrder.user_id == user_id)
+            else:
+                # 查询代理商自己的订单和所有下级用户的订单
+                logger.debug(f"代理商查询所有下级用户订单")
+                # 获取代理商的所有下级用户
+                sub_users = db.query(User.id).filter(User.agent_id == current_user.id).all()
+                sub_user_ids = [user.id for user in sub_users]
+                sub_user_ids.append(current_user.id)  # 添加代理商自己的ID
+                logger.debug(f"下级用户ID列表: {sub_user_ids}")
+                # 查询代理商自己的订单和下级用户的订单
+                query = query.filter(DynamicOrder.user_id.in_(sub_user_ids))
+        elif not current_user.is_admin:  # 普通用户只能查看自己的订单
+            logger.debug(f"普通用户查询自己的订单: user_id={current_user.id}")
+            query = query.filter(DynamicOrder.user_id == current_user.id)
+        elif user_id:  # 管理员可以查看指定用户的订单
+            logger.debug(f"管理员查询指定用户订单: user_id={user_id}")
             query = query.filter(DynamicOrder.user_id == user_id)
+        
+        # 应用其他过滤条件
         if order_no:
             query = query.filter(DynamicOrder.order_no.like(f"%{order_no}%"))
         if pool_type:
             query = query.filter(DynamicOrder.pool_type == pool_type)
             
-        # 日期范围过滤
-        if start_date:
-            query = query.filter(DynamicOrder.created_at >= datetime.strptime(start_date, "%Y-%m-%d"))
-        if end_date:
-            query = query.filter(DynamicOrder.created_at <= datetime.strptime(end_date, "%Y-%m-%d 23:59:59"))
-        
         # 计算总数
         total = query.count()
         logger.debug(f"查询到订单总数: {total}")
         
-        # 分页并按创建时间倒序排序，同时获取用户信息
+        # 分页并按创建时间倒序排序
         orders = query.order_by(DynamicOrder.created_at.desc())\
                      .offset((page - 1) * page_size)\
                      .limit(page_size)\
                      .all()
         
         # 获取所有相关的用户ID
-        user_ids = [order.user_id for order in orders]
-        agent_ids = [order.agent_id for order in orders]
+        user_ids = list(set([order.user_id for order in orders if order.user_id]))
         logger.debug(f"订单用户ID列表: {user_ids}")
-        logger.debug(f"订单代理商ID列表: {agent_ids}")
         
         # 批量查询用户信息
-        users = db.query(User).filter(User.id.in_(user_ids)).all()
+        users = db.query(User).filter(User.id.in_(user_ids)) if user_ids else []
         user_map = {user.id: user.username for user in users}
         logger.debug(f"用户ID-用户名映射: {user_map}")
         
-        # 转换订单数据，只包含用户信息
+        # 转换订单数据
         order_list = []
         for order in orders:
             order_dict = order.to_dict()
             user_name = user_map.get(order.user_id)
-            logger.debug(f"处理订单: order_id={order.id}, user_id={order.user_id}")
-            logger.debug(f"用户名映射: user_name={user_name}")
+            logger.debug(f"处理订单: order_id={order.id}, user_id={order.user_id}, user_name={user_name}")
             
-            # 只添加用户名
             order_dict['username'] = user_name or f'用户{order.user_id}'
             order_list.append(order_dict)
             
@@ -652,4 +663,72 @@ async def get_static_order_detail(
         raise HTTPException(
             status_code=500,
             detail="获取订单详情失败"
-        ) 
+        )
+
+@router.post("/callback/{order_id}")
+async def handle_order_callback(
+    order_id: str,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """
+    处理代理订单回调
+    
+    Args:
+        order_id: 订单ID
+        request: 请求对象
+        db: 数据库会话
+    """
+    try:
+        # 获取回调数据
+        callback_data = await request.json()
+        logger.info(f"[OrderCallback] 收到订单回调: order_id={order_id}, data={json.dumps(callback_data, ensure_ascii=False)}")
+        
+        # 刷新数据库会话
+        db.expire_all()
+        
+        # 查找动态订单
+        logger.info(f"[OrderCallback] 开始查询动态订单: order_id={order_id}")
+        order = db.query(DynamicOrder).filter(DynamicOrder.id == order_id).first()
+        logger.info(f"[OrderCallback] 动态订单查询结果: {order}")
+        
+        if not order:
+            # 如果不是动态订单，尝试查找静态订单
+            logger.info(f"[OrderCallback] 开始查询静态订单: order_id={order_id}")
+            order = db.query(StaticOrder).filter(StaticOrder.id == order_id).first()
+            logger.info(f"[OrderCallback] 静态订单查询结果: {order}")
+            
+        if not order:
+            logger.error(f"[OrderCallback] 未找到订单: {order_id}")
+            # 检查数据库中是否存在任何订单
+            all_orders = db.query(DynamicOrder).all()
+            logger.info(f"[OrderCallback] 当前数据库中的所有动态订单: {[o.id for o in all_orders]}")
+            raise HTTPException(status_code=404, detail="订单不存在")
+            
+        # 解析回调数据
+        status = callback_data.get("status")
+        proxy_info = callback_data.get("proxyInfo")
+        
+        if not status:
+            logger.error(f"[OrderCallback] 回调数据缺少状态信息: {callback_data}")
+            raise HTTPException(status_code=400, detail="回调数据格式错误")
+            
+        # 更新订单状态
+        if status == "success":
+            # 更新订单状态为成功
+            order.status = "active"
+            if hasattr(order, 'proxy_info'):  # 如果是动态订单
+                order.proxy_info = proxy_info
+            order.updated_at = datetime.now()
+            db.commit()  # 添加事务提交
+            logger.info(f"[OrderCallback] 订单激活成功: {order_id}")
+            return {"code": 200, "message": "订单激活成功"}
+        else:
+            logger.error(f"[OrderCallback] 订单激活失败: {status}")
+            raise HTTPException(status_code=400, detail=f"订单激活失败: {status}")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[OrderCallback] 处理回调时发生错误: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e)) 
