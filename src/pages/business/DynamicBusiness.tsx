@@ -36,7 +36,8 @@ import {
   ExtractMethod,
   Protocol,
   DataFormat,
-  Delimiter
+  Delimiter,
+  ExtractParams
 } from '@/types/dynamicProxy';
 import { UserRole } from '@/types/user';
 import { getMappedValue, getUniqueValues, PRODUCT_NO_MAP, AREA_MAP, COUNTRY_MAP, CITY_MAP } from '@/constants/mappings';
@@ -135,6 +136,16 @@ const AREA_NAME_MAP: { [key: string]: string } = {
   '7': '其他地区'
 };
 
+interface ExtractResultItem {
+  proxyUrl?: string;
+  list?: string[];
+}
+
+interface ExtractResult {
+  list?: ExtractResultItem[];
+  url?: string;
+}
+
 const DynamicBusinessContent: React.FC = () => {
   const { user } = useAuth();
   const isAgent = user?.role === UserRole.AGENT;
@@ -153,6 +164,7 @@ const DynamicBusinessContent: React.FC = () => {
     delimiter: Delimiter.CRLF
   });
   const [extractedUrl, setExtractedUrl] = useState<string>('');
+  const [displayedUrl, setDisplayedUrl] = useState<string>('');
   const [showUrlModal, setShowUrlModal] = useState<boolean>(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductPrice | null>(null);
   const [areaData, setAreaData] = useState<DynamicProxyAreaData | null>(null);
@@ -407,70 +419,106 @@ const DynamicBusinessContent: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    console.log('[DynamicBusiness] 开始提取代理:', {
-      selectedProduct,
-      extractConfig,
-      timestamp: new Date().toISOString()
-    });
-
-    if (!selectedProduct) {
-      message.error('请先选择产品');
-      return;
-    }
-
-    if (!selectedProduct.flow) {
-      message.error('请输入流量');
-      return;
-    }
-
     try {
       setLoading(true);
-      const baseParams = {
-        productNo: selectedProduct.type,
-        proxyType: selectedProduct.proxyType,
-        flow: selectedProduct.flow,
-        addressCode: selectedProduct.area || '',
-        maxFlowLimit: selectedProduct.flow,
-      };
-
-      // 根据提取方式构建不同的参数
-      const extractParams = extractConfig.method === ExtractMethod.PASSWORD
-        ? {
-            ...baseParams,
-            extractConfig: {
+      
+      // 构建提取参数
+      const extractParams: ExtractParams = {
+        productNo: selectedProduct?.type || '',
+        proxyType: 104,
+        flow: selectedProduct?.flow || 1,
+        addressCode: selectedProduct?.area || '',
+        maxFlowLimit: selectedProduct?.flow || 1,
+        extractConfig: extractConfig.method === ExtractMethod.PASSWORD
+          ? {
               method: ExtractMethod.PASSWORD,
               quantity: extractConfig.quantity,
               validTime: extractConfig.validTime
             }
-          }
-        : {
-            ...baseParams,
-            num: 1,
-            protocol: extractConfig.protocol?.toString(),
-            returnType: extractConfig.dataFormat?.toString(),
-            delimiter: extractConfig.delimiter ? Number(extractConfig.delimiter) : 1,
-            extractConfig: {
+          : {
               method: ExtractMethod.API,
-              protocol: extractConfig.protocol,
-              dataFormat: extractConfig.dataFormat,
-              delimiter: extractConfig.delimiter
+              protocol: Protocol.SOCKS5,
+              dataFormat: DataFormat.TXT,
+              delimiter: Delimiter.CRLF
             }
-          };
+      };
 
       console.log('[DynamicBusiness] 提取参数:', extractParams);
       
       const response = await extractDynamicProxy(extractParams);
-
-      if (response.code === 0 && response.data?.url) {
-        setExtractedUrl(response.data.url);
-        setShowUrlModal(true);
-        message.success('提取成功');
-      } else {
-        message.error(response.msg || '提取失败');
+      console.log('[DynamicBusiness] 原始响应:', response);
+      
+      // 解构响应数据
+      const { data } = response;
+      console.log('[DynamicBusiness] 响应data:', data);
+      
+      if (!data || data.code !== 0) {
+        console.error('[DynamicBusiness] 响应错误:', data);
+        message.error(data?.message || '提取失败：响应数据格式错误');
+        return;
       }
-    } catch (error) {
-      console.error('[DynamicBusiness] 提取失败:', error);
-      message.error('提取失败，请稍后重试');
+
+      const responseData = data.data;
+      console.log('[DynamicBusiness] 响应业务数据:', responseData);
+
+      if (!responseData) {
+        console.error('[DynamicBusiness] 响应中没有业务数据');
+        message.error('提取失败：响应数据为空');
+        return;
+      }
+
+      const { mainAccount, orderInfo, proxyInfo } = responseData;
+      console.log('[DynamicBusiness] 解构数据:', {
+        mainAccount,
+        orderInfo,
+        proxyInfo
+      });
+
+      if (!proxyInfo) {
+        console.error('[DynamicBusiness] 响应中没有proxyInfo');
+        message.error('提取失败：未获取到代理信息');
+        return;
+      }
+
+      // 处理提取结果
+      if (extractConfig.method === ExtractMethod.PASSWORD) {
+        if (proxyInfo.list && Array.isArray(proxyInfo.list)) {
+          const proxyUrls = proxyInfo.list
+            .map((item: { proxyUrl?: string }) => item.proxyUrl)
+            .filter((url): url is string => !!url);
+          if (proxyUrls.length > 0) {
+            setExtractedUrl(proxyUrls.join('\n'));
+            setDisplayedUrl(proxyUrls.join('\n'));
+            setShowUrlModal(true);
+            message.success('提取成功');
+            // 如果是代理商，刷新余额
+            if (selectedAgent) {
+              await loadBalance(selectedAgent.id);
+            }
+            return;
+          }
+        }
+      } else {
+        // API提取方式
+        if (proxyInfo.list?.[0]?.proxyUrl) {
+          setExtractedUrl(proxyInfo.list[0].proxyUrl);
+          setDisplayedUrl(proxyInfo.list[0].proxyUrl);
+          setShowUrlModal(true);
+          message.success('提取成功');
+          // 如果是代理商，刷新余额
+          if (selectedAgent) {
+            await loadBalance(selectedAgent.id);
+          }
+          return;
+        }
+      }
+
+      console.error('[DynamicBusiness] 未找到有效的代理URL');
+      message.error('提取失败：未获取到有效的代理地址');
+
+    } catch (error: unknown) {
+      console.error('[DynamicBusiness] 提取异常:', error);
+      message.error(`提取失败：${error instanceof Error ? error.message : '未知错误'}`);
     } finally {
       setLoading(false);
     }
@@ -1134,6 +1182,21 @@ const DynamicBusinessContent: React.FC = () => {
               >
                 提取
               </Button>
+              {displayedUrl && (
+                <div style={{ marginTop: '16px' }}>
+                  <Typography.Paragraph copyable={{ text: displayedUrl }}>
+                    {displayedUrl}
+                  </Typography.Paragraph>
+                  <Space>
+                    <Button onClick={() => navigator.clipboard.writeText(displayedUrl)}>
+                      拷贝链接
+                    </Button>
+                    <Button onClick={() => window.open(displayedUrl, '_blank')}>
+                      打开链接
+                    </Button>
+                  </Space>
+                </div>
+              )}
             </Space>
           </Card>
         </Space>
@@ -1150,9 +1213,26 @@ const DynamicBusinessContent: React.FC = () => {
           okText="复制"
           cancelText="关闭"
         >
-          <Typography.Paragraph copyable>
-            {extractedUrl}
-          </Typography.Paragraph>
+          <Alert
+            message="提取成功"
+            description={
+              <div>
+                <Typography.Paragraph>
+                  {extractConfig.method === ExtractMethod.PASSWORD ? '代理地址列表：' : 'API地址：'}
+                </Typography.Paragraph>
+                <Typography.Paragraph copyable style={{ whiteSpace: 'pre-wrap' }}>
+                  {extractedUrl}
+                </Typography.Paragraph>
+                {extractConfig.method === ExtractMethod.PASSWORD && (
+                  <Typography.Text type="secondary">
+                    注意：代理地址有效期为 {extractConfig.validTime} 分钟
+                  </Typography.Text>
+                )}
+              </div>
+            }
+            type="success"
+            showIcon
+          />
         </Modal>
       </Card>
     </PageContainer>
