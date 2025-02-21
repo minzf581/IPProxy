@@ -420,105 +420,59 @@ const DynamicBusinessContent: React.FC = () => {
 
   const handleSubmit = async () => {
     try {
+      if (!selectedProduct) {
+        message.error('请选择产品');
+        return;
+      }
+
+      if (!selectedProduct.flow) {
+        message.error('产品流量不能为空');
+        return;
+      }
+
       setLoading(true);
       
       // 构建提取参数
       const extractParams: ExtractParams = {
-        productNo: selectedProduct?.type || '',
-        proxyType: 104,
-        flow: selectedProduct?.flow || 1,
-        addressCode: selectedProduct?.area || '',
-        maxFlowLimit: selectedProduct?.flow || 1,
-        extractConfig: extractConfig.method === ExtractMethod.PASSWORD
-          ? {
-              method: ExtractMethod.PASSWORD,
-              quantity: extractConfig.quantity,
-              validTime: extractConfig.validTime
-            }
-          : {
-              method: ExtractMethod.API,
-              protocol: Protocol.SOCKS5,
-              dataFormat: DataFormat.TXT,
-              delimiter: Delimiter.CRLF
-            }
+        productNo: selectedProduct.type,
+        proxyType: 104,  // 动态代理类型
+        flow: selectedProduct.flow || 0,  // 添加默认值
+        maxFlowLimit: selectedProduct.flow || 0,  // 添加默认值
+        extractConfig
       };
-
-      console.log('[DynamicBusiness] 提取参数:', extractParams);
+      
+      // 如果选择了地区，添加地区代码
+      if (filterOptions.cities.length > 0) {
+        extractParams.addressCode = filterOptions.cities[0].value;
+      } else if (filterOptions.states.length > 0) {
+        extractParams.addressCode = filterOptions.states[0].value;
+      } else if (filterOptions.countries.length > 0) {
+        extractParams.addressCode = filterOptions.countries[0].value;
+      } else if (filterOptions.areas.length > 0) {
+        extractParams.addressCode = filterOptions.areas[0].value;
+      }
+      
+      console.log('[DynamicBusiness] 提取代理参数:', extractParams);
       
       const response = await extractDynamicProxy(extractParams);
-      console.log('[DynamicBusiness] 原始响应:', response);
+      console.log('[DynamicBusiness] 提取代理响应:', response);
       
-      // 解构响应数据
-      const { data } = response;
-      console.log('[DynamicBusiness] 响应data:', data);
-      
-      if (!data || data.code !== 0) {
-        console.error('[DynamicBusiness] 响应错误:', data);
-        message.error(data?.message || '提取失败：响应数据格式错误');
-        return;
-      }
-
-      const responseData = data.data;
-      console.log('[DynamicBusiness] 响应业务数据:', responseData);
-
-      if (!responseData) {
-        console.error('[DynamicBusiness] 响应中没有业务数据');
-        message.error('提取失败：响应数据为空');
-        return;
-      }
-
-      const { mainAccount, orderInfo, proxyInfo } = responseData;
-      console.log('[DynamicBusiness] 解构数据:', {
-        mainAccount,
-        orderInfo,
-        proxyInfo
-      });
-
-      if (!proxyInfo) {
-        console.error('[DynamicBusiness] 响应中没有proxyInfo');
-        message.error('提取失败：未获取到代理信息');
-        return;
-      }
-
-      // 处理提取结果
-      if (extractConfig.method === ExtractMethod.PASSWORD) {
-        if (proxyInfo.list && Array.isArray(proxyInfo.list)) {
-          const proxyUrls = proxyInfo.list
-            .map((item: { proxyUrl?: string }) => item.proxyUrl)
-            .filter((url): url is string => !!url);
-          if (proxyUrls.length > 0) {
-            setExtractedUrl(proxyUrls.join('\n'));
-            setDisplayedUrl(proxyUrls.join('\n'));
-            setShowUrlModal(true);
-            message.success('提取成功');
-            // 如果是代理商，刷新余额
-            if (selectedAgent) {
-              await loadBalance(selectedAgent.id);
-            }
-            return;
-          }
+      if (response.data?.code === 0) {  // 修改这里，检查 response.data.code
+        // 获取代理URL
+        const proxyUrl = response.data?.data?.proxyInfo?.list?.[0]?.proxyUrl || '';
+        if (proxyUrl) {
+          setExtractedUrl(proxyUrl);
+          setDisplayedUrl(proxyUrl);
+          message.success('提取成功');
+        } else {
+          message.error('未获取到代理地址');
         }
       } else {
-        // API提取方式
-        if (proxyInfo.list?.[0]?.proxyUrl) {
-          setExtractedUrl(proxyInfo.list[0].proxyUrl);
-          setDisplayedUrl(proxyInfo.list[0].proxyUrl);
-          setShowUrlModal(true);
-          message.success('提取成功');
-          // 如果是代理商，刷新余额
-          if (selectedAgent) {
-            await loadBalance(selectedAgent.id);
-          }
-          return;
-        }
+        message.error(response.data?.msg || '提取失败');
       }
-
-      console.error('[DynamicBusiness] 未找到有效的代理URL');
-      message.error('提取失败：未获取到有效的代理地址');
-
-    } catch (error: unknown) {
-      console.error('[DynamicBusiness] 提取异常:', error);
-      message.error(`提取失败：${error instanceof Error ? error.message : '未知错误'}`);
+    } catch (error) {
+      console.error('[DynamicBusiness] 提取代理失败:', error);
+      message.error('提取代理失败');
     } finally {
       setLoading(false);
     }

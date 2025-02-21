@@ -642,36 +642,7 @@ async def extract_dynamic_proxy(
         logger.info(f"[{func_name}] 最终提取参数: {json.dumps(extract_params, ensure_ascii=False)}")
         response = await proxy_service.extract_proxy_complete(extract_params, db)
         
-        # 转换响应格式以匹配前端期望
-        if response.get("code") == 0 and response.get("data"):
-            order_data = response["data"].get("order", {})
-            proxy_info = response["data"].get("proxy_info", {})
-            
-            # 构建前端期望的响应格式
-            formatted_response = {
-                "code": 0,
-                "message": "success",
-                "data": {
-                    "mainAccount": {
-                        "username": target_user.username,
-                        "status": 1
-                    },
-                    "orderInfo": order_data,
-                    "proxyInfo": {
-                        "list": [{
-                            "proxyUrl": f"{proxy_info.get('orderNo')}",
-                            "username": target_user.username,
-                            "password": "agent123",
-                            "status": "active"
-                        }]
-                    }
-                }
-            }
-            
-            logger.info(f"[{func_name}] 格式化后的响应: {json.dumps(formatted_response, ensure_ascii=False)}")
-            return formatted_response
-            
-        logger.info(f"[{func_name}] 提取响应: {json.dumps(response, ensure_ascii=False)}")
+        logger.info(f"[{func_name}] 格式化后的响应: {json.dumps(response, ensure_ascii=False)}")
         return response
         
     except Exception as e:

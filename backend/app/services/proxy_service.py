@@ -968,24 +968,74 @@ class ProxyService(IPIPVBaseAPI):
             
             # 4. 检查订单状态
             order_no = open_proxy_result.get("data", {}).get("orderNo")
-            if order_no:
-                order_params = {
-                    "orderNo": order_no,
-                    "version": "v2"
-                }
-                logger.info(f"[ProxyService] 检查订单状态: {order_no}")
-                order_status = await self._make_request("api/open/app/order/v2", order_params)
-                if order_status.get("code") not in [0, 200]:
-                    logger.warning(f"[ProxyService] 查询订单状态异常: {order_status.get('msg')}")
+            if not order_no:
+                raise Exception("未获取到订单号")
             
-            return {
+            # 5. 进行API提取
+            draw_params = {
+                "appUsername": params["username"],
+                "addressCode": params.get("addressCode", ""),
+                "proxyType": params["proxyType"],
+                "maxFlowLimit": params["maxFlowLimit"],
+                "productNo": params["productNo"],
+                "protocol": "socks5",  # 默认使用socks5协议
+                "returnType": "txt",   # 默认返回txt格式
+                "delimiter": 1         # 默认分隔符
+            }
+            
+            logger.info(f"[ProxyService] 开始API提取，参数: {json.dumps(draw_params, ensure_ascii=False)}")
+            draw_result = await self._make_request("api/open/app/proxy/draw/api/v2", draw_params)
+            
+            if draw_result.get("code") not in [0, 200]:
+                logger.error(f"[ProxyService] API提取失败: {draw_result.get('msg')}")
+                # 更新订单状态为失败
+                order.status = "failed"
+                db.commit()
+                raise Exception(f"API提取失败: {draw_result.get('msg')}")
+            
+            logger.info(f"[ProxyService] API提取成功: {json.dumps(draw_result, ensure_ascii=False)}")
+            
+            # 更新订单状态为成功
+            order.status = "active"
+            # 获取API提取的代理URL
+            proxy_url = draw_result.get("data", {}).get("list", [])[0].get("proxyUrl", "") if draw_result.get("data", {}).get("list") else ""
+            logger.info(f"[ProxyService] 获取到的代理URL: {proxy_url}")
+            
+            # 更新订单的代理信息
+            order.proxy_info = {
+                **order.proxy_info,
+                "proxyUrl": proxy_url,
+                "drawResult": draw_result.get("data")
+            }
+            db.commit()
+            
+            # 构建返回数据
+            order_dict = order.to_dict()
+            logger.info(f"[ProxyService] 订单数据: {json.dumps(order_dict, ensure_ascii=False)}")
+            
+            response_data = {
                 "code": 0,
-                "msg": "success",
+                "message": "success",
                 "data": {
-                    "order": order.to_dict(),
-                    "proxy_info": open_proxy_result.get("data")
+                    "mainAccount": {
+                        "username": params["username"],
+                        "status": 1
+                    },
+                    "orderInfo": order_dict,
+                    "proxyInfo": {
+                        "list": [{
+                            "proxyUrl": proxy_url,  # 直接使用API返回的代理URL
+                            "username": params["username"],
+                            "password": "agent123",
+                            "status": "active"
+                        }]
+                    },
+                    "noPopup": True  # 添加标志，告诉前端不要显示弹窗
                 }
             }
+            
+            logger.info(f"[ProxyService] 返回数据: {json.dumps(response_data, ensure_ascii=False)}")
+            return response_data
             
         except Exception as e:
             logger.error(f"[ProxyService] 提取代理失败: {str(e)}")
