@@ -301,7 +301,7 @@ const DynamicBusinessContent: React.FC = () => {
             name: item.name || item.productName,
             type: item.type || item.productNo,
             proxyType: item.proxyType || 104,
-            flow: item.flow || 1000,
+            flow: undefined,
             duration: item.duration || 30,
             unit: item.unit || 1,
             area: item.area || '',
@@ -408,18 +408,58 @@ const DynamicBusinessContent: React.FC = () => {
 
   const handleSubmit = async () => {
     console.log('[DynamicBusiness] 开始提取代理:', {
-      selectedAgent,
+      selectedProduct,
       extractConfig,
       timestamp: new Date().toISOString()
     });
 
+    if (!selectedProduct) {
+      message.error('请先选择产品');
+      return;
+    }
+
+    if (!selectedProduct.flow) {
+      message.error('请输入流量');
+      return;
+    }
+
     try {
       setLoading(true);
-      const response = await extractDynamicProxy({
-        addressCode: selectedProduct?.area || '',
-        maxFlowLimit: selectedProduct?.flow || 1000,
-        extractConfig
-      });
+      const baseParams = {
+        productNo: selectedProduct.type,
+        proxyType: selectedProduct.proxyType,
+        flow: selectedProduct.flow,
+        addressCode: selectedProduct.area || '',
+        maxFlowLimit: selectedProduct.flow,
+      };
+
+      // 根据提取方式构建不同的参数
+      const extractParams = extractConfig.method === ExtractMethod.PASSWORD
+        ? {
+            ...baseParams,
+            extractConfig: {
+              method: ExtractMethod.PASSWORD,
+              quantity: extractConfig.quantity,
+              validTime: extractConfig.validTime
+            }
+          }
+        : {
+            ...baseParams,
+            num: 1,
+            protocol: extractConfig.protocol?.toString(),
+            returnType: extractConfig.dataFormat?.toString(),
+            delimiter: extractConfig.delimiter ? Number(extractConfig.delimiter) : 1,
+            extractConfig: {
+              method: ExtractMethod.API,
+              protocol: extractConfig.protocol,
+              dataFormat: extractConfig.dataFormat,
+              delimiter: extractConfig.delimiter
+            }
+          };
+
+      console.log('[DynamicBusiness] 提取参数:', extractParams);
+      
+      const response = await extractDynamicProxy(extractParams);
 
       if (response.code === 0 && response.data?.url) {
         setExtractedUrl(response.data.url);
@@ -661,14 +701,17 @@ const DynamicBusinessContent: React.FC = () => {
 
   // 处理流量变更
   const handleFlowChange = (value: number | null) => {
-    if (!selectedProduct || !value) return;
+    if (!selectedProduct) return;
 
-    console.log('[DynamicBusiness] 修改流量:', value);
+    console.log('[DynamicBusiness] 修改流量:', {
+      originalValue: value,
+      productId: selectedProduct.id
+    });
 
     // 更新产品信息
     setSelectedProduct(prev => ({
       ...prev!,
-      flow: value
+      flow: value === null ? undefined : value
     }));
   };
 
@@ -890,9 +933,31 @@ const DynamicBusinessContent: React.FC = () => {
             min={1}
             max={1000}
             value={record.flow}
-            onChange={handleFlowChange}
+            onChange={(value) => {
+              console.log('[DynamicBusiness] 流量输入变更:', {
+                originalValue: value,
+                recordId: record.id
+              });
+              handleFlowChange(value);
+            }}
             placeholder="请输入流量"
             style={{ width: '100%' }}
+            precision={0}
+            step={1}
+            controls={true}
+            parser={(value) => {
+              if (!value) return 0;
+              const parsed = parseInt(value, 10);
+              console.log('[DynamicBusiness] 流量输入解析:', {
+                input: value,
+                parsed: parsed
+              });
+              return isNaN(parsed) ? 0 : parsed;
+            }}
+            formatter={(value) => {
+              if (!value && value !== 0) return '';
+              return value.toString();
+            }}
           />
         )
       },

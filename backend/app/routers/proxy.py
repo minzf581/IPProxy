@@ -563,41 +563,95 @@ async def extract_dynamic_proxy(
     """提取动态代理"""
     func_name = "extract_dynamic_proxy"
     try:
-        log_request_info(func_name, request=request)
+        logger.info(f"[{func_name}] 收到提取请求，参数：{json.dumps(request, ensure_ascii=False)}")
         
-        # 验证请求参数
-        if not request.get("extractConfig"):
-            raise HTTPException(status_code=400, detail="提取配置不能为空")
+        # 验证基本参数
+        required_fields = ["productNo", "proxyType", "flow"]
+        missing_fields = [field for field in required_fields if field not in request]
+        if missing_fields:
+            error_msg = f"缺少必要参数: {', '.join(missing_fields)}"
+            logger.error(f"[{func_name}] {error_msg}")
+            return {
+                "code": 400,
+                "msg": error_msg,
+                "data": None
+            }
             
-        # 获取用户信息
-        user_info = await get_user_info(db, current_user.id)
-        if not user_info:
-            raise HTTPException(status_code=400, detail="用户信息不存在")
+        # 获取用户信息（如果请求中指定了用户，则使用指定的用户）
+        target_user = None
+        if "userId" in request:
+            target_user = await get_user_info(db, request["userId"])
+            if not target_user:
+                error_msg = f"指定的用户不存在: {request['userId']}"
+                logger.error(f"[{func_name}] {error_msg}")
+                return {
+                    "code": 404,
+                    "msg": error_msg,
+                    "data": None
+                }
+        else:
+            target_user = current_user
             
+        logger.info(f"[{func_name}] 目标用户: {target_user.username}")
+        
         # 构建提取参数
+        flow = request["flow"]  # 获取流量参数
         extract_params = {
-            "username": "agent1",  # 使用agent1作为用户名
-            "addressCode": request.get("addressCode"),
-            "maxFlowLimit": request.get("maxFlowLimit", 1000),  # 默认1000MB
-            "phone": user_info.phone,
-            "email": user_info.email
+            "username": target_user.username,
+            "productNo": request["productNo"],
+            "proxyType": request["proxyType"],
+            "flow": flow,
+            "maxFlowLimit": flow,  # 设置maxFlowLimit等于flow
         }
         
-        # 调用完整提取方法
+        logger.info(f"[{func_name}] 流量参数: flow={flow}, maxFlowLimit={flow}")
+        
+        # 添加可选的地址代码
+        for code_type in ["areaCode", "countryCode", "stateCode", "cityCode"]:
+            if code_type in request:
+                extract_params["addressCode"] = request[code_type]
+                logger.info(f"[{func_name}] 使用地址代码: {code_type}={request[code_type]}")
+                break
+                
+        # 获取提取配置
+        extract_config = request.get("extractConfig", {})
+        extract_method = extract_config.get("method", "api")
+        logger.info(f"[{func_name}] 提取方式: {extract_method}")
+        
+        if extract_method == "password":
+            # 账密提取方式的特殊参数
+            extract_params.update({
+                "extractMethod": "password",
+                "quantity": extract_config.get("quantity", 1),
+                "validTime": extract_config.get("validTime", 5)
+            })
+            logger.info(f"[{func_name}] 账密提取参数: quantity={extract_params['quantity']}, validTime={extract_params['validTime']}")
+        else:
+            # API提取方式的特殊参数
+            extract_params.update({
+                "extractMethod": "api",
+                "protocol": extract_config.get("protocol", "socks5"),
+                "returnType": extract_config.get("returnType", "txt"),
+                "delimiter": extract_config.get("delimiter", 1)
+            })
+            logger.info(f"[{func_name}] API提取参数: protocol={extract_params['protocol']}, returnType={extract_params['returnType']}, delimiter={extract_params['delimiter']}")
+            
+        # 调用服务层方法
+        logger.info(f"[{func_name}] 最终提取参数: {json.dumps(extract_params, ensure_ascii=False)}")
         response = await proxy_service.extract_proxy_complete(extract_params)
         
-        log_response_info(func_name, response)
-        if response.get("code") != 0:
-            raise HTTPException(status_code=500, detail=response.get("message", "提取失败"))
-            
+        logger.info(f"[{func_name}] 提取响应: {json.dumps(response, ensure_ascii=False)}")
         return response
-    except HTTPException:
-        raise
+        
     except Exception as e:
         error_msg = f"提取动态代理失败: {str(e)}"
         logger.error(f"[{func_name}] {error_msg}")
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=error_msg)
+        return {
+            "code": 500,
+            "msg": error_msg,
+            "data": None
+        }
 
 @router.get("/open/app/product/area/v2")
 async def get_product_area_list(

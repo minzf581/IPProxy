@@ -4,7 +4,7 @@ import type {
   StaticBusinessOrder, 
   BusinessResponse 
 } from '@/types/business';
-import type { ExtractConfig } from '@/types/dynamicProxy';
+import type { ExtractConfig, ExtractParams } from '@/types/dynamicProxy';
 import { API_PREFIX } from '@/shared/routes';
 
 export async function submitDynamicOrder(data: DynamicBusinessOrder): Promise<BusinessResponse> {
@@ -127,11 +127,13 @@ export async function createProxyUser(data: {
   }
 }
 
-export async function extractDynamicProxy(data: {
-  addressCode: string;
-  maxFlowLimit?: number;
-  extractConfig: ExtractConfig;
-}): Promise<BusinessResponse> {
+export async function extractDynamicProxy(data: ExtractParams): Promise<BusinessResponse> {
+  console.log('[API Request] extractDynamicProxy:', {
+    url: `${API_PREFIX.BUSINESS}/dynamic-proxy/extract`,
+    method: 'POST',
+    data
+  });
+  
   return request(`${API_PREFIX.BUSINESS}/dynamic-proxy/extract`, {
     method: 'POST',
     data

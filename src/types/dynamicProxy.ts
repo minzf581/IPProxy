@@ -68,11 +68,11 @@ export enum DataFormat {
 }
 
 export enum Delimiter {
-  CRLF = '1',
-  BR = '2',
-  CR = '3',
-  LF = '4',
-  TAB = '5'
+  CRLF = 1,
+  BR = 2,
+  CR = 3,
+  LF = 4,
+  TAB = 5
 }
 
 // 类型定义（使用 type）
@@ -93,4 +93,17 @@ export type ExtractResponse = {
   data: {
     url: string;
   };
+}
+
+export type ExtractParams = {
+  productNo: string;
+  proxyType: number;
+  flow: number;
+  addressCode?: string;
+  maxFlowLimit?: number;
+  num?: number;
+  protocol?: string;
+  returnType?: string;
+  delimiter?: number;
+  extractConfig: ExtractConfig;
 } 

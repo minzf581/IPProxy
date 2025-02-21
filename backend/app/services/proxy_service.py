@@ -818,18 +818,22 @@ class ProxyService(IPIPVBaseAPI):
 
     async def extract_proxy_complete(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
-        完整的提取流程，包括创建主账户、创建代理子账户、开通代理和账密提取
+        完整的提取流程，包括创建主账户、开通代理和提取代理
         
         Args:
             params: 提取参数，包括：
                 - username: 用户名
-                - addressCode: 地址代码
+                - productNo: 产品编号
+                - proxyType: 代理类型
+                - flow: 流量（MB）
+                - addressCode: 地址代码（可选）
                 - maxFlowLimit: 最大流量限制
-                - phone: 用户手机号
-                - email: 用户邮箱
-                
-        Returns:
-            Dict[str, Any]: 提取结果
+                - extractMethod: 提取方式（password/api）
+                - quantity: 提取数量（账密提取时使用）
+                - validTime: 会话时间（账密提取时使用）
+                - protocol: 协议类型（API提取时使用）
+                - returnType: 返回格式（API提取时使用）
+                - delimiter: 分隔符（API提取时使用）
         """
         try:
             logger.info(f"[ProxyService] 开始完整提取流程: {json.dumps(params, ensure_ascii=False)}")
@@ -840,6 +844,7 @@ class ProxyService(IPIPVBaseAPI):
                 "password": "12345678",  # 使用固定密码
                 "version": "v2"
             }
+            logger.info(f"[ProxyService] 创建主账户参数: {json.dumps(main_account_params, ensure_ascii=False)}")
             main_account_result = await self._make_request("api/open/app/user/v2", main_account_params)
             if main_account_result.get("code") not in [0, 200]:
                 raise Exception(f"创建主账户失败: {main_account_result.get('msg')}")
@@ -869,10 +874,10 @@ class ProxyService(IPIPVBaseAPI):
             open_proxy_params = {
                 "appOrderNo": app_order_no,
                 "params": [{
-                    "productNo": "out_dynamic_1",  # 动态代理产品编号
-                    "proxyType": 104,  # 动态国外代理
+                    "productNo": params["productNo"],
+                    "proxyType": params["proxyType"],
                     "appUsername": params["username"],
-                    "flow": 300,  # 使用固定流量
+                    "flow": params["flow"],
                     "duration": 1,  # 使用固定时长
                     "unit": 1  # 默认单位
                 }]
@@ -895,21 +900,38 @@ class ProxyService(IPIPVBaseAPI):
                 if order_status.get("code") not in [0, 200]:
                     logger.warning(f"[ProxyService] 查询订单状态异常: {order_status.get('msg')}")
             
-            # 5. 账密提取
+            # 5. 提取代理
+            extract_method = params.get("extractMethod", "api")
             draw_params = {
-                "appUsername": params["username"],  # 使用主账号进行提取
+                "appUsername": params["username"],
                 "addressCode": params.get("addressCode", ""),
-                "sessTime": "5",  # 默认5分钟，使用字符串类型
-                "num": 1,
-                "proxyType": 104,  # 动态国外代理
+                "proxyType": params["proxyType"],
                 "maxFlowLimit": params.get("maxFlowLimit", 0),
-                "productNo": "out_dynamic_1"  # 添加必要的产品编号参数
+                "productNo": params["productNo"]
             }
-            logger.info(f"[ProxyService] 账密提取请求参数: {json.dumps(draw_params, ensure_ascii=False)}")
-            draw_result = await self._make_request("api/open/app/proxy/draw/api/v2", draw_params)
+
+            if extract_method == "password":
+                # 密码提取方式
+                draw_params.update({
+                    "sessTime": str(params.get("validTime", 5)),  # 会话有效时间
+                    "num": params.get("quantity", 1)  # 提取数量
+                })
+                logger.info(f"[ProxyService] 使用密码提取方式，参数: {json.dumps(draw_params, ensure_ascii=False)}")
+                draw_result = await self._make_request("api/open/app/proxy/draw/pwd/v2", draw_params)
+            else:
+                # API提取方式
+                draw_params.update({
+                    "num": params.get("quantity", 1),  # 提取数量
+                    "protocol": params.get("protocol", "socks5"),  # 协议类型
+                    "returnType": params.get("returnType", "txt"),  # 返回格式
+                    "delimiter": params.get("delimiter", 1)  # 分隔符
+                })
+                logger.info(f"[ProxyService] 使用API提取方式，参数: {json.dumps(draw_params, ensure_ascii=False)}")
+                draw_result = await self._make_request("api/open/app/proxy/draw/api/v2", draw_params)
+
             if draw_result.get("code") not in [0, 200]:
-                raise Exception(f"账密提取失败: {draw_result.get('msg')}")
-            logger.info(f"[ProxyService] 账密提取成功: {json.dumps(draw_result, ensure_ascii=False)}")
+                raise Exception(f"代理提取失败: {draw_result.get('msg')}")
+            logger.info(f"[ProxyService] 代理提取成功: {json.dumps(draw_result, ensure_ascii=False)}")
             
             return {
                 "code": 0,
