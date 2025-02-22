@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Form, Input, Button, Space } from 'antd';
 import { PlusOutlined, MinusOutlined } from '@ant-design/icons';
 
@@ -14,6 +14,12 @@ const IpWhitelistInput: React.FC<IpWhitelistInputProps> = ({
   maxCount = 5
 }) => {
   const [form] = Form.useForm();
+
+  useEffect(() => {
+    form.setFieldsValue({
+      ipList: value.map(ip => ({ ip }))
+    });
+  }, [value, form]);
 
   // IP地址验证规则
   const validateIp = (_: any, value: string) => {
@@ -40,43 +46,47 @@ const IpWhitelistInput: React.FC<IpWhitelistInputProps> = ({
   };
 
   return (
-    <Form form={form} initialValues={{ ipList: value.map(ip => ({ ip })) }}>
-      <Form.List name="ipList" initialValue={[{ ip: '' }]}>
+    <Form form={form}>
+      <Form.List name="ipList">
         {(fields, { add, remove }) => (
           <>
-            {fields.map((field, index) => (
-              <Space key={field.key} style={{ display: 'flex', marginBottom: 8 }}>
-                <Form.Item
-                  {...field}
-                  name={[field.name, 'ip']}
-                  rules={[{ validator: validateIp }]}
-                  style={{ marginBottom: 0 }}
-                >
-                  <Input placeholder="请输入IP地址" style={{ width: 200 }} onChange={handleValuesChange} />
-                </Form.Item>
-                <Button
-                  type="text"
-                  icon={<MinusOutlined />}
-                  onClick={() => {
-                    if (fields.length > 1) {
-                      remove(field.name);
-                      handleValuesChange();
-                    }
-                  }}
-                  disabled={fields.length === 1}
-                />
-                {index === fields.length - 1 && fields.length < maxCount && (
+            {fields.map((field, index) => {
+              const { key, ...restField } = field;
+              return (
+                <Space key={key} style={{ display: 'flex', marginBottom: 8 }}>
+                  <Form.Item
+                    key={`ip-${key}`}
+                    {...restField}
+                    name={[field.name, 'ip']}
+                    rules={[{ validator: validateIp }]}
+                    style={{ marginBottom: 0 }}
+                  >
+                    <Input placeholder="请输入IP地址" style={{ width: 200 }} onChange={handleValuesChange} />
+                  </Form.Item>
                   <Button
                     type="text"
-                    icon={<PlusOutlined />}
+                    icon={<MinusOutlined />}
                     onClick={() => {
-                      add({ ip: '' });
-                      handleValuesChange();
+                      if (fields.length > 1) {
+                        remove(field.name);
+                        handleValuesChange();
+                      }
                     }}
+                    disabled={fields.length === 1}
                   />
-                )}
-              </Space>
-            ))}
+                  {index === fields.length - 1 && fields.length < maxCount && (
+                    <Button
+                      type="text"
+                      icon={<PlusOutlined />}
+                      onClick={() => {
+                        add({ ip: '' });
+                        handleValuesChange();
+                      }}
+                    />
+                  )}
+                </Space>
+              );
+            })}
           </>
         )}
       </Form.List>
