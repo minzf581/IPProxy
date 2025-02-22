@@ -76,7 +76,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.resource_type import ResourceType
 from app.models.user import User
 from app.models.prices import AgentPrice
 from app.models.product_inventory import ProductInventory
@@ -94,18 +93,63 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["设置"])
 
-@router.get("/settings/resource-types")
-def get_resource_types(db: Session = Depends(get_db)):
-    """获取所有资源类型"""
+@router.get("/resources")
+async def get_resources(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """获取资源列表"""
     try:
-        resource_types = db.query(ResourceType).all()
+        # 查询所有可用的产品
+        resources = db.query(ProductInventory).filter(
+            ProductInventory.enable == 1
+        ).all()
+        
         return {
             "code": 0,
             "msg": "success",
-            "data": [rt.to_dict() for rt in resource_types]
+            "data": [resource.to_dict() for resource in resources]
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"获取资源列表失败: {str(e)}")
+        return {
+            "code": 500,
+            "msg": f"获取资源列表失败: {str(e)}",
+            "data": None
+        }
+
+@router.get("/resource/{resource_id}")
+async def get_resource(
+    resource_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """获取资源详情"""
+    try:
+        resource = db.query(ProductInventory).filter(
+            ProductInventory.id == resource_id,
+            ProductInventory.enable == 1
+        ).first()
+        
+        if not resource:
+            return {
+                "code": 404,
+                "msg": "资源不存在",
+                "data": None
+            }
+            
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": resource.to_dict()
+        }
+    except Exception as e:
+        logger.error(f"获取资源详情失败: {str(e)}")
+        return {
+            "code": 500,
+            "msg": f"获取资源详情失败: {str(e)}",
+            "data": None
+        }
 
 @router.get("/settings/prices")
 async def get_resource_prices(
@@ -146,7 +190,7 @@ def update_resource_prices(prices: Dict[str, float], db: Session = Depends(get_d
             if not key.startswith("resource_"):
                 continue
             resource_id = int(key.split("_")[1])
-            resource = db.query(ResourceType).filter(ResourceType.id == resource_id).first()
+            resource = db.query(ProductInventory).filter(ProductInventory.id == resource_id).first()
             if resource:
                 resource.price = Decimal(str(price))
         db.commit()

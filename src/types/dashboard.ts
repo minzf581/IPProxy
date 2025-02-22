@@ -23,54 +23,46 @@ export interface StaticResourceData {
   expired: number;
 }
 
-export interface DynamicResource {
-  id: string;
-  name: string;
-  usageRate: number;
-  total: number;
-  monthly: number;
-  today: number;
-  lastMonth: number;
-}
-
-export interface StaticResource {
-  id: string;
-  name: string;
-  usageRate: number;
-  total: number;
-  monthly: number;
-  lastMonth: number;
-  available: number;
-  expired: number;
-}
-
-export interface Statistics {
+export interface DashboardStatistics {
+  balance: number;
   totalRecharge: number;
   totalConsumption: number;
-  balance: number;
   monthRecharge: number;
   monthConsumption: number;
   lastMonthConsumption: number;
 }
 
+export interface DynamicResource {
+  title: string;
+  total: number;
+  used: number;
+  remaining: number;
+  percentage: number;
+  today_usage: number;
+  month_usage: number;
+  last_month_usage: number;
+}
+
+export interface StaticResource {
+  title: string;
+  total: number;
+  used: number;
+  available: number;
+  percentage: number;
+  month_opened: number;
+  last_month_opened: number;
+}
+
 export interface DashboardData {
-  agent: {
-    id: string;
-    username: string;
-    balance: number;
-  };
-  statistics: {
-    total_recharge: number;
-    monthly_recharge: number;
-    total_consumption: number;
-    monthly_consumption: number;
-    total_users: number;
-    active_users: number;
-    total_orders: number;
-    monthly_orders: number;
-  };
+  statistics: DashboardStatistics;
   dynamicResources: DynamicResource[];
   staticResources: StaticResource[];
+  dailyStats?: Array<{
+    date: string;
+    orders: number;
+    amount: number;
+    new_users: number;
+  }>;
 }
 
 export interface AgentListResponse {

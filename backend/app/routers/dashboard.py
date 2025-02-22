@@ -84,20 +84,19 @@ from sqlalchemy import func, distinct
 import traceback
 
 from app.database import get_db
-from app.models.dashboard import ProxyInfo, ResourceUsage
-from app.config import settings
+from app.models.dashboard import ProxyInfo
+from app.core.config import settings
 from app.models.instance import Instance
 from app.services import ProxyService, UserService
-from app.routers.instance import sync_instances
 from app.models.user import User
 from app.services.auth import get_current_user
 from app.services.dashboard import DashboardService
 from app.models.transaction import Transaction
-from app.models.resource_type import ResourceType
+from app.models.product_inventory import ProductInventory
 from app.models.resource_usage import ResourceUsageStatistics, ResourceUsageHistory
 from app.models.dynamic_order import DynamicOrder
 from app.models.static_order import StaticOrder
-from app.core.deps import get_proxy_service, get_user_service, get_dashboard_service
+from app.core.deps import get_dashboard_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -120,16 +119,6 @@ def get_proxy_info_from_db(db: Session) -> ProxyInfo:
         raise HTTPException(status_code=404, detail="Proxy info not found in database")
     return proxy_info
 
-def get_resource_usage_from_db(db: Session) -> tuple[List[ResourceUsage], List[ResourceUsage]]:
-    """从数据库获取资源使用信息"""
-    logger.debug("从数据库获取资源使用信息")
-    dynamic_resources = db.query(ResourceUsage).filter_by(resource_type="dynamic").all()
-    static_resources = db.query(ResourceUsage).filter_by(resource_type="static").all()
-    if not dynamic_resources or not static_resources:
-        logger.error("数据库中未找到资源使用数据")
-        raise HTTPException(status_code=404, detail="Resource usage data not found in database")
-    return dynamic_resources, static_resources
-
 def update_proxy_balance_from_api(db: Session, proxy_info: ProxyInfo) -> ProxyInfo:
     """从API更新代理余额信息"""
     try:
@@ -144,41 +133,6 @@ def update_proxy_balance_from_api(db: Session, proxy_info: ProxyInfo) -> ProxyIn
         # API获取失败时继续使用数据库中的数据
         pass
     return proxy_info
-
-def update_resource_usage_from_api(db: Session, dynamic_resources: List[ResourceUsage], 
-                                 static_resources: List[ResourceUsage]) -> tuple[List[ResourceUsage], List[ResourceUsage]]:
-    """从API更新资源使用信息"""
-    try:
-        api_data = fetch_from_ipipv_api("/api/open/app/proxy/info/v2")
-        if api_data.get("code") == 0:
-            data = api_data.get("data", {})
-            
-            # 更新动态资源
-            for item in data.get("dynamic_resource", []):
-                resource = next((r for r in dynamic_resources if r.title == item.get("title")), None)
-                if resource:
-                    resource.used = item.get("used", resource.used)
-                    resource.today = item.get("today", resource.today)
-                    resource.percentage = item.get("percentage", resource.percentage)
-                    resource.updated_at = datetime.now()
-            
-            # 更新静态资源
-            for item in data.get("static_resource", []):
-                resource = next((r for r in static_resources if r.title == item.get("title")), None)
-                if resource:
-                    resource.used = item.get("used", resource.used)
-                    resource.today = item.get("today", resource.today)
-                    resource.available = item.get("available", resource.available)
-                    resource.percentage = item.get("percentage", resource.percentage)
-                    resource.updated_at = datetime.now()
-            
-            db.commit()
-            for resource in dynamic_resources + static_resources:
-                db.refresh(resource)
-    except Exception as e:
-        # API获取失败时继续使用数据库中的数据
-        pass
-    return dynamic_resources, static_resources
 
 def sync_proxy_info(db: Session):
     """同步代理信息到数据库"""
@@ -216,79 +170,48 @@ def sync_proxy_info(db: Session):
         logger.error(f"同步代理信息失败: {str(e)}")
         # 同步失败不抛出异常，继续使用数据库中的数据
 
-def sync_resource_usage(db: Session):
-    """同步资源使用信息到数据库"""
-    try:
-        service = IPProxyService()
-        
-        # 获取流量使用统计
-        statistics = service._make_request("/api/open/app/proxy/flow/use/log/v2", {
-            "appUsername": settings.IPPROXY_MAIN_USERNAME,
-            "username": settings.IPPROXY_MAIN_USERNAME,
-            "proxyType": 0,
-            "page": 1,
-            "pageSize": 10
-        })
-        
-        # 更新或创建资源使用记录
-        resource_usage = db.query(ResourceUsage).first()
-        if not resource_usage:
-            resource_usage = ResourceUsage()
-            db.add(resource_usage)
-        
-        # 更新资源使用信息
-        resource_usage.monthly_usage = statistics.get("monthlyUsage", 0)
-        resource_usage.daily_usage = statistics.get("dailyUsage", 0)
-        resource_usage.last_month_usage = statistics.get("lastMonthUsage", 0)
-        resource_usage.updated_at = datetime.now()
-        
-        db.commit()
-        logger.info("资源使用信息同步成功")
-    except Exception as e:
-        logger.error(f"同步资源使用信息失败: {str(e)}")
-        # 同步失败不抛出异常，继续使用数据库中的数据
-
 @router.get("/open/app/dashboard/info/v2")
 async def get_dashboard_info(
     db: Session = Depends(get_db),
-    dashboard_service: DashboardService = Depends(get_dashboard_service)
+    dashboard_service: DashboardService = Depends(get_dashboard_service),
+    current_user: User = Depends(get_current_user)
 ):
-    """获取仪表盘信息"""
+    """获取仪表盘数据"""
     try:
         logger.info("[Dashboard Service] 开始获取仪表盘数据")
         
         # 获取用户统计数据
-        stats = await dashboard_service.get_user_statistics(None, db)
-            
+        user_stats = await dashboard_service.get_user_statistics(current_user.id, db)
+        
         # 获取每日统计数据
         daily_stats = await dashboard_service.get_daily_statistics(db)
         
-        # 构建响应数据
+        # 构造前端期望的响应格式
         response_data = {
-            "statistics": {
-                "totalRecharge": float(stats.get("total_amount", 0)),
-                "totalConsumption": float(stats.get("total_orders", 0)),
-                "monthRecharge": float(stats.get("monthly_amount", 0)),
-                "monthConsumption": float(stats.get("monthly_orders", 0)),
-                "lastMonthConsumption": float(stats.get("last_month_orders", 0)),
-                "balance": float(stats.get("balance", 0))
-            },
-            "dynamicResources": [],  # 将在后续版本中添加
-            "staticResources": [],   # 将在后续版本中添加
-            "dailyStats": daily_stats
+            "code": 0,
+            "msg": "success",
+            "data": {
+                "statistics": {
+                    "balance": float(user_stats.get("balance", 0)),
+                    "totalRecharge": float(user_stats.get("total_amount", 0)),
+                    "totalConsumption": float(user_stats.get("total_orders", 0)),
+                    "monthRecharge": float(user_stats.get("monthly_amount", 0)),
+                    "monthConsumption": float(user_stats.get("monthly_orders", 0)),
+                    "lastMonthConsumption": float(user_stats.get("last_month_orders", 0))
+                },
+                "dynamicResources": user_stats.get("dynamicResources", []),
+                "staticResources": user_stats.get("staticResources", []),
+                "dailyStats": daily_stats
+            }
         }
         
         logger.info("[Dashboard Service] 仪表盘数据获取成功")
-        logger.debug(f"[Dashboard Service] 响应数据: {json.dumps(response_data)}")
+        logger.debug(f"[Dashboard Service] 响应数据: {response_data}")
         
-        return {
-            "code": 0,
-            "msg": "success",
-            "data": response_data
-        }
+        return response_data
         
     except Exception as e:
-        logger.error(f"[Dashboard Service] 获取仪表盘数据失败: {traceback.format_exc()}")
+        logger.error(f"[Dashboard Service] 获取仪表盘数据失败: {str(e)}")
         return {
             "code": 500,
             "msg": f"获取仪表盘数据失败: {str(e)}",
@@ -606,3 +529,76 @@ async def get_agent_statistics(
             "msg": f"获取代理商统计数据失败: {str(e)}",
             "data": None
         }
+
+@router.get("/api/dashboard/resources", response_model=Dict[str, List[Dict[str, Any]]])
+async def get_resources(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    dashboard_service: DashboardService = Depends(get_dashboard_service)
+):
+    """获取动态和静态资源数据"""
+    try:
+        logger.info(f"用户 {current_user.username} 请求获取资源数据")
+        
+        # 获取动态资源数据
+        dynamic_resources = []
+        dynamic_orders = db.query(DynamicOrder).filter(
+            DynamicOrder.user_id == current_user.id,
+            DynamicOrder.status == "active"
+        ).all()
+        
+        for order in dynamic_orders:
+            usage_stats = db.query(ResourceUsageStatistics).filter(
+                ResourceUsageStatistics.order_id == order.id,
+                ResourceUsageStatistics.resource_type == "dynamic"
+            ).first()
+            
+            if usage_stats:
+                dynamic_resources.append({
+                    "title": order.resource_name,
+                    "total": order.total_amount,
+                    "used": usage_stats.used_amount,
+                    "remaining": order.total_amount - usage_stats.used_amount,
+                    "percentage": round((usage_stats.used_amount / order.total_amount) * 100, 2) if order.total_amount > 0 else 0,
+                    "today_usage": usage_stats.today_usage,
+                    "month_usage": usage_stats.month_usage,
+                    "last_month_usage": usage_stats.last_month_usage
+                })
+        
+        # 获取静态资源数据
+        static_resources = []
+        static_orders = db.query(StaticOrder).filter(
+            StaticOrder.user_id == current_user.id,
+            StaticOrder.status == "active"
+        ).all()
+        
+        for order in static_orders:
+            usage_stats = db.query(ResourceUsageStatistics).filter(
+                ResourceUsageStatistics.order_id == order.id,
+                ResourceUsageStatistics.resource_type == "static"
+            ).first()
+            
+            if usage_stats:
+                static_resources.append({
+                    "title": order.resource_name,
+                    "total": order.total_quantity,
+                    "used": usage_stats.used_quantity,
+                    "available": order.total_quantity - usage_stats.used_quantity,
+                    "percentage": round((usage_stats.used_quantity / order.total_quantity) * 100, 2) if order.total_quantity > 0 else 0,
+                    "month_opened": usage_stats.month_opened,
+                    "last_month_opened": usage_stats.last_month_opened
+                })
+        
+        logger.info(f"成功获取资源数据：动态资源 {len(dynamic_resources)} 个，静态资源 {len(static_resources)} 个")
+        return {
+            "dynamicResources": dynamic_resources,
+            "staticResources": static_resources
+        }
+        
+    except Exception as e:
+        logger.error(f"获取资源数据失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取资源数据失败: {str(e)}"
+        )

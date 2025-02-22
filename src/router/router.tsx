@@ -2,7 +2,7 @@ import React from 'react';
 import { RouteObject, createBrowserRouter } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import Login from '@/pages/login';
-import Dashboard from '@/pages/dashboard';
+import Dashboard from '@/pages/dashboard/index';
 import StaticOrderPage from '@frontend/components/StaticOrder/StaticOrderList';
 import AgentOrders from '@/pages/order/agent-orders';
 import AgentManagement from '@/pages/agents';
@@ -54,11 +54,11 @@ const createRoutes = () => {
   const adminRoutes: RouteObject[] = [
     {
       path: '',
-      element: <Dashboard />,
+      element: <Dashboard currentAgent={null} setCurrentAgent={() => {}} />,
     },
     {
       path: 'dashboard',
-      element: <Dashboard />,
+      element: <Dashboard currentAgent={null} setCurrentAgent={() => {}} />,
     },
     {
       path: 'account',
@@ -125,11 +125,11 @@ const createRoutes = () => {
   const businessRoutes: RouteObject[] = [
     {
       path: '',
-      element: <Dashboard />,
+      element: <Dashboard currentAgent={null} setCurrentAgent={() => {}} />,
     },
     {
       path: 'dashboard',
-      element: <Dashboard />,
+      element: <Dashboard currentAgent={null} setCurrentAgent={() => {}} />,
     },
     {
       path: 'business',

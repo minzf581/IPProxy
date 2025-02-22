@@ -911,8 +911,9 @@ async def adjust_user_balance(
             if current_user.balance < amount:
                 raise HTTPException(status_code=400, detail="代理商余额不足")
             
-            # 扣除代理商余额
+            # 扣除代理商余额并更新统计数据
             current_user.balance -= amount
+            current_user.total_consumption += abs(amount)
             
             # 记录代理商余额变更
             agent_transaction = Transaction(
@@ -928,9 +929,13 @@ async def adjust_user_balance(
             )
             db.add(agent_transaction)
         
-        # 调整用户余额
+        # 调整用户余额和统计数据
         old_balance = target_user.balance
         target_user.balance += amount
+        if amount > 0:
+            target_user.total_recharge += abs(amount)
+        else:
+            target_user.total_consumption += abs(amount)
         
         # 记录用户余额变更
         transaction = Transaction(
@@ -958,7 +963,9 @@ async def adjust_user_balance(
                 "transaction_no": transaction.transaction_no,
                 "amount": amount,
                 "old_balance": old_balance,
-                "new_balance": target_user.balance
+                "new_balance": target_user.balance,
+                "total_recharge": float(target_user.total_recharge),
+                "total_consumption": float(target_user.total_consumption)
             }
         }
         
@@ -968,4 +975,52 @@ async def adjust_user_balance(
     except Exception as e:
         db.rollback()
         logger.error(f"[adjust_user_balance] 调整失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"调整失败: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"调整失败: {str(e)}")
+
+@router.get("/open/app/users/list")
+async def get_users_list(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """获取用户列表，根据当前用户角色返回不同范围的用户"""
+    try:
+        logger.info(f"[UserRouter] 获取用户列表: current_user={current_user.username}")
+        
+        # 构建查询条件
+        query = db.query(User)
+        
+        if current_user.is_admin:
+            # 管理员可以看到所有用户
+            users = query.all()
+        elif current_user.is_agent:
+            # 代理商只能看到自己和自己名下的用户
+            users = query.filter(
+                (User.id == current_user.id) | 
+                (User.agent_id == current_user.id)
+            ).all()
+        else:
+            # 普通用户只能看到自己
+            users = [current_user]
+            
+        # 转换为响应格式
+        user_list = [{
+            "id": user.id,
+            "username": user.username,
+            "is_admin": user.is_admin,
+            "is_agent": user.is_agent,
+            "balance": float(user.balance),
+            "total_recharge": float(user.total_recharge),
+            "total_consumption": float(user.total_consumption)
+        } for user in users]
+        
+        logger.info(f"[UserRouter] 返回用户列表: count={len(user_list)}")
+        
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": user_list
+        }
+        
+    except Exception as e:
+        logger.error(f"[UserRouter] 获取用户列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e)) 

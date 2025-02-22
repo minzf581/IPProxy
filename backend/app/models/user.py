@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, DateTime, Boolean, DECIMAL, TIMESTAMP, Text
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, Enum, DateTime, Boolean, DECIMAL, TIMESTAMP, Text, Numeric
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
@@ -17,7 +17,7 @@ class User(Base, TimestampMixin):
     status = Column(Integer, nullable=False, default=1, server_default='1')  # 1=正常 0=禁用
     is_admin = Column(Boolean, default=False)
     is_agent = Column(Boolean, default=False)
-    balance = Column(Float, nullable=False, default=0.0)
+    balance = Column(Numeric(10, 2), nullable=False, default=0)
     remark = Column(Text)
     last_login_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.now)
@@ -25,6 +25,8 @@ class User(Base, TimestampMixin):
     agent_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     ipipv_username = Column(String(50), unique=True, nullable=True)  # IPIPV平台用户名
     ipipv_password = Column(String(255), nullable=True)  # IPIPV平台密码
+    total_recharge = Column(Numeric(10, 2), nullable=False, default=0, server_default='0')  # 累计充值
+    total_consumption = Column(Numeric(10, 2), nullable=False, default=0, server_default='0')  # 累计消费
 
     # 关系定义
     agent = relationship("User", remote_side=[id], backref="sub_users")
