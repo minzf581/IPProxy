@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Form, Input, Select, Button, Space, message, Modal, InputNumber } from 'antd';
+import { Table, Card, Form, Input, Select, Button, Space, message, Modal, InputNumber, Tag, Spin } from 'antd';
 import { SearchOutlined, ReloadOutlined, CopyOutlined, PlusOutlined } from '@ant-design/icons';
 import type { TablePaginationConfig } from 'antd/lib/table';
 import type { ColumnsType } from 'antd/es/table';
@@ -19,7 +19,7 @@ const debug = {
 
 // 添加类型定义
 type PoolType = 'pool1' | 'pool2' | 'pool3';
-type OrderStatus = 'active' | 'inactive';
+type OrderStatus = 1 | 2 | 3 | 4 | 5;  // 1=待处理 2=处理中 3=处理成功 4=处理失败 5=部分完成
 
 const POOL_TYPE_MAP: Record<PoolType, string> = {
   'pool1': '动态IP池1',
@@ -28,8 +28,11 @@ const POOL_TYPE_MAP: Record<PoolType, string> = {
 };
 
 const STATUS_MAP: Record<OrderStatus, string> = {
-  'active': '正常',
-  'inactive': '停用'
+  1: '待处理',
+  2: '处理中',
+  3: '处理成功',
+  4: '处理失败',
+  5: '部分完成'
 };
 
 interface User {
@@ -49,7 +52,9 @@ interface DynamicOrder {
   poolType: PoolType;
   pool_type?: string;  // 后端字段
   traffic: number;
-  status?: OrderStatus;
+  status: OrderStatus;
+  flowTotal?: number;  // 总流量(MB)
+  flowBalance?: number;  // 剩余流量(MB)
   remark?: string;
   createTime: string;
   created_at?: string;  // 后端字段
@@ -62,15 +67,50 @@ interface AddTrafficModalProps {
   onCancel: () => void;
   onConfirm: (traffic: number) => Promise<void>;
   loading: boolean;
+  orderNo: string;  // 添加订单号属性
 }
 
 const AddTrafficModal: React.FC<AddTrafficModalProps> = ({
   visible,
   onCancel,
   onConfirm,
-  loading
+  loading,
+  orderNo
 }) => {
   const [form] = Form.useForm();
+  const [orderInfo, setOrderInfo] = useState<{
+    status: number;
+    flowTotal: number;
+    flowBalance: number;
+  } | null>(null);
+  const [loadingInfo, setLoadingInfo] = useState(false);
+
+  // 获取订单信息
+  const fetchOrderInfo = async () => {
+    if (!orderNo) return;
+    
+    setLoadingInfo(true);
+    try {
+      const response = await api.get(`/api/dynamic/order-info/${orderNo}`);
+      if (response.data.code === 0) {
+        setOrderInfo(response.data.data);
+      } else {
+        message.error('获取订单信息失败');
+      }
+    } catch (error) {
+      console.error('获取订单信息失败:', error);
+      message.error('获取订单信息失败');
+    } finally {
+      setLoadingInfo(false);
+    }
+  };
+
+  // 当对话框显示时获取订单信息
+  useEffect(() => {
+    if (visible && orderNo) {
+      fetchOrderInfo();
+    }
+  }, [visible, orderNo]);
 
   const handleOk = async () => {
     try {
@@ -82,6 +122,40 @@ const AddTrafficModal: React.FC<AddTrafficModalProps> = ({
     }
   };
 
+  const getStatusText = (status: number) => {
+    switch (status) {
+      case 1:
+        return '待处理';
+      case 2:
+        return '处理中';
+      case 3:
+        return '处理成功';
+      case 4:
+        return '处理失败';
+      case 5:
+        return '部分完成';
+      default:
+        return '未知状态';
+    }
+  };
+
+  const getStatusColor = (status: number) => {
+    switch (status) {
+      case 1:
+        return 'warning';
+      case 2:
+        return 'processing';
+      case 3:
+        return 'success';
+      case 4:
+        return 'error';
+      case 5:
+        return 'warning';
+      default:
+        return 'default';
+    }
+  };
+
   return (
     <Modal
       title="增加流量"
@@ -90,6 +164,28 @@ const AddTrafficModal: React.FC<AddTrafficModalProps> = ({
       onCancel={onCancel}
       confirmLoading={loading}
     >
+      {loadingInfo ? (
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          <Spin tip="加载订单信息..." />
+        </div>
+      ) : orderInfo ? (
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ marginBottom: '10px' }}>
+            <span>订单状态：</span>
+            <Tag color={getStatusColor(orderInfo.status)}>
+              {getStatusText(orderInfo.status)}
+            </Tag>
+          </div>
+          <div style={{ marginBottom: '10px' }}>
+            <span>总流量：</span>
+            <span>{orderInfo.flowTotal}MB</span>
+          </div>
+          <div style={{ marginBottom: '10px' }}>
+            <span>剩余流量：</span>
+            <span>{orderInfo.flowBalance}MB</span>
+          </div>
+        </div>
+      ) : null}
       <Form form={form}>
         <Form.Item
           name="traffic"
@@ -172,12 +268,11 @@ const DynamicOrderList: React.FC = () => {
             const processedOrder = {
               id: order.id || '',
               orderNo: order.orderNo || order.order_no || '',
-              userId: String(order.userId || order.user_id || ''),  // 转换为字符串
-              username: order.username || `用户${order.user_id}`,  // 如果没有用户名，使用 user_id 作为显示
+              userId: String(order.userId || order.user_id || ''),
+              username: order.username || '-',  // 直接使用后端返回的username
               agent_username: order.agent_username || '',
               poolType: (order.poolType || order.pool_type || 'pool1') as PoolType,
               traffic: order.traffic || 0,
-              status: (order.status as OrderStatus) || 'active',
               remark: order.remark || '-',
               createTime: order.createTime || order.created_at || '-',
               proxyInfo: order.proxyInfo || order.proxy_info || {}
@@ -330,15 +425,22 @@ const DynamicOrderList: React.FC = () => {
       title: '订单号',
       dataIndex: 'orderNo',
       key: 'orderNo',
-      width: 180,
-      render: (text) => text
+      width: 200,
+      render: (text) => text || '-'
+    },
+    {
+      title: '用户ID',
+      dataIndex: 'userId',
+      key: 'userId',
+      width: 120,
+      render: (text) => text || '-'
     },
     {
       title: '用户名',
       dataIndex: 'username',
       key: 'username',
       width: 120,
-      render: (text) => text || '-'
+      render: (text, record) => record.username || '-'
     },
     {
       title: '资源类型',
@@ -348,33 +450,19 @@ const DynamicOrderList: React.FC = () => {
       render: (text: PoolType) => POOL_TYPE_MAP[text] || text
     },
     {
-      title: '流量(GB)',
-      dataIndex: 'traffic',
-      key: 'traffic',
-      width: 100,
-      render: (traffic: number) => `${traffic}GB`
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 100,
-      render: (text?: OrderStatus) => (text ? STATUS_MAP[text] : '-')
-    },
-    {
       title: '备注',
       dataIndex: 'remark',
       key: 'remark',
       width: 150,
       ellipsis: true,
-      render: (text) => text
+      render: (text) => text || '-'
     },
     {
       title: '创建时间',
       dataIndex: 'createTime',
       key: 'createTime',
       width: 180,
-      render: (text) => text
+      render: (text) => text || '-'
     },
     {
       title: '操作',
@@ -486,6 +574,7 @@ const DynamicOrderList: React.FC = () => {
         }}
         onConfirm={handleAddTraffic}
         loading={addTrafficLoading}
+        orderNo={selectedOrder?.orderNo || ''}  // 传入订单号
       />
     </Card>
   );

@@ -65,6 +65,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Request, Body
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from app.database import get_db
 from app.models.user import User
 from app.models.dynamic_order import DynamicOrder
@@ -74,7 +75,6 @@ from app.services.auth import get_current_user
 from app.services.ipipv_service import IPIPVService
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from sqlalchemy import or_
 import logging
 import traceback
 from pydantic import BaseModel, Field, validator
@@ -176,82 +176,84 @@ async def get_dynamic_orders(
 ) -> Dict[str, Any]:
     """获取动态订单列表"""
     try:
-        logger.debug(f"开始获取动态订单列表: user_id={current_user.id}, is_agent={current_user.is_agent}")
-        logger.debug(f"查询参数: page={page}, page_size={page_size}, user_id={user_id}, order_no={order_no}, pool_type={pool_type}")
+        logger.info(f"[Order Service] 开始获取动态订单列表, 参数: page={page}, page_size={page_size}, user_id={user_id}, order_no={order_no}, pool_type={pool_type}")
+        logger.info(f"[Order Service] 当前用户: {current_user.username}, is_admin={current_user.is_admin}, is_agent={current_user.is_agent}")
         
-        # 构建基础查询
-        query = db.query(DynamicOrder)
+        # 构建查询条件
+        conditions = []
         
-        # 权限处理
-        if current_user.is_agent:
-            logger.debug(f"代理商查询订单: agent_id={current_user.id}")
-            if user_id:
-                # 验证用户是否属于该代理商
-                target_user = db.query(User).filter(User.id == user_id).first()
-                if not target_user or target_user.agent_id != current_user.id:
-                    raise HTTPException(
-                        status_code=403,
-                        detail={"code": 403, "message": "无权查看此用户的订单"}
-                    )
-                logger.debug(f"代理商查询指定用户订单: user_id={user_id}")
-                query = query.filter(DynamicOrder.user_id == user_id)
-            else:
-                # 查询代理商自己的订单和所有下级用户的订单
-                logger.debug(f"代理商查询所有下级用户订单")
-                # 获取代理商的所有下级用户
+        # 如果不是管理员，限制查询范围
+        if not current_user.is_admin:
+            if current_user.is_agent:
+                # 代理商可以查看自己和下级用户的订单
                 sub_users = db.query(User.id).filter(User.agent_id == current_user.id).all()
                 sub_user_ids = [user.id for user in sub_users]
-                sub_user_ids.append(current_user.id)  # 添加代理商自己的ID
-                logger.debug(f"下级用户ID列表: {sub_user_ids}")
-                # 查询代理商自己的订单和下级用户的订单
-                query = query.filter(DynamicOrder.user_id.in_(sub_user_ids))
-        elif not current_user.is_admin:  # 普通用户只能查看自己的订单
-            logger.debug(f"普通用户查询自己的订单: user_id={current_user.id}")
-            query = query.filter(DynamicOrder.user_id == current_user.id)
-        elif user_id:  # 管理员可以查看指定用户的订单
-            logger.debug(f"管理员查询指定用户订单: user_id={user_id}")
-            query = query.filter(DynamicOrder.user_id == user_id)
+                sub_user_ids.append(current_user.id)
+                conditions.append(DynamicOrder.user_id.in_(sub_user_ids))
+            else:
+                # 普通用户只能查看自己的订单
+                conditions.append(DynamicOrder.user_id == current_user.id)
         
-        # 应用其他过滤条件
+        # 添加其他过滤条件
+        if user_id:
+            conditions.append(DynamicOrder.user_id == user_id)
         if order_no:
-            query = query.filter(DynamicOrder.order_no.like(f"%{order_no}%"))
+            # 同时查询order_no和app_order_no
+            conditions.append(or_(
+                DynamicOrder.order_no.ilike(f"%{order_no}%"),
+                DynamicOrder.app_order_no.ilike(f"%{order_no}%")
+            ))
         if pool_type:
-            query = query.filter(DynamicOrder.pool_type == pool_type)
+            conditions.append(DynamicOrder.pool_type == pool_type)
+            
+        # 查询订单
+        query = db.query(DynamicOrder)
+        if conditions:
+            query = query.filter(*conditions)
             
         # 计算总数
         total = query.count()
-        logger.debug(f"查询到订单总数: {total}")
+        logger.info(f"[Order Service] 符合条件的订单总数: {total}")
         
-        # 分页并按创建时间倒序排序
-        orders = query.order_by(DynamicOrder.created_at.desc())\
-                     .offset((page - 1) * page_size)\
-                     .limit(page_size)\
-                     .all()
+        # 分页查询
+        orders = query.order_by(DynamicOrder.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+        logger.info(f"[Order Service] 获取到订单数量: {len(orders)}")
         
-        # 获取所有相关的用户ID
-        user_ids = list(set([order.user_id for order in orders if order.user_id]))
-        logger.debug(f"订单用户ID列表: {user_ids}")
-        
-        # 批量查询用户信息
-        users = db.query(User).filter(User.id.in_(user_ids)) if user_ids else []
-        user_map = {user.id: user.username for user in users}
-        logger.debug(f"用户ID-用户名映射: {user_map}")
-        
-        # 转换订单数据
+        # 处理订单数据
         order_list = []
         for order in orders:
-            order_dict = order.to_dict()
-            user_name = user_map.get(order.user_id)
-            logger.debug(f"处理订单: order_id={order.id}, user_id={order.user_id}, user_name={user_name}")
-            
-            order_dict['username'] = user_name or f'用户{order.user_id}'
-            order_list.append(order_dict)
-            
-        logger.debug(f"订单列表数据: {order_list}")
+            try:
+                order_dict = order.to_dict()
+                
+                # 添加用户名信息
+                user = db.query(User).filter(User.id == order.user_id).first()
+                if user:
+                    order_dict["username"] = user.username
+                else:
+                    order_dict["username"] = f"用户{order.user_id}"
+                
+                # 添加代理商用户名
+                if order.agent_id:
+                    agent = db.query(User).filter(User.id == order.agent_id).first()
+                    if agent:
+                        order_dict["agent_username"] = agent.username
+                    else:
+                        order_dict["agent_username"] = f"代理商{order.agent_id}"
+                else:
+                    order_dict["agent_username"] = ""
+                
+                order_list.append(order_dict)
+                
+            except Exception as e:
+                logger.error(f"[Order Service] 处理订单 {order.id} 时发生错误: {str(e)}")
+                logger.error(traceback.format_exc())
+                continue
         
-        result = {
+        logger.info(f"[Order Service] 成功处理订单数量: {len(order_list)}")
+        
+        return {
             "code": 0,
-            "message": "获取成功",
+            "msg": "success",
             "data": {
                 "list": order_list,
                 "total": total,
@@ -259,11 +261,14 @@ async def get_dynamic_orders(
                 "page_size": page_size
             }
         }
-        logger.debug(f"返回数据: {result}")
-        return result
+        
     except Exception as e:
-        logger.error(f"获取动态订单列表失败: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
+        logger.error(f"[Order Service] 获取动态订单列表失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail={"code": 500, "message": f"获取订单列表失败: {str(e)}"}
+        )
 
 @router.get("/dynamic/{order_id}")
 async def get_dynamic_order_detail(
@@ -473,7 +478,7 @@ async def create_order(
         if request.orderType == "dynamic_proxy":
             # 生成订单号
             order_no = f"DYN{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
-            app_order_no = f"APP{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
+            app_order_no = f"C{datetime.now().strftime('%Y%m%d%H%M%S')}{random.randint(100000, 999999)}"  # 修改app_order_no的格式
             
             order = DynamicOrder(
                 id=str(uuid.uuid4()),  # 使用UUID作为主键
@@ -492,7 +497,7 @@ async def create_order(
         else:
             # 生成订单号
             order_no = f"STA{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
-            app_order_no = f"APP{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}"
+            app_order_no = f"C{datetime.now().strftime('%Y%m%d%H%M%S')}{random.randint(100000, 999999)}"  # 修改app_order_no的格式
             
             order = StaticOrder(
                 order_no=order_no,
@@ -865,4 +870,105 @@ async def add_traffic(
         raise HTTPException(
             status_code=500,
             detail={"code": 500, "message": f"增加流量失败: {str(e)}"}
+        )
+
+@router.get("/dynamic/order-info/{order_no}")
+async def get_dynamic_order_info(
+    order_no: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """获取动态订单的流量和状态信息"""
+    try:
+        logger.info(f"[Order Service] 开始获取订单信息: order_no={order_no}")
+        logger.info(f"[Order Service] 当前用户信息: id={current_user.id}, username={current_user.username}, is_admin={current_user.is_admin}, is_agent={current_user.is_agent}")
+        
+        # 查找订单 - 使用order_no字段
+        order = db.query(DynamicOrder).filter(
+            or_(
+                DynamicOrder.order_no == order_no,
+                DynamicOrder.app_order_no == order_no
+            )
+        ).first()
+        
+        if not order:
+            logger.error(f"[Order Service] 订单不存在: {order_no}")
+            raise HTTPException(
+                status_code=404,
+                detail={"code": 404, "message": "订单不存在"}
+            )
+            
+        logger.info(f"[Order Service] 找到订单: id={order.id}, user_id={order.user_id}, agent_id={order.agent_id}")
+        
+        # 从proxy_info中获取IPIPV的订单号
+        ipipv_order_no = None
+        if order.proxy_info and isinstance(order.proxy_info, dict):
+            ipipv_order_no = order.proxy_info.get("orderNo")
+            logger.info(f"[Order Service] 从proxy_info获取到IPIPV订单号: {ipipv_order_no}")
+        else:
+            logger.warning(f"[Order Service] 订单proxy_info为空或格式不正确: {order.proxy_info}")
+        
+        if not ipipv_order_no:
+            logger.info("[Order Service] 未找到IPIPV订单号，返回默认值")
+            return {
+                "code": 0,
+                "message": "success",
+                "data": {
+                    "status": 1,  # 待处理状态
+                    "flowTotal": 0,
+                    "flowBalance": 0
+                }
+            }
+            
+        # 调用IPIPV API获取订单状态和剩余流量
+        logger.info(f"[Order Service] 开始调用IPIPV API获取订单信息: {ipipv_order_no}")
+        ipipv_service = IPIPVService(db)
+        ipipv_response = await ipipv_service.get_order_info({
+            "orderNo": ipipv_order_no,
+            "page": 1,
+            "pageSize": 10
+        })
+        
+        logger.info(f"[Order Service] IPIPV API响应: {ipipv_response}")
+        
+        if ipipv_response and ipipv_response.get("code") in [0, 200]:
+            ipipv_data = ipipv_response.get("data", {})
+            status = ipipv_data.get("status", 1)
+            
+            # 获取实例信息
+            instances = ipipv_data.get("instances", [])
+            total_flow = 0
+            balance_flow = 0
+            
+            if instances:
+                total_flow = sum(instance.get("flowTotal", 0) for instance in instances)
+                balance_flow = sum(instance.get("flowBalance", 0) for instance in instances)
+                logger.info(f"[Order Service] 计算得到流量信息: total_flow={total_flow}, balance_flow={balance_flow}")
+            else:
+                logger.warning("[Order Service] 未找到实例信息")
+            
+            return {
+                "code": 0,
+                "message": "success",
+                "data": {
+                    "status": status,
+                    "flowTotal": total_flow,
+                    "flowBalance": balance_flow
+                }
+            }
+        else:
+            logger.error(f"[Order Service] IPIPV API调用失败: {ipipv_response}")
+            raise HTTPException(
+                status_code=500,
+                detail={"code": 500, "message": "获取订单信息失败"}
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Order Service] 获取订单信息失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail={"code": 500, "message": f"获取订单信息失败: {str(e)}"}
         ) 

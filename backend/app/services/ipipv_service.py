@@ -381,5 +381,52 @@ class IPIPVService(IPIPVBaseAPI):
             logger.error(traceback.format_exc())
             raise HTTPException(500, f"开通代理服务失败: {str(e)}")
 
+    async def get_order_info(self, params: Dict) -> Dict:
+        """
+        获取订单信息
+        
+        Args:
+            params: 请求参数，包含：
+                - orderNo: 订单号
+                - page: 页码
+                - pageSize: 每页数量
+                
+        Returns:
+            Dict: API响应结果，包含：
+                - code: 状态码
+                - msg: 状态信息
+                - data: 订单信息
+                    - orderNo: 订单号
+                    - status: 订单状态
+                    - instances: 实例列表
+                        - flowTotal: 总流量
+                        - flowBalance: 剩余流量
+        """
+        try:
+            logger.info(f"[IPIPVService] 开始获取订单信息: {json.dumps(params, ensure_ascii=False)}")
+            
+            response = await self._make_request(
+                "api/open/app/order/v2",
+                params
+            )
+            
+            logger.info(f"[IPIPVService] 获取订单信息响应: {json.dumps(response, ensure_ascii=False)}")
+            
+            if not response:
+                raise HTTPException(500, "获取订单信息失败: 无响应数据")
+                
+            if response.get("code") not in [0, 200]:
+                error_msg = response.get("msg", "未知错误")
+                raise HTTPException(500, f"获取订单信息失败: {error_msg}")
+                
+            return response
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"[IPIPVService] 获取订单信息失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(500, f"获取订单信息失败: {str(e)}")
+
 # 创建服务实例
 ipipv_service = IPIPVService() 
