@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Card, Form, Input, Select, Button, Space, message } from 'antd';
-import { SearchOutlined, ReloadOutlined, CopyOutlined } from '@ant-design/icons';
+import { Table, Card, Form, Input, Select, Button, Space, message, Modal, InputNumber } from 'antd';
+import { SearchOutlined, ReloadOutlined, CopyOutlined, PlusOutlined } from '@ant-design/icons';
 import type { TablePaginationConfig } from 'antd/lib/table';
 import type { ColumnsType } from 'antd/es/table';
 import { api } from '@/utils/request';
@@ -57,6 +57,68 @@ interface DynamicOrder {
   proxy_info?: any;  // 后端字段
 }
 
+interface AddTrafficModalProps {
+  visible: boolean;
+  onCancel: () => void;
+  onConfirm: (traffic: number) => Promise<void>;
+  loading: boolean;
+}
+
+const AddTrafficModal: React.FC<AddTrafficModalProps> = ({
+  visible,
+  onCancel,
+  onConfirm,
+  loading
+}) => {
+  const [form] = Form.useForm();
+
+  const handleOk = async () => {
+    try {
+      const values = await form.validateFields();
+      await onConfirm(values.traffic);
+      form.resetFields();
+    } catch (error) {
+      console.error('验证表单失败:', error);
+    }
+  };
+
+  return (
+    <Modal
+      title="增加流量"
+      open={visible}
+      onOk={handleOk}
+      onCancel={onCancel}
+      confirmLoading={loading}
+    >
+      <Form form={form}>
+        <Form.Item
+          name="traffic"
+          label="流量大小"
+          rules={[
+            { required: true, message: '请输入流量大小' },
+            { type: 'number', min: 1, message: '流量必须大于0' },
+            { 
+              validator: (_, value) => {
+                if (value && !Number.isInteger(value)) {
+                  return Promise.reject('流量必须为整数');
+                }
+                return Promise.resolve();
+              }
+            }
+          ]}
+        >
+          <InputNumber
+            style={{ width: '100%' }}
+            placeholder="请输入流量大小(MB)"
+            min={1}
+            precision={0}
+          />
+        </Form.Item>
+      </Form>
+    </Modal>
+  );
+};
+
 const DynamicOrderList: React.FC = () => {
   debug.log('Component rendering');
   const [form] = Form.useForm();
@@ -67,6 +129,9 @@ const DynamicOrderList: React.FC = () => {
     current: 1,
     pageSize: 10
   });
+  const [selectedOrder, setSelectedOrder] = useState<DynamicOrder | null>(null);
+  const [addTrafficVisible, setAddTrafficVisible] = useState(false);
+  const [addTrafficLoading, setAddTrafficLoading] = useState(false);
 
   const fetchOrders = async (params: any) => {
     setLoading(true);
@@ -193,6 +258,73 @@ const DynamicOrderList: React.FC = () => {
     }
   };
 
+  const handleAddTraffic = async (traffic: number) => {
+    if (!selectedOrder) {
+      message.error('请先选择订单');
+      return;
+    }
+
+    // 检查必要的参数是否存在
+    if (!selectedOrder.orderNo) {
+      message.error('订单号不存在');
+      return;
+    }
+
+    debug.log('选中的订单详细信息:', {
+      id: selectedOrder.id,
+      orderNo: selectedOrder.orderNo,
+      userId: selectedOrder.userId,
+      username: selectedOrder.username,
+      poolType: selectedOrder.poolType,
+      proxyInfo: selectedOrder.proxyInfo
+    });
+
+    const params = {
+      appOrderNo: selectedOrder.orderNo,  // 使用orderNo而不是proxyInfo.appOrderNo
+      productNo: selectedOrder.poolType,  // 使用poolType作为productNo
+      proxyType: 104, // 动态国外
+      appUsername: selectedOrder.username,  // 使用订单的username
+      traffic: traffic
+    };
+
+    debug.log('增加流量请求参数:', JSON.stringify(params, null, 2));
+    debug.log('selectedOrder:', JSON.stringify(selectedOrder, null, 2));
+
+    setAddTrafficLoading(true);
+    try {
+      debug.log('发送请求前的参数:', params);
+      const response = await api.post('/api/dynamic/add-traffic', params);
+      debug.log('增加流量响应:', response);
+
+      if (response.data.code === 0 || response.data.code === 200) {
+        message.success('增加流量成功');
+        setAddTrafficVisible(false);
+        // 刷新订单列表
+        fetchOrders({
+          current: pagination.current,
+          pageSize: pagination.pageSize
+        });
+      } else {
+        message.error(response.data.message || '增加流量失败');
+      }
+    } catch (error: any) {
+      debug.log('增加流量错误:', error);
+      debug.log('错误响应数据:', error.response?.data);
+      debug.log('错误响应状态:', error.response?.status);
+      debug.log('错误响应详情:', error.response?.statusText);
+      
+      // 显示详细的错误信息
+      const errorMessage = error.response?.data?.detail?.message 
+        || error.response?.data?.message 
+        || error.message 
+        || '增加流量失败';
+      
+      message.error(errorMessage);
+    } finally {
+      setAddTrafficLoading(false);
+    }
+  };
+
   const columns: ColumnsType<DynamicOrder> = [
     {
       title: '订单号',
@@ -248,15 +380,27 @@ const DynamicOrderList: React.FC = () => {
       title: '操作',
       key: 'action',
       fixed: 'right',
-      width: 100,
+      width: 180,
       render: (_, record) => (
-        <Button
-          type="link"
-          icon={<CopyOutlined />}
-          onClick={() => handleCopyOrderNo(record.orderNo)}
-        >
-          复制订单号
-        </Button>
+        <Space>
+          <Button
+            type="link"
+            icon={<CopyOutlined />}
+            onClick={() => handleCopyOrderNo(record.orderNo)}
+          >
+            复制订单号
+          </Button>
+          <Button
+            type="link"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setSelectedOrder(record);
+              setAddTrafficVisible(true);
+            }}
+          >
+            增加流量
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -333,6 +477,15 @@ const DynamicOrderList: React.FC = () => {
         }}
         onChange={handleTableChange}
         scroll={{ x: 1200 }}
+      />
+      <AddTrafficModal
+        visible={addTrafficVisible}
+        onCancel={() => {
+          setAddTrafficVisible(false);
+          setSelectedOrder(null);
+        }}
+        onConfirm={handleAddTraffic}
+        loading={addTrafficLoading}
       />
     </Card>
   );

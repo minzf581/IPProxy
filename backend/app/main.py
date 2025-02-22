@@ -391,6 +391,7 @@ app.include_router(settings_router.router, prefix="/api")  # 使用重命名后�
 app.include_router(agent.router, prefix="/api")  # 添加代理商路由
 app.include_router(business.router, prefix="/api")  # 添加业务路由
 app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(order.router, prefix=settings.API_V1_STR)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True) 

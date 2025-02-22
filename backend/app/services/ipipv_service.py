@@ -20,8 +20,6 @@ root_dir = str(Path(__file__).parent.parent.parent.parent)
 if root_dir not in sys.path:
     sys.path.append(root_dir)
 
-from generate_sign import encrypt_params, decrypt_params  # 导入现有的加密/解密函数
-
 logger = logging.getLogger(__name__)
 
 class IPIPVService(IPIPVBaseAPI):
@@ -32,27 +30,7 @@ class IPIPVService(IPIPVBaseAPI):
     
     def __init__(self, db: Session = None):
         super().__init__()
-        self.callback_url = settings.API_V1_STR
-        self.channel_id = settings.IPPROXY_CHANNEL_ID
-        self.app_key = settings.IPPROXY_APP_KEY
         self.db = db
-    
-    def _encrypt_params(self, data: dict) -> str:
-        """使用现有的加密函数加密参数"""
-        try:
-            return encrypt_params(json.dumps(data), self.app_key)
-        except Exception as e:
-            logger.error(f"参数加密失败: {str(e)}")
-            raise HTTPException(status_code=500, detail="参数加密失败")
-            
-    def _decrypt_response(self, encrypted_data: str) -> dict:
-        """使用现有的解密函数解密响应"""
-        try:
-            decrypted_data = decrypt_params(encrypted_data, self.app_key)
-            return json.loads(decrypted_data)
-        except Exception as e:
-            logger.error(f"响应解密失败: {str(e)}")
-            raise HTTPException(status_code=500, detail="响应解密失败")
     
     async def get_product_inventory(self, proxy_type: int) -> List[Dict]:
         """获取产品库存信息"""
@@ -356,6 +334,52 @@ class IPIPVService(IPIPVBaseAPI):
         except Exception as e:
             logger.error(f"[IPIPVService] 激活静态代理失败: {str(e)}")
             raise HTTPException(500, f"代理激活失败: {str(e)}")
+
+    async def open_proxy(self, params: Dict) -> Dict:
+        """
+        开通代理服务
+        
+        Args:
+            params: 请求参数，包含：
+                - appOrderNo: 订单号
+                - params: 代理参数列表
+                    - productNo: 产品编号
+                    - proxyType: 代理类型
+                    - appUsername: 用户名
+                    - flow: 流量大小
+                    - count: 数量
+                    - duration: 时长
+                    - unit: 单位
+                    - renew: 是否续费
+                    
+        Returns:
+            Dict: API响应结果
+        """
+        try:
+            logger.info(f"[IPIPVService] 开始开通代理服务: {json.dumps(params, ensure_ascii=False)}")
+            
+            response = await self._make_request(
+                "api/open/app/instance/open/v2",
+                params
+            )
+            
+            logger.info(f"[IPIPVService] 开通代理服务响应: {json.dumps(response, ensure_ascii=False)}")
+            
+            if not response:
+                raise HTTPException(500, "开通代理服务失败: 无响应数据")
+                
+            if response.get("code") not in [0, 200]:
+                error_msg = response.get("msg", "未知错误")
+                raise HTTPException(500, f"开通代理服务失败: {error_msg}")
+                
+            return response
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"[IPIPVService] 开通代理服务失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            raise HTTPException(500, f"开通代理服务失败: {str(e)}")
 
 # 创建服务实例
 ipipv_service = IPIPVService() 
