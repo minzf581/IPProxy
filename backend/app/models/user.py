@@ -13,7 +13,7 @@ class User(Base, TimestampMixin):
     platform_account = Column(String(50), unique=True, nullable=True)  # 添加 platform_account 字段
     password = Column(String(255), nullable=False)
     email = Column(String(255), index=True, nullable=True)  # 允许为空的邮箱字段
-    phone = Column(String(20), unique=True, nullable=True)
+    phone = Column(String(20), nullable=True)  # 移除 unique=True 约束
     status = Column(Integer, nullable=False, default=1, server_default='1')  # 1=正常 0=禁用
     is_admin = Column(Boolean, default=False)
     is_agent = Column(Boolean, default=False)

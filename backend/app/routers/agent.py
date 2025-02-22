@@ -79,6 +79,8 @@ from app.models.static_order import StaticOrder
 from sqlalchemy import or_
 import re
 from app.core.security import get_password_hash
+from decimal import Decimal
+from app.services.ipipv_base_api import IPIPVBaseAPI
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -146,86 +148,94 @@ async def create_agent(
 ) -> Dict[str, Any]:
     """创建代理商"""
     try:
-        logger.info(f"[AgentRouter] 开始创建代理商: {request.dict()}")
+        logger.info(f"[AgentRouter] 开始创建代理商: {request.username}")
         
-        # 检查必需参数
-        if not request.username or not request.password:
-            logger.error("[AgentRouter] 缺少必需的参数：username 或 password")
-            raise HTTPException(status_code=400, detail="用户名和密码是必需的")
-
         # 检查用户名是否已存在
-        existing_user = db.query(User).filter(User.username == request.username).first()
-        if existing_user:
-            logger.error(f"[AgentRouter] 用户名已存在: {request.username}")
+        if db.query(User).filter(User.username == request.username).first():
+            logger.warning(f"[AgentRouter] 用户名已存在: {request.username}")
             raise HTTPException(
                 status_code=400,
-                detail=f"用户名 '{request.username}' 已存在，请使用其他用户名"
+                detail={
+                    "code": 400,
+                    "message": "用户名已存在"
+                }
             )
 
-        # 准备IPIPV API请求参数
-        ipipv_params = {
-            "appUsername": request.username,
-            "password": request.password,
-            "phone": request.phone,
-            "email": request.email,
-            "status": 1,  # 默认启用状态
-            "authType": 1  # 默认认证类型
-        }
-            
-        # 记录日志时排除敏感信息
-        log_params = ipipv_params.copy()
-        log_params.pop("password", None)
-        logger.info(f"[AgentRouter] 调用 IPIPV API 的参数: {json.dumps(log_params, ensure_ascii=False)}")
-        
-        # 调用IPIPV API创建用户
-        response = await user_service._make_request(
-            "api/open/app/user/v2",
-            ipipv_params
+        # 调用IPIPV API创建代理商
+        new_user = await user_service.create_ipipv_user(
+            username=request.username,
+            password=request.password,
+            email=request.email,
+            phone=request.phone,
+            remark=request.remark,
+            db=db
         )
         
-        if not response:
-            error_msg = "创建代理商失败：IPIPV API返回空响应"
-            logger.error(f"[AgentRouter] {error_msg}")
-            raise HTTPException(status_code=400, detail=error_msg)
-            
-        if response.get("code") not in [0, 200]:
-            error_msg = f"创建代理商失败：{response.get('msg', '未知错误')}"
-            logger.error(f"[AgentRouter] {error_msg}")
-            raise HTTPException(status_code=400, detail=error_msg)
+        if not new_user:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "code": 500,
+                    "message": "创建IPIPV用户失败"
+                }
+            )
 
-        # 准备用户数据
-        user_params = {
-            "username": request.username,
-            "password": get_password_hash(request.password),
-            "email": request.email,
-            "phone": request.phone,
-            "is_agent": True,
-            "balance": float(request.balance) if request.balance is not None else 0.0,
-            "remark": request.remark,
-            "status": 1,
-            "app_username": request.username,  # 使用相同的用户名作为app_username
-            "ipipv_username": response.get("data", {}).get("username"),  # 保存IPIPV返回的用户名
-            "ipipv_password": response.get("data", {}).get("password")   # 保存IPIPV返回的密码
-        }
+        # 更新用户的余额和状态
+        new_user.balance = request.balance or 0.0
+        new_user.status = request.status
+        db.flush()
+        
+        # 如果有初始余额，创建交易记录
+        if request.balance and request.balance > 0:
+            transaction = Transaction(
+                transaction_no=generate_transaction_no(),
+                user_id=new_user.id,
+                agent_id=new_user.id,
+                order_no=f"INIT{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                amount=Decimal(str(request.balance)),
+                balance=Decimal(str(request.balance)),
+                type="recharge",
+                status="success",
+                remark="代理商初始充值"
+            )
+            db.add(transaction)
 
-        # 创建数据库用户记录
-        new_user = User(**user_params)
-        db.add(new_user)
+        # 提交事务
         db.commit()
         db.refresh(new_user)
-            
+        
+        logger.info(f"[AgentRouter] 代理商创建成功: {new_user.username}")
+        
         return {
             "code": 0,
-            "message": "代理商创建成功",
-            "data": new_user.to_dict()
+            "message": "success",
+            "data": {
+                "id": new_user.id,
+                "username": new_user.username,
+                "email": new_user.email,
+                "status": new_user.status,
+                "is_agent": new_user.is_agent,
+                "balance": float(new_user.balance),
+                "app_username": new_user.app_username,
+                "platform_account": new_user.platform_account,
+                "created_at": new_user.created_at.strftime("%Y-%m-%d %H:%M:%S") if new_user.created_at else None
+            }
         }
         
     except HTTPException:
+        db.rollback()
         raise
     except Exception as e:
+        db.rollback()
         logger.error(f"[AgentRouter] 创建代理商失败: {str(e)}")
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": 500,
+                "message": f"创建代理商失败: {str(e)}"
+            }
+        )
 
 @router.get("/open/app/agent/list")
 async def get_agent_list(
@@ -539,7 +549,7 @@ async def update_agent_balance(
             if agent.balance < amount:
                 raise HTTPException(status_code=400, detail={"code": 400, "message": "余额不足"})
             agent.balance -= amount
-            transaction_type = "deduction"
+            transaction_type = "deduct"
         
         # 记录交易
         transaction = Transaction(
@@ -640,72 +650,127 @@ async def update_agent_status(
         logger.error(f"更新代理商状态失败: {str(e)}")
         raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
 
-@router.get("/agent/{agent_id}/transactions")
-async def get_agent_transactions(
-    agent_id: int,
+@router.get("/open/agent/transactions")
+async def get_agent_transactions_list(
     page: int = Query(1, ge=1),
-    pageSize: int = Query(10, ge=1, le=100),
-    status: Optional[str] = None,
+    page_size: int = Query(10, ge=1, le=100),
+    order_no: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
-    """获取代理商交易记录"""
+    """获取交易记录"""
     try:
-        logger.info(f"获取代理商交易记录: agent_id={agent_id}, page={page}, pageSize={pageSize}, status={status}")
+        # 详细的请求参数日志
+        logger.info(f"[AgentRouter] 获取交易记录请求参数: page={page}, page_size={page_size}, order_no={order_no}, start_date={start_date}, end_date={end_date}")
+        logger.info(f"[AgentRouter] 当前用户信息: user_id={current_user.id}, is_admin={current_user.is_admin}, is_agent={current_user.is_agent}")
         
-        # 检查代理商是否存在
-        agent = db.query(User).filter(User.id == agent_id, User.is_agent == True).first()
-        if not agent:
-            raise HTTPException(status_code=404, detail={"code": 404, "message": "代理商不存在"})
-        
-        # 检查权限：管理员可以查看所有代理商，代理商只能查看自己的信息
-        if not current_user.is_admin and current_user.id != agent_id:
-            raise HTTPException(status_code=403, detail={"code": 403, "message": "没有权限执行此操作"})
-        
+        # 验证用户是否存在
+        if not current_user:
+            logger.error("[AgentRouter] 未获取到当前用户信息")
+            raise HTTPException(status_code=401, detail="未认证的用户")
+
         # 构建查询条件
-        query = db.query(Transaction).filter(Transaction.user_id == agent_id)
-        
-        if status:
-            query = query.filter(Transaction.status == status)
-        
+        try:
+            query = db.query(Transaction)
+            
+            # 根据用户角色添加过滤条件
+            if current_user.is_admin:
+                logger.info("[AgentRouter] 管理员查询所有记录")
+                # 管理员可以查看所有记录,不需要添加过滤
+                pass
+            elif current_user.is_agent:
+                logger.info(f"[AgentRouter] 代理商查询自己的记录: agent_id={current_user.id}")
+                # 代理商只能查看自己的记录
+                query = query.filter(Transaction.agent_id == current_user.id)
+            else:
+                logger.info(f"[AgentRouter] 普通用户查询自己的记录: user_id={current_user.id}")
+                # 普通用户只能查看自己的记录
+                query = query.filter(Transaction.user_id == current_user.id)
+
+            # 添加订单号过滤
+            if order_no:
+                logger.info(f"[AgentRouter] 添加订单号过滤: {order_no}")
+                query = query.filter(Transaction.order_no.like(f"%{order_no}%"))
+
+            # 添加日期过滤
+            if start_date:
+                logger.info(f"[AgentRouter] 添加开始日期过滤: {start_date}")
+                start_datetime = datetime.strptime(start_date, "%Y-%m-%d")
+                query = query.filter(Transaction.created_at >= start_datetime)
+
+            if end_date:
+                logger.info(f"[AgentRouter] 添加结束日期过滤: {end_date}")
+                end_datetime = datetime.strptime(end_date, "%Y-%m-%d")
+                query = query.filter(Transaction.created_at <= end_datetime)
+
+            logger.info("[AgentRouter] 成功创建查询条件")
+        except Exception as e:
+            logger.error(f"[AgentRouter] 创建查询失败: {str(e)}")
+            raise HTTPException(status_code=500, detail="数据库查询创建失败")
+
         # 计算总数
-        total = query.count()
-        
+        try:
+            total = query.count()
+            logger.info(f"[AgentRouter] 查询到记录总数: {total}")
+        except Exception as e:
+            logger.error(f"[AgentRouter] 计算总数失败: {str(e)}")
+            raise HTTPException(status_code=500, detail="计算记录总数失败")
+
         # 分页查询
-        transactions = query.order_by(Transaction.created_at.desc()) \
-            .offset((page - 1) * pageSize) \
-            .limit(pageSize) \
-            .all()
-        
+        try:
+            transactions = query.order_by(Transaction.created_at.desc()) \
+                .offset((page - 1) * page_size) \
+                .limit(page_size) \
+                .all()
+            logger.info(f"[AgentRouter] 获取到交易记录数量: {len(transactions)}")
+        except Exception as e:
+            logger.error(f"[AgentRouter] 分页查询失败: {str(e)}")
+            raise HTTPException(status_code=500, detail="分页查询失败")
+
         # 转换为响应格式
         transaction_list = []
         for t in transactions:
-            transaction_list.append({
-                "id": t.id,
-                "order_no": t.order_no,
-                "amount": float(t.amount),
-                "status": t.status,
-                "type": t.type,
-                "remark": t.remark,
-                "created_at": t.created_at.isoformat() if t.created_at else None,
-                "updated_at": t.updated_at.isoformat() if t.updated_at else None
-            })
-        
-        return {
+            try:
+                # 获取用户信息
+                user = db.query(User).filter(User.id == t.user_id).first()
+                
+                transaction_data = {
+                    "id": t.id,
+                    "order_no": t.order_no,
+                    "amount": float(t.amount) if t.amount else 0.0,
+                    "type": t.type,
+                    "status": t.status,
+                    "remark": t.remark,
+                    "user_name": user.username if user else None,
+                    "created_at": t.created_at.strftime("%Y-%m-%d %H:%M:%S") if t.created_at else None
+                }
+                transaction_list.append(transaction_data)
+                logger.debug(f"[AgentRouter] 处理交易记录: {transaction_data}")
+            except Exception as e:
+                logger.error(f"[AgentRouter] 处理交易记录失败: {str(e)}")
+                continue
+
+        response_data = {
             "code": 0,
             "message": "success",
             "data": {
-                "list": transaction_list,
                 "total": total,
+                "items": transaction_list,
                 "page": page,
-                "pageSize": pageSize
+                "page_size": page_size
             }
         }
+        logger.info("[AgentRouter] 成功返回交易记录列表")
+        return response_data
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取代理商交易记录失败: {str(e)}")
-        raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
+        logger.error(f"[AgentRouter] 获取交易记录失败: {str(e)}")
+        logger.error(f"[AgentRouter] 错误堆栈: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/open/app/area/v2")
 async def get_area_list(

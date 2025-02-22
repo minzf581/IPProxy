@@ -126,19 +126,10 @@ app = FastAPI(
 # 白名单路径
 SKIP_AUTH_PATHS = [
     "/api/auth/login",
-    "/api/auth/register",
-    "/api/open/app/area/v2",
-    "/api/open/app/city/list/v2",
-    "/api/open/app/product/query/v2",
-    "/api/open/app/location/options/v2",
-    "/api/open/app/agent/list",
-    "/api/open/app/agent/",  # 代理商相关路径
-    "/api/open/app/static/order/list/v2",
-    "/api/open/app/order/v2",
-    "/api/open/app/proxy/user/v2",
-    "/docs",  # Swagger UI
-    "/redoc",  # ReDoc UI
-    "/openapi.json"  # OpenAPI schema
+    "/api/auth/refresh",
+    "/docs",
+    "/redoc",
+    "/openapi.json"
 ]
 
 # 数据库会话中间件类
@@ -380,14 +371,14 @@ async def root():
 
 # 注册路由
 app.include_router(api_router, prefix=settings.API_V1_STR)
-app.include_router(user.router, prefix="/api")
-app.include_router(agent.router, prefix="/api")
+app.include_router(auth.router, prefix="/api/auth", tags=["认证"])
+app.include_router(user.router, prefix="/api", tags=["用户"])
+app.include_router(agent.router, prefix="/api", tags=["代理商"])
 app.include_router(dashboard.router, prefix="/api")
-app.include_router(auth.router, prefix="/api")
 app.include_router(transaction.router, prefix="/api")
 app.include_router(order.router, prefix="/api")
 app.include_router(proxy.router, prefix="/api")
-app.include_router(instance.router, prefix="/api")  # 添加实例路由
+app.include_router(instance.router, prefix="/api")
 app.include_router(area.router, prefix="/api")
 app.include_router(settings_router.router, prefix="/api")
 app.include_router(callback.router, prefix="/api")

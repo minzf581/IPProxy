@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional
+from typing import Optional, Dict, List, Any
 from datetime import datetime
 
 class UserBase(BaseModel):
@@ -60,6 +60,24 @@ class UserInDB(UserBase):
     last_login_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class UserUpdate(BaseModel):
+    """更新用户信息时的数据结构"""
+    email: Optional[str] = None
+    password: Optional[str] = None
+    app_username: Optional[str] = None
+    remark: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class UserListResponse(BaseModel):
+    """用户列表响应"""
+    list: List[UserResponse]
+    total: int
 
     class Config:
         from_attributes = True 

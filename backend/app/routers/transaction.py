@@ -31,7 +31,7 @@ async def get_agent_transactions(
     """
     try:
         # 验证用户是否为代理商
-        if current_user.agent_id is not None:
+        if not current_user.is_agent:
             raise HTTPException(status_code=403, detail="只有代理商可以访问此接口")
 
         # 构建查询条件

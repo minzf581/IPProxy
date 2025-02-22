@@ -15,6 +15,7 @@ interface Transaction {
   status: string;
   created_at: string;
   operator_name: string;
+  user_name: string;
 }
 
 const AgentTransactions: React.FC = () => {
@@ -49,6 +50,11 @@ const AgentTransactions: React.FC = () => {
       render: (amount: number) => `¥${amount.toFixed(2)}`,
     },
     {
+      title: '用户',
+      dataIndex: 'user_name',
+      key: 'user_name',
+    },
+    {
       title: '操作人',
       dataIndex: 'operator_name',
       key: 'operator_name',
@@ -64,8 +70,11 @@ const AgentTransactions: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/agent/transactions?page=${pagination.current}&page_size=${pagination.pageSize}&order_no=${searchParams.order_no}&start_date=${searchParams.start_date}&end_date=${searchParams.end_date}`, {
+      const response = await fetch(`/api/open/agent/transactions?page=${pagination.current}&page_size=${pagination.pageSize}&order_no=${searchParams.order_no}&start_date=${searchParams.start_date}&end_date=${searchParams.end_date}`, {
         credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
       });
       const result = await response.json();
       

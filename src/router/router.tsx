@@ -4,7 +4,6 @@ import Layout from '@/components/Layout';
 import Login from '@/pages/login';
 import Dashboard from '@/pages/dashboard/index';
 import StaticOrderPage from '@frontend/components/StaticOrder/StaticOrderList';
-import AgentOrders from '@/pages/order/agent-orders';
 import AgentManagement from '@/pages/agents';
 import UserManagement from '@/pages/users';
 import AuthGuard, { PublicRoute } from '@/components/AuthGuard';
@@ -85,8 +84,8 @@ const createRoutes = () => {
           element: <StaticOrderPage />,
         },
         {
-          path: 'agent',
-          element: <AgentOrders />,
+          path: 'transactions',
+          element: <AgentTransactions />,
         },
       ],
     },

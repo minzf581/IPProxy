@@ -141,6 +141,9 @@ from app.schemas.user import UserCreate, UserResponse, UserLogin, UserBase, User
 import json
 import traceback
 from app.services.static_order_service import StaticOrderService
+from decimal import Decimal
+from app.services.user_service import UserService
+from app.schemas.user import UserUpdate, UserListResponse
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -186,7 +189,7 @@ class CreateUserRequest(BaseModel):
 
 router = APIRouter()
 
-@router.get("/user/list")
+@router.get("/open/app/users/list")
 async def get_user_list(
     page: int = Query(1, ge=1),
     pageSize: int = Query(10, ge=1, le=100),
@@ -229,9 +232,9 @@ async def get_user_list(
                 "id": user.id,
                 "username": user.username,
                 "email": user.email,
-                "status": "active" if user.status == 1 else "disabled",  # 将整数状态转换为字符串
+                "status": user.status,
                 "agent_id": user.agent_id,
-                "balance": user.balance,
+                "balance": float(user.balance) if user.balance else 0.0,
                 "remark": user.remark,
                 "created_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S") if user.created_at else None,
                 "updated_at": user.updated_at.strftime("%Y-%m-%d %H:%M:%S") if user.updated_at else None
@@ -240,20 +243,20 @@ async def get_user_list(
             
         return {
             "code": 0,
-            "msg": "success",
+            "message": "success",
             "data": {
                 "total": total,
                 "list": user_list
             }
         }
-        
     except Exception as e:
         logger.error(f"获取用户列表失败: {str(e)}")
-        logger.exception("详细错误信息:")
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取用户列表失败: {str(e)}"
-        )
+        logger.error(traceback.format_exc())
+        return {
+            "code": 500,
+            "message": f"获取用户列表失败: {str(e)}",
+            "data": None
+        }
 
 @router.post("/open/app/user/create/v2", response_model=UserResponse)
 async def create_user(
@@ -317,7 +320,8 @@ async def create_user_handler(
             "remark": user_data.remark,
             "is_agent": user_data.is_agent,
             "agent_id": agent_id,
-            "status": 1
+            "status": 1,
+            "balance": user_data.balance or 0.0  # 添加初始余额
         }
 
         # 如果是管理员创建代理用户，需要调用 IPIPV API
@@ -361,6 +365,26 @@ async def create_user_handler(
         # 创建用户
         new_user = User(**user_dict)
         db.add(new_user)
+        
+        # 如果有初始余额，创建充值交易记录
+        initial_balance = float(user_dict["balance"])
+        if initial_balance > 0:
+            transaction = Transaction(
+                transaction_no=f"TRX{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}",
+                user_id=new_user.id,
+                agent_id=agent_id or new_user.id,  # 如果没有代理商ID，使用用户自己的ID
+                order_no=f"INIT{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                amount=Decimal(str(initial_balance)),
+                balance=Decimal(str(initial_balance)),
+                type="recharge",
+                status="success",
+                remark="初始余额充值"
+            )
+            db.add(transaction)
+            
+            # 更新用户的总充值金额
+            new_user.total_recharge = Decimal(str(initial_balance))
+        
         db.commit()
         db.refresh(new_user)
 
@@ -485,7 +509,7 @@ async def update_user_password(
             "data": None
         }
 
-@router.post("/user/{user_id}/change-password")
+@router.post("/open/app/user/{user_id}/change-password")
 async def change_password(
     user_id: int,
     data: dict,
@@ -520,7 +544,7 @@ async def change_password(
         logger.error(f"修改密码失败: {str(e)}")
         raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
 
-@router.post("/user/{user_id}/activate-business")
+@router.post("/open/app/user/{user_id}/activate-business")
 async def activate_business(
     user_id: int,
     data: dict,
@@ -681,7 +705,7 @@ async def activate_business(
             detail={"code": 500, "message": f"业务激活失败: {str(e)}"}
         )
 
-@router.post("/user/{user_id}/renew")
+@router.post("/open/app/user/{user_id}/renew")
 async def renew_business(
     user_id: int,
     data: dict,
@@ -782,7 +806,7 @@ async def renew_business(
         logger.error(f"续费失败: {str(e)}")
         raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
 
-@router.post("/user/{user_id}/deactivate-business")
+@router.post("/open/app/user/{user_id}/deactivate-business")
 async def deactivate_business(
     user_id: int,
     data: dict,
@@ -975,52 +999,4 @@ async def adjust_user_balance(
     except Exception as e:
         db.rollback()
         logger.error(f"[adjust_user_balance] 调整失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"调整失败: {str(e)}")
-
-@router.get("/open/app/users/list")
-async def get_users_list(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """获取用户列表，根据当前用户角色返回不同范围的用户"""
-    try:
-        logger.info(f"[UserRouter] 获取用户列表: current_user={current_user.username}")
-        
-        # 构建查询条件
-        query = db.query(User)
-        
-        if current_user.is_admin:
-            # 管理员可以看到所有用户
-            users = query.all()
-        elif current_user.is_agent:
-            # 代理商只能看到自己和自己名下的用户
-            users = query.filter(
-                (User.id == current_user.id) | 
-                (User.agent_id == current_user.id)
-            ).all()
-        else:
-            # 普通用户只能看到自己
-            users = [current_user]
-            
-        # 转换为响应格式
-        user_list = [{
-            "id": user.id,
-            "username": user.username,
-            "is_admin": user.is_admin,
-            "is_agent": user.is_agent,
-            "balance": float(user.balance),
-            "total_recharge": float(user.total_recharge),
-            "total_consumption": float(user.total_consumption)
-        } for user in users]
-        
-        logger.info(f"[UserRouter] 返回用户列表: count={len(user_list)}")
-        
-        return {
-            "code": 0,
-            "msg": "success",
-            "data": user_list
-        }
-        
-    except Exception as e:
-        logger.error(f"[UserRouter] 获取用户列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=f"调整失败: {str(e)}") 

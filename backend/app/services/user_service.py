@@ -84,6 +84,87 @@ class UserService(IPIPVBaseAPI):
             db.rollback()
             return None
 
+    async def create_ipipv_user(
+        self,
+        username: str,
+        password: str,
+        email: Optional[str] = None,
+        phone: Optional[str] = None,
+        remark: Optional[str] = None,
+        db: Session = None
+    ) -> Optional[User]:
+        """
+        创建 IPIPV 用户
+        
+        Args:
+            username: 用户名
+            password: 密码
+            email: 可选，邮箱
+            phone: 可选，手机号
+            remark: 可选，备注
+            db: 数据库会话
+            
+        Returns:
+            Optional[User]: 创建成功返回用户对象，失败返回 None
+        """
+        try:
+            logger.info(f"[UserService] 开始创建 IPIPV 用户: username={username}")
+            
+            # 调用 IPIPV API 创建用户
+            ipipv_response = await self._make_request(
+                "api/open/app/user/v2",
+                {
+                    "appUsername": username,
+                    "password": password,
+                    "phone": phone,
+                    "email": email,
+                    "status": 1,
+                    "authType": 1
+                }
+            )
+            
+            if not ipipv_response or ipipv_response.get("code") not in [0, 200]:
+                error_msg = ipipv_response.get("msg", "未知错误") if ipipv_response else "API返回为空"
+                logger.error(f"[UserService] 创建IPIPV用户失败: {error_msg}")
+                return None
+                
+            # 获取IPIPV返回的用户信息
+            ipipv_data = ipipv_response.get("data", {})
+            ipipv_username = ipipv_data.get("username")
+            ipipv_password = ipipv_data.get("password")
+            
+            logger.info(f"[UserService] IPIPV用户创建成功: username={ipipv_username}")
+            
+            # 创建本地用户记录
+            user = User(
+                username=username,
+                password=get_password_hash(password),
+                email=email,
+                phone=phone,
+                is_admin=False,
+                is_agent=True,
+                balance=0.0,
+                remark=remark,
+                status=1,
+                ipipv_username=ipipv_username,  # 使用 ipipv_username 字段存储 IPIPV 平台用户名
+                ipipv_password=ipipv_password
+            )
+            
+            if db:
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+                logger.info(f"[UserService] 本地用户记录创建成功: id={user.id}")
+            
+            return user
+            
+        except Exception as e:
+            logger.error(f"[UserService] 创建IPIPV用户失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            if db:
+                db.rollback()
+            return None
+
     async def create_user(
         self,
         username: str,
@@ -241,7 +322,7 @@ class UserService(IPIPVBaseAPI):
             return result.get("list", []) if isinstance(result, dict) else []
         except Exception as e:
             logger.error(f"获取用户列表失败: {str(e)}")
-            return [] 
+            return []
 
 def get_user_service() -> UserService:
     """

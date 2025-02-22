@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, Row, Col, Statistic, Spin, message, Button, Progress, Select } from 'antd';
 import { api } from '@/utils/request';
+import { API_ROUTES } from '@/shared/routes';
 import styles from './index.module.less';
 import { DashboardData as IDashboardData, DynamicResource, StaticResource } from '@/types/dashboard';
 import type { Agent } from '@/types/agent';
@@ -103,13 +104,17 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
 
   const fetchUsers = async () => {
     try {
-      const response = await api.get('/api/open/app/users/list');
-      if (response.data.code === 0) {
-        setUsers(response.data.data);
+      const response = await api.get(API_ROUTES.USER.LIST);
+      if (response.data.code === 0 && Array.isArray(response.data.data?.list)) {
+        setUsers(response.data.data.list);
+      } else {
+        setUsers([]);
+        console.error('获取用户列表失败: 返回数据格式不正确', response.data);
       }
     } catch (error) {
       console.error('获取用户列表失败:', error);
       message.error('获取用户列表失败');
+      setUsers([]);
     }
   };
 
@@ -354,7 +359,7 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
 
   return (
     <div className={styles.dashboard}>
-      {(user?.is_admin || user?.is_agent) && (
+      {(user?.is_admin || user?.is_agent) && users.length > 0 && (
         <div className={styles.userSelector}>
           <Select
             placeholder="选择用户"

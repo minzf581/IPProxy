@@ -33,9 +33,19 @@ export const login = async (username: string, password: string): Promise<ApiResp
   try {
     debug.log('开始登录请求:', { username, timestamp: new Date().toISOString() });
     
+    // 创建 FormData
+    const formData = new FormData();
+    formData.append('username', username);
+    formData.append('password', password);
+    
     const { data: backendResponse } = await apiRequest.post<BackendResponse<LoginResponse>>(
-      API_ROUTES.AUTH.LOGIN, 
-      { username, password }
+      API_ROUTES.AUTH.LOGIN,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      }
     );
     
     debug.log('收到登录响应:', backendResponse);
