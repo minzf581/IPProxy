@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Card, Form, Input, Select, Button, Space, message, Modal, InputNumber, Tag, Spin } from 'antd';
-import { SearchOutlined, ReloadOutlined, CopyOutlined, PlusOutlined } from '@ant-design/icons';
+import { SearchOutlined, ReloadOutlined, CopyOutlined, PlusOutlined, MinusOutlined } from '@ant-design/icons';
 import type { TablePaginationConfig } from 'antd/lib/table';
 import type { ColumnsType } from 'antd/es/table';
 import { api } from '@/utils/request';
@@ -68,6 +68,7 @@ interface AddTrafficModalProps {
   onConfirm: (traffic: number) => Promise<void>;
   loading: boolean;
   orderNo: string;  // 添加订单号属性
+  isDeduct?: boolean;  // 添加是否是扣减流量的标识
 }
 
 const AddTrafficModal: React.FC<AddTrafficModalProps> = ({
@@ -75,7 +76,8 @@ const AddTrafficModal: React.FC<AddTrafficModalProps> = ({
   onCancel,
   onConfirm,
   loading,
-  orderNo
+  orderNo,
+  isDeduct = false
 }) => {
   const [form] = Form.useForm();
   const [orderInfo, setOrderInfo] = useState<{
@@ -115,6 +117,10 @@ const AddTrafficModal: React.FC<AddTrafficModalProps> = ({
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
+      if (isDeduct && orderInfo && values.traffic > orderInfo.flowBalance) {
+        message.error('扣减流量不能大于剩余流量');
+        return;
+      }
       await onConfirm(values.traffic);
       form.resetFields();
     } catch (error) {
@@ -158,7 +164,7 @@ const AddTrafficModal: React.FC<AddTrafficModalProps> = ({
 
   return (
     <Modal
-      title="增加流量"
+      title={isDeduct ? "扣减流量" : "增加流量"}
       open={visible}
       onOk={handleOk}
       onCancel={onCancel}
@@ -198,6 +204,9 @@ const AddTrafficModal: React.FC<AddTrafficModalProps> = ({
                 if (value && !Number.isInteger(value)) {
                   return Promise.reject('流量必须为整数');
                 }
+                if (isDeduct && orderInfo && value > orderInfo.flowBalance) {
+                  return Promise.reject('扣减流量不能大于剩余流量');
+                }
                 return Promise.resolve();
               }
             }
@@ -205,8 +214,9 @@ const AddTrafficModal: React.FC<AddTrafficModalProps> = ({
         >
           <InputNumber
             style={{ width: '100%' }}
-            placeholder="请输入流量大小(MB)"
+            placeholder={`请输入${isDeduct ? '扣减' : '增加'}流量大小(MB)`}
             min={1}
+            max={isDeduct && orderInfo ? orderInfo.flowBalance : undefined}
             precision={0}
           />
         </Form.Item>
@@ -227,7 +237,9 @@ const DynamicOrderList: React.FC = () => {
   });
   const [selectedOrder, setSelectedOrder] = useState<DynamicOrder | null>(null);
   const [addTrafficVisible, setAddTrafficVisible] = useState(false);
+  const [deductTrafficVisible, setDeductTrafficVisible] = useState(false);
   const [addTrafficLoading, setAddTrafficLoading] = useState(false);
+  const [deductTrafficLoading, setDeductTrafficLoading] = useState(false);
 
   const fetchOrders = async (params: any) => {
     setLoading(true);
@@ -420,6 +432,71 @@ const DynamicOrderList: React.FC = () => {
     }
   };
 
+  const handleDeductTraffic = async (traffic: number) => {
+    if (!selectedOrder) {
+      message.error('请先选择订单');
+      return;
+    }
+
+    if (!selectedOrder.orderNo) {
+      message.error('订单号不存在');
+      return;
+    }
+
+    debug.log('选中的订单详细信息:', {
+      id: selectedOrder.id,
+      orderNo: selectedOrder.orderNo,
+      userId: selectedOrder.userId,
+      username: selectedOrder.username,
+      poolType: selectedOrder.poolType,
+      proxyInfo: selectedOrder.proxyInfo
+    });
+
+    const params = {
+      appOrderNo: selectedOrder.orderNo,
+      productNo: selectedOrder.poolType,
+      proxyType: 104,
+      appUsername: selectedOrder.username,
+      flowNum: traffic,
+      remark: '用户主动扣减流量'
+    };
+
+    debug.log('扣减流量请求参数:', JSON.stringify(params, null, 2));
+
+    setDeductTrafficLoading(true);
+    try {
+      debug.log('发送请求前的参数:', params);
+      const response = await api.post('/api/dynamic/deduct-traffic', params);
+      debug.log('扣减流量响应:', response);
+
+      if (response.data.code === 0 || response.data.code === 200) {
+        message.success('扣减流量成功');
+        setDeductTrafficVisible(false);
+        // 刷新订单列表
+        fetchOrders({
+          current: pagination.current,
+          pageSize: pagination.pageSize
+        });
+      } else {
+        message.error(response.data.message || '扣减流量失败');
+      }
+    } catch (error: any) {
+      debug.log('扣减流量错误:', error);
+      debug.log('错误响应数据:', error.response?.data);
+      debug.log('错误响应状态:', error.response?.status);
+      debug.log('错误响应详情:', error.response?.statusText);
+      
+      const errorMessage = error.response?.data?.detail?.message 
+        || error.response?.data?.message 
+        || error.message 
+        || '扣减流量失败';
+      
+      message.error(errorMessage);
+    } finally {
+      setDeductTrafficLoading(false);
+    }
+  };
+
   const columns: ColumnsType<DynamicOrder> = [
     {
       title: '订单号',
@@ -468,7 +545,7 @@ const DynamicOrderList: React.FC = () => {
       title: '操作',
       key: 'action',
       fixed: 'right',
-      width: 180,
+      width: 280,
       render: (_, record) => (
         <Space>
           <Button
@@ -487,6 +564,16 @@ const DynamicOrderList: React.FC = () => {
             }}
           >
             增加流量
+          </Button>
+          <Button
+            type="link"
+            icon={<MinusOutlined />}
+            onClick={() => {
+              setSelectedOrder(record);
+              setDeductTrafficVisible(true);
+            }}
+          >
+            扣减流量
           </Button>
         </Space>
       ),
@@ -574,7 +661,18 @@ const DynamicOrderList: React.FC = () => {
         }}
         onConfirm={handleAddTraffic}
         loading={addTrafficLoading}
-        orderNo={selectedOrder?.orderNo || ''}  // 传入订单号
+        orderNo={selectedOrder?.orderNo || ''}
+      />
+      <AddTrafficModal
+        visible={deductTrafficVisible}
+        onCancel={() => {
+          setDeductTrafficVisible(false);
+          setSelectedOrder(null);
+        }}
+        onConfirm={handleDeductTraffic}
+        loading={deductTrafficLoading}
+        orderNo={selectedOrder?.orderNo || ''}
+        isDeduct={true}
       />
     </Card>
   );

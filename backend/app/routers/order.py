@@ -161,6 +161,44 @@ class AddTrafficRequest(BaseModel):
             raise ValueError("流量必须大于0")
         return v
 
+class DeductTrafficRequest(BaseModel):
+    appOrderNo: str = Field(..., description="订单号")
+    productNo: str = Field(..., description="产品编号")
+    proxyType: int = Field(..., description="代理类型")
+    appUsername: str = Field(..., description="用户名")
+    flowNum: int = Field(..., gt=0, description="扣减流量大小(MB)")
+    remark: str = Field(..., description="备注")
+
+    @validator('appOrderNo')
+    def validate_app_order_no(cls, v):
+        if not v:
+            raise ValueError("订单号不能为空")
+        return v
+
+    @validator('productNo')
+    def validate_product_no(cls, v):
+        if not v:
+            raise ValueError("产品编号不能为空")
+        return v
+
+    @validator('appUsername')
+    def validate_app_username(cls, v):
+        if not v:
+            raise ValueError("用户名不能为空")
+        return v
+
+    @validator('flowNum')
+    def validate_flow_num(cls, v):
+        if v <= 0:
+            raise ValueError("流量必须大于0")
+        return v
+
+    @validator('remark')
+    def validate_remark(cls, v):
+        if len(v) > 250:
+            raise ValueError("备注不能超过250个字符")
+        return v
+
 # 修改路由前缀
 router = APIRouter()
 
@@ -971,4 +1009,100 @@ async def get_dynamic_order_info(
         raise HTTPException(
             status_code=500,
             detail={"code": 500, "message": f"获取订单信息失败: {str(e)}"}
+        )
+
+@router.post("/dynamic/deduct-traffic")
+async def deduct_traffic(
+    request: DeductTrafficRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> Dict[str, Any]:
+    """扣减动态订单流量"""
+    try:
+        logger.info(f"[Order Service] 收到扣减流量请求参数: {request.dict()}")
+        logger.info(f"[Order Service] 当前用户: {current_user.username}, ID: {current_user.id}, is_admin: {current_user.is_admin}, is_agent: {current_user.is_agent}")
+        
+        # 查找订单 - 使用order_no字段
+        order = db.query(DynamicOrder).filter(DynamicOrder.order_no == request.appOrderNo).first()
+        logger.info(f"[Order Service] 通过order_no查询结果: {order}")
+        
+        if not order:
+            # 如果找不到，尝试使用app_order_no字段
+            order = db.query(DynamicOrder).filter(DynamicOrder.app_order_no == request.appOrderNo).first()
+            logger.info(f"[Order Service] 通过app_order_no查询结果: {order}")
+            
+        if not order:
+            logger.error(f"[Order Service] 订单不存在: {request.appOrderNo}")
+            raise HTTPException(
+                status_code=404,
+                detail={"code": 404, "message": "订单不存在"}
+            )
+            
+        logger.info(f"[Order Service] 找到订单: id={order.id}, user_id={order.user_id}, agent_id={order.agent_id}")
+            
+        # 检查权限
+        if not current_user.is_admin:
+            logger.info(f"[Order Service] 非管理员用户，进行权限检查")
+            if current_user.is_agent:
+                logger.info(f"[Order Service] 代理商用户，检查权限: current_user_id={current_user.id}, order_user_id={order.user_id}")
+                # 如果是代理商，检查订单是否属于其自己或其下级用户
+                if order.user_id != current_user.id:
+                    # 检查订单用户是否是该代理商的下级
+                    order_user = db.query(User).filter(User.id == order.user_id).first()
+                    if not order_user or order_user.agent_id != current_user.id:
+                        logger.error(f"[Order Service] 代理商权限验证失败: 订单user_id={order.user_id}, 当前代理商id={current_user.id}")
+                        raise HTTPException(
+                            status_code=403,
+                            detail={"code": 403, "message": "无权操作此订单"}
+                        )
+            else:
+                logger.info(f"[Order Service] 普通用户，检查user_id: current={current_user.id}, order={order.user_id}")
+                if order.user_id != current_user.id:
+                    logger.error(f"[Order Service] 普通用户权限验证失败: 订单user_id={order.user_id}, 当前用户id={current_user.id}")
+                    raise HTTPException(
+                        status_code=403,
+                        detail={"code": 403, "message": "无权操作此订单"}
+                    )
+        else:
+            logger.info("[Order Service] 管理员用户，跳过权限检查")
+
+        # 调用IPIPV API
+        ipipv_service = IPIPVService(db)
+        response = await ipipv_service.return_proxy({
+            "appUsername": request.appUsername,
+            "proxyType": request.proxyType,
+            "productNo": request.productNo,
+            "flowNum": request.flowNum,
+            "remark": request.remark
+        })
+        
+        logger.info(f"[Order Service] IPIPV API响应: {response}")
+        
+        if response.get("code") in [0, 200]:
+            # 更新订单流量
+            order.traffic -= request.flowNum
+            order.updated_at = datetime.utcnow()
+            db.commit()
+            
+            logger.info(f"[Order Service] 成功扣减流量: {request.flowNum}MB, 订单号: {request.appOrderNo}")
+            
+            return {
+                "code": 0,
+                "message": "扣减流量成功",
+                "data": order.to_dict()
+            }
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": 400, "message": response.get("message", "扣减流量失败")}
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Order Service] 扣减流量失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail={"code": 500, "message": f"扣减流量失败: {str(e)}"}
         ) 
