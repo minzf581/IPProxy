@@ -42,6 +42,7 @@ class User(Base, TimestampMixin):
     agent_prices = relationship("AgentPrice", foreign_keys="[AgentPrice.agent_id]", back_populates="agent", cascade="all, delete-orphan")
     user_prices = relationship("UserPrice", foreign_keys="[UserPrice.user_id]", back_populates="user")
     managed_user_prices = relationship("UserPrice", foreign_keys="[UserPrice.agent_id]", back_populates="agent")
+    resource_usage_stats = relationship("ResourceUsageStatistics", back_populates="user")
 
     def to_dict(self):
         return {

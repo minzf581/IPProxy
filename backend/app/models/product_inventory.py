@@ -48,7 +48,9 @@ class ProductInventory(Base, TimestampMixin):
     ip_end = Column(String(15), comment='IP段结束地址')
 
     # 添加关系
-    usage_statistics = relationship("ResourceUsageStatistics", back_populates="resource_type")
+    usage_statistics = relationship("ResourceUsageStatistics", 
+                                  back_populates="product",
+                                  primaryjoin="and_(ProductInventory.product_no==foreign(ResourceUsageStatistics.product_no))")
     usage_history = relationship("ResourceUsageHistory", back_populates="resource_type")
 
     __table_args__ = (

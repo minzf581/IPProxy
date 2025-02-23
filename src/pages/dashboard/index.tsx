@@ -64,9 +64,11 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
       setLoading(true);
       setError(null);
 
-      console.log('Fetching dashboard data for agent:', currentAgent);
+      console.log('Fetching dashboard data for user:', userId);
       
-      const apiPath = userId ? `/api/open/app/dashboard/info/v2?userId=${userId}` : '/api/open/app/dashboard/info/v2';
+      const apiPath = userId 
+        ? `/api/open/app/dashboard/info/v2?target_user_id=${userId}` 
+        : '/api/open/app/dashboard/info/v2';
       
       console.log('Making request to:', apiPath);
       
@@ -104,7 +106,15 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
 
   const fetchUsers = async () => {
     try {
-      const response = await api.get(API_ROUTES.USER.LIST);
+      const response = await api.get(API_ROUTES.USER.LIST, {
+        params: {
+          pageSize: 100,  // 设置较大的页面大小
+          current: 1,
+          // 根据用户角色过滤
+          ...(user?.is_agent ? { agent_id: user.id } : {})
+        }
+      });
+      
       if (response.data.code === 0 && Array.isArray(response.data.data?.list)) {
         setUsers(response.data.data.list);
       } else {
@@ -119,7 +129,9 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
   };
 
   const handleUserChange: SelectProps['onChange'] = (value) => {
+    console.log('Selected user changed:', value);
     setSelectedUserId(value as string);
+    fetchDashboardData(value as string);
   };
 
   const renderStatisticsCards = () => {
@@ -361,16 +373,25 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
     <div className={styles.dashboard}>
       {(user?.is_admin || user?.is_agent) && users.length > 0 && (
         <div className={styles.userSelector}>
-          <Select
-            placeholder="选择用户"
-            onChange={handleUserChange}
-            style={{ width: 200, marginBottom: 16 }}
-            allowClear
-          >
-            {users.map(user => (
-              <Option key={user.id} value={user.id}>{user.username}</Option>
-            ))}
-          </Select>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+            <span style={{ marginRight: 8 }}>当前查看用户：</span>
+            <Select
+              placeholder="选择用户"
+              onChange={handleUserChange}
+              style={{ width: 200 }}
+              allowClear
+              value={selectedUserId}
+            >
+              {users.map(user => (
+                <Option key={user.id} value={user.id}>{user.username}</Option>
+              ))}
+            </Select>
+            {selectedUserId && (
+              <span style={{ marginLeft: 8, color: '#1890ff' }}>
+                {users.find(u => u.id === selectedUserId)?.username || '未知用户'}
+              </span>
+            )}
+          </div>
         </div>
       )}
 

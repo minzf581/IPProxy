@@ -17,20 +17,20 @@ stats = await dashboard_service.get_statistics(db)
 """
 
 from typing import Dict, Any, List
-from sqlalchemy import text
+from sqlalchemy import text, func
 from app.database import get_db
 from app.models.user import User
 from app.models.transaction import Transaction
 from app.models.instance import Instance
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from app.models.dynamic_order import DynamicOrder
 from app.models.static_order import StaticOrder
 from app.models.product_inventory import ProductInventory
 import logging
 from .ipipv_base_api import IPIPVBaseAPI
 import traceback
+from app.models.resource_usage import ResourceUsageStatistics
 
 logger = logging.getLogger(__name__)
 
@@ -299,49 +299,132 @@ class DashboardService(IPIPVBaseAPI):
                 logger.info(f"[DashboardService] 处理产品: {product.product_no}")
                 
                 try:
-                    # 获取今日使用量
-                    today_usage = await self._get_flow_usage(
-                        username=user.username,
-                        product_no=product.product_no,
-                        start_time=today_start.strftime("%Y-%m-%d %H:%M:%S"),
-                        end_time=now.strftime("%Y-%m-%d %H:%M:%S")
-                    )
-                    
-                    # 获取本月使用量
-                    month_usage = await self._get_flow_usage(
-                        username=user.username,
-                        product_no=product.product_no,
-                        start_time=month_start.strftime("%Y-%m-%d %H:%M:%S"),
-                        end_time=now.strftime("%Y-%m-%d %H:%M:%S")
-                    )
-                    
-                    # 获取上月使用量
-                    last_month_usage = await self._get_flow_usage(
-                        username=user.username,
-                        product_no=product.product_no,
-                        start_time=last_month_start.strftime("%Y-%m-%d %H:%M:%S"),
-                        end_time=last_month_end.strftime("%Y-%m-%d %H:%M:%S")
-                    )
+                    # 获取或创建使用统计记录
+                    usage_stats = db.query(ResourceUsageStatistics).filter(
+                        ResourceUsageStatistics.user_id == user_id,
+                        ResourceUsageStatistics.product_no == product.product_no
+                    ).first()
 
-                    # 计算总流量（从flow字段获取）
+                    if not usage_stats:
+                        logger.info(f"[DashboardService] 创建新的使用统计记录: user_id={user_id}, product_no={product.product_no}")
+                        usage_stats = ResourceUsageStatistics(
+                            user_id=user_id,
+                            product_no=product.product_no,
+                            resource_type="dynamic",
+                            total_amount=product.flow,
+                            used_amount=0,
+                            today_usage=0,
+                            month_usage=0,
+                            last_month_usage=0
+                        )
+                        db.add(usage_stats)
+                        db.commit()
+
+                    # 检查是否需要更新数据
+                    need_sync = False
+                    need_sync_today = False
+                    need_sync_month = False
+
+                    if not usage_stats.last_sync_time:
+                        logger.info(f"[DashboardService] 首次同步数据: product_no={product.product_no}")
+                        need_sync = True
+                    else:
+                        if usage_stats.last_sync_time.date() < now.date():
+                            logger.info(f"[DashboardService] 需要更新今日数据: product_no={product.product_no}")
+                            need_sync_today = True
+                        
+                        if usage_stats.last_sync_time.month < now.month:
+                            logger.info(f"[DashboardService] 需要更新月度数据: product_no={product.product_no}")
+                            need_sync_month = True
+
+                    if need_sync:
+                        # 获取所有数据
+                        today_usage = await self._get_flow_usage(
+                            username=user.username,
+                            product_no=product.product_no,
+                            start_time=today_start.strftime("%Y-%m-%d %H:%M:%S"),
+                            end_time=now.strftime("%Y-%m-%d %H:%M:%S")
+                        )
+                        month_usage = await self._get_flow_usage(
+                            username=user.username,
+                            product_no=product.product_no,
+                            start_time=month_start.strftime("%Y-%m-%d %H:%M:%S"),
+                            end_time=now.strftime("%Y-%m-%d %H:%M:%S")
+                        )
+                        last_month_usage = await self._get_flow_usage(
+                            username=user.username,
+                            product_no=product.product_no,
+                            start_time=last_month_start.strftime("%Y-%m-%d %H:%M:%S"),
+                            end_time=last_month_end.strftime("%Y-%m-%d %H:%M:%S")
+                        )
+                        
+                        usage_stats.today_usage = today_usage
+                        usage_stats.month_usage = month_usage
+                        usage_stats.last_month_usage = last_month_usage
+                        usage_stats.last_sync_time = now
+                        
+                    else:
+                        if need_sync_today:
+                            # 只更新今日数据
+                            today_usage = await self._get_flow_usage(
+                                username=user.username,
+                                product_no=product.product_no,
+                                start_time=today_start.strftime("%Y-%m-%d %H:%M:%S"),
+                                end_time=now.strftime("%Y-%m-%d %H:%M:%S")
+                            )
+                            usage_stats.today_usage = today_usage
+                            usage_stats.last_sync_time = now
+                        else:
+                            today_usage = usage_stats.today_usage
+                            logger.info(f"[DashboardService] 使用缓存的今日数据: {today_usage}")
+                        
+                        if need_sync_month:
+                            # 更新月度数据
+                            month_usage = await self._get_flow_usage(
+                                username=user.username,
+                                product_no=product.product_no,
+                                start_time=month_start.strftime("%Y-%m-%d %H:%M:%S"),
+                                end_time=now.strftime("%Y-%m-%d %H:%M:%S")
+                            )
+                            last_month_usage = await self._get_flow_usage(
+                                username=user.username,
+                                product_no=product.product_no,
+                                start_time=last_month_start.strftime("%Y-%m-%d %H:%M:%S"),
+                                end_time=last_month_end.strftime("%Y-%m-%d %H:%M:%S")
+                            )
+                            usage_stats.month_usage = month_usage
+                            usage_stats.last_month_usage = last_month_usage
+                            usage_stats.last_sync_time = now
+                        else:
+                            month_usage = usage_stats.month_usage
+                            last_month_usage = usage_stats.last_month_usage
+                            logger.info(f"[DashboardService] 使用缓存的月度数据: month={month_usage}, last_month={last_month_usage}")
+
+                    # 如果有更新，保存到数据库
+                    if need_sync or need_sync_today or need_sync_month:
+                        db.commit()
+                        logger.info(f"[DashboardService] 更新使用统计记录: product_no={product.product_no}")
+
+                    # 计算总流量和使用情况
                     total_flow = product.flow if product.flow else 0
-
                     dynamic_resources.append({
                         "title": product.product_name,
                         "total": total_flow,
-                        "used": month_usage,
-                        "remaining": max(0, total_flow - month_usage),
-                        "percentage": round((month_usage / total_flow * 100) if total_flow > 0 else 0, 2),
-                        "today_usage": today_usage,
-                        "month_usage": month_usage,
-                        "last_month_usage": last_month_usage
+                        "used": usage_stats.month_usage,
+                        "remaining": max(0, total_flow - usage_stats.month_usage),
+                        "percentage": round((usage_stats.month_usage / total_flow * 100) if total_flow > 0 else 0, 2),
+                        "today_usage": usage_stats.today_usage,
+                        "month_usage": usage_stats.month_usage,
+                        "last_month_usage": usage_stats.last_month_usage
                     })
                     
                     logger.info(f"[DashboardService] 产品 {product.product_no} 使用情况: "
-                              f"今日={today_usage}, 本月={month_usage}, 上月={last_month_usage}")
+                              f"今日={usage_stats.today_usage}, 本月={usage_stats.month_usage}, "
+                              f"上月={usage_stats.last_month_usage}")
                               
                 except Exception as e:
                     logger.error(f"[DashboardService] 获取产品 {product.product_no} 使用情况失败: {str(e)}")
+                    logger.error(traceback.format_exc())
                     continue
 
             return dynamic_resources
@@ -394,4 +477,110 @@ class DashboardService(IPIPVBaseAPI):
                 
         except Exception as e:
             logger.error(f"[DashboardService] 获取流量使用记录异常: {str(e)}")
-            return 0 
+            return 0
+
+    async def get_dashboard_data(self, user_id: int, db: Session) -> Dict[str, Any]:
+        """获取仪表盘完整数据"""
+        try:
+            logger.info(f"[DashboardService] 获取仪表盘数据: user_id={user_id}")
+            
+            # 获取用户统计数据
+            user_stats = await self.get_user_statistics(user_id, db)
+            
+            # 获取每日统计数据
+            daily_stats = await self.get_daily_statistics(db)
+            
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": {
+                    "statistics": {
+                        "balance": float(user_stats.get("balance", 0)),
+                        "totalRecharge": float(user_stats.get("total_amount", 0)),
+                        "totalConsumption": float(user_stats.get("total_orders", 0)),
+                        "monthRecharge": float(user_stats.get("monthly_amount", 0)),
+                        "monthConsumption": float(user_stats.get("monthly_orders", 0)),
+                        "lastMonthConsumption": float(user_stats.get("last_month_orders", 0))
+                    },
+                    "dynamicResources": user_stats.get("dynamicResources", []),
+                    "staticResources": user_stats.get("staticResources", []),
+                    "dailyStats": daily_stats
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"[DashboardService] 获取仪表盘数据失败: {str(e)}")
+            raise Exception(f"获取仪表盘数据失败: {str(e)}")
+            
+    async def get_agent_dashboard_data(self, agent_id: int, db: Session) -> Dict[str, Any]:
+        """获取代理商仪表盘数据"""
+        try:
+            logger.info(f"[DashboardService] 获取代理商仪表盘数据: agent_id={agent_id}")
+            
+            # 从数据库获取代理商信息
+            agent = db.query(User).filter(
+                User.id == agent_id,
+                User.is_agent == True
+            ).first()
+            
+            if not agent:
+                raise Exception("代理商不存在")
+                
+            # 获取代理商统计数据
+            agent_stats = await self.get_agent_statistics(agent_id, db)
+            
+            # 获取资源使用情况
+            dynamic_resources = await self.get_dynamic_resources(db, agent_id)
+            static_resources = await self.get_static_resources(db, agent_id)
+            
+            response_data = {
+                "agent": {
+                    "id": agent.id,
+                    "username": agent.username,
+                    "balance": float(agent.balance),
+                    "status": "active" if agent.status == 1 else "inactive",
+                    "created_at": agent.created_at.isoformat() if agent.created_at else None
+                },
+                "statistics": {
+                    "totalRecharge": float(agent_stats.get("total_amount", 0)),
+                    "totalConsumption": float(agent_stats.get("total_orders", 0)),
+                    "monthRecharge": float(agent_stats.get("monthly_amount", 0)),
+                    "monthConsumption": float(agent_stats.get("monthly_orders", 0)),
+                    "lastMonthConsumption": float(agent_stats.get("last_month_orders", 0)),
+                    "balance": float(agent.balance)
+                },
+                "dynamicResources": dynamic_resources,
+                "staticResources": static_resources
+            }
+            
+            return {
+                "code": 0,
+                "msg": "success",
+                "data": response_data
+            }
+            
+        except Exception as e:
+            logger.error(f"[DashboardService] 获取代理商仪表盘数据失败: {str(e)}")
+            raise Exception(f"获取代理商仪表盘数据失败: {str(e)}")
+            
+    async def get_resources_data(self, user_id: int, db: Session) -> Dict[str, List[Dict[str, Any]]]:
+        """获取资源数据"""
+        try:
+            logger.info(f"[DashboardService] 获取资源数据: user_id={user_id}")
+            
+            # 获取动态资源数据
+            dynamic_resources = await self.get_dynamic_resources(db, user_id)
+            
+            # 获取静态资源数据
+            static_resources = await self.get_static_resources(db, user_id)
+            
+            logger.info(f"[DashboardService] 成功获取资源数据：动态资源 {len(dynamic_resources)} 个，静态资源 {len(static_resources)} 个")
+            
+            return {
+                "dynamicResources": dynamic_resources,
+                "staticResources": static_resources
+            }
+            
+        except Exception as e:
+            logger.error(f"[DashboardService] 获取资源数据失败: {str(e)}")
+            raise Exception(f"获取资源数据失败: {str(e)}") 
