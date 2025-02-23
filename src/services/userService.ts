@@ -74,7 +74,9 @@ export interface UserListResponse {
 export async function getUserList(params: UserListParams): Promise<ApiResponse<UserListResponse>> {
   try {
     debug.log('Getting user list with params:', params);
-    const response = await userApi.get<ApiResponse<UserListResponse>>(API_ROUTES.USER.LIST, { params });
+    // 移除路径中的第一个 /api 前缀
+    const apiPath = API_ROUTES.USER.LIST.replace(/^\/api/, '');
+    const response = await userApi.get<ApiResponse<UserListResponse>>(apiPath, { params });
     debug.log('User list response:', response.data);
     return response.data;
   } catch (error: any) {
