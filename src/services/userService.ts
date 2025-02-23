@@ -94,6 +94,7 @@ export interface CreateUserParams {
   status?: string;  // 可选字段
   is_agent?: boolean;  // 是否是代理商
   agent_id?: number;  // 代理商ID
+  balance?: number;  // 用户余额
 }
 
 export async function createUser(data: CreateUserParams): Promise<ExtendedApiResponse<User>> {
@@ -107,23 +108,31 @@ export async function createUser(data: CreateUserParams): Promise<ExtendedApiRes
     const token = localStorage.getItem('token');
     const currentUser = token ? JSON.parse(atob(token.split('.')[1])) : null;
 
-    // 移除空值参数
-    const cleanData = Object.fromEntries(
-      Object.entries(data).filter(([_, v]) => v != null && v !== '')
-    );
+    // 准备请求数据
+    const requestData = {
+      username: data.username,
+      password: data.password,
+      email: data.email || undefined,
+      remark: data.remark || undefined,
+      balance: data.balance === undefined ? 0 : Number(data.balance),
+      is_agent: data.is_agent || false,
+      agent_id: data.agent_id || undefined,
+      auth_type: data.authType || undefined,
+      status: data.status || 'active'
+    };
 
     // 如果当前用户是代理商，自动添加代理商ID
     if (currentUser?.is_agent) {
-      cleanData.agent_id = currentUser.id;
-      cleanData.is_agent = false; // 代理商创建的用户默认不是代理商
+      requestData.agent_id = currentUser.id;
+      requestData.is_agent = false; // 代理商创建的用户默认不是代理商
     }
 
-    debug.log('Cleaned data:', {
-      ...cleanData,
+    debug.log('Request data:', {
+      ...requestData,
       password: '******' // 隐藏密码
     });
 
-    const response = await userApi.post<ExtendedApiResponse<User>>('/api/open/app/user/v2', cleanData);
+    const response = await userApi.post<ExtendedApiResponse<User>>(API_ROUTES.USER.CREATE.replace(/^\/api/, ''), requestData);
     debug.log('Create user API response:', response.data);
 
     if (response.data.code !== 0) {

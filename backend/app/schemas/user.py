@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, Dict, List, Any
 from datetime import datetime
+from decimal import Decimal
 
 class UserBase(BaseModel):
     """用户基础信息"""
@@ -8,6 +9,8 @@ class UserBase(BaseModel):
     email: Optional[EmailStr] = None
     phone: Optional[str] = Field(None, pattern=r'^\d{11}$')
     remark: Optional[str] = None
+    is_agent: Optional[bool] = False
+    balance: Optional[float] = Field(default=0, ge=0)  # 添加余额字段，必须大于等于0
 
 class UserCreate(UserBase):
     """创建用户时的数据结构"""
@@ -60,6 +63,7 @@ class UserInDB(UserBase):
     last_login_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    is_active: bool = True
 
     class Config:
         from_attributes = True
@@ -80,4 +84,22 @@ class UserListResponse(BaseModel):
     total: int
 
     class Config:
-        from_attributes = True 
+        from_attributes = True
+
+class UserInDBBase(UserBase):
+    id: int
+    balance: float
+    is_active: bool
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        orm_mode = True
+
+class User(UserInDBBase):
+    pass
+
+# 余额调整请求模型
+class BalanceAdjust(BaseModel):
+    amount: float = Field(..., description="调整金额")
+    remark: str = Field(..., description="调整备注") 

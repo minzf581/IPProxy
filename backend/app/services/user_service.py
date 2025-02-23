@@ -34,6 +34,10 @@ from app.models.user import User
 from app.core.security import get_password_hash, verify_password
 import json
 import traceback
+from app.models.transaction import Transaction
+from app.schemas.user import UserCreate, BalanceAdjust
+import uuid
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +327,47 @@ class UserService(IPIPVBaseAPI):
         except Exception as e:
             logger.error(f"获取用户列表失败: {str(e)}")
             return []
+
+    @staticmethod
+    async def adjust_balance(
+        db: Session, 
+        user_id: int, 
+        adjust_data: BalanceAdjust,
+        operator_id: int
+    ) -> User:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise ValueError("用户不存在")
+
+        new_balance = user.balance + adjust_data.amount
+        if new_balance < 0:
+            raise ValueError("余额不足")
+
+        try:
+            # 更新用户余额
+            user.balance = new_balance
+            user.updated_at = datetime.now()
+
+            # 记录交易
+            transaction = Transaction(
+                transaction_no=f"ADJ{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}",
+                user_id=user_id,
+                agent_id=operator_id,  # 操作人ID作为代理商ID
+                order_no=f"ADJ{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                amount=Decimal(str(adjust_data.amount)),
+                balance=Decimal(str(new_balance)),
+                type="adjust",  # 调整类型
+                status="success",
+                remark=adjust_data.remark
+            )
+            db.add(transaction)
+            
+            db.commit()
+            db.refresh(user)
+            return user
+        except Exception as e:
+            db.rollback()
+            raise e
 
 def get_user_service() -> UserService:
     """

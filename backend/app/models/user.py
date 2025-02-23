@@ -3,18 +3,19 @@ from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
 from datetime import datetime
+import sqlalchemy as sa
 
 class User(Base, TimestampMixin):
     __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String(50), unique=True, index=True, nullable=False)
+    username = Column(String(50), index=True, nullable=False)
     app_username = Column(String(50), unique=True, index=True, nullable=True)
-    platform_account = Column(String(50), unique=True, nullable=True)  # 添加 platform_account 字段
+    platform_account = Column(String(50), unique=True, nullable=True)
     password = Column(String(255), nullable=False)
-    email = Column(String(255), index=True, nullable=True)  # 允许为空的邮箱字段
-    phone = Column(String(20), nullable=True)  # 移除 unique=True 约束
-    status = Column(Integer, nullable=False, default=1, server_default='1')  # 1=正常 0=禁用
+    email = Column(String(255), index=True, nullable=True)
+    phone = Column(String(20), nullable=True)
+    status = Column(Integer, nullable=False, default=1, server_default='1')
     is_admin = Column(Boolean, default=False)
     is_agent = Column(Boolean, default=False)
     balance = Column(Numeric(10, 2), nullable=False, default=0)
@@ -23,10 +24,15 @@ class User(Base, TimestampMixin):
     created_at = Column(DateTime, nullable=False, default=datetime.now)
     updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
     agent_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    ipipv_username = Column(String(50), unique=True, nullable=True)  # IPIPV平台用户名
-    ipipv_password = Column(String(255), nullable=True)  # IPIPV平台密码
-    total_recharge = Column(Numeric(10, 2), nullable=False, default=0, server_default='0')  # 累计充值
-    total_consumption = Column(Numeric(10, 2), nullable=False, default=0, server_default='0')  # 累计消费
+    ipipv_username = Column(String(50), unique=True, nullable=True)
+    ipipv_password = Column(String(255), nullable=True)
+    total_recharge = Column(Numeric(10, 2), nullable=False, default=0, server_default='0')
+    total_consumption = Column(Numeric(10, 2), nullable=False, default=0, server_default='0')
+
+    # 添加复合唯一约束
+    __table_args__ = (
+        sa.UniqueConstraint('username', 'agent_id', name='uq_username_agent_id'),
+    )
 
     # 关系定义
     agent = relationship("User", remote_side=[id], backref="sub_users")
