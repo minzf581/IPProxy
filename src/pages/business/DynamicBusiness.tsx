@@ -484,36 +484,16 @@ const DynamicBusinessContent: React.FC = () => {
       // 构建提取参数
       const extractParams: ExtractParams = {
         productNo: selectedProduct.type,
-        proxyType: 104,  // 动态代理类型
+        proxyType: 104,
         flow: selectedProduct.flow || 0,
         maxFlowLimit: selectedProduct.flow || 0,
-        username: selectedAgent.username,  // 添加用户名
+        username: selectedAgent.username,
+        countryCode: selectedProduct.country,  // 使用countryCode
+        cityCode: selectedProduct.city,        // 使用cityCode
         extractConfig
       };
       
-      // 添加地区代码
-      if (selectedProduct.city) {
-        extractParams.addressCode = selectedProduct.city;
-      } else if (selectedProduct.state) {
-        extractParams.addressCode = selectedProduct.state;
-      } else if (selectedProduct.country) {
-        extractParams.addressCode = selectedProduct.country;
-      } else if (selectedProduct.area) {
-        extractParams.addressCode = selectedProduct.area;
-      }
-      
-      console.log('[DynamicBusiness] 提取代理参数:', {
-        ...extractParams,
-        selectedAgent,
-        selectedProduct: {
-          id: selectedProduct.id,
-          type: selectedProduct.type,
-          area: selectedProduct.area,
-          country: selectedProduct.country,
-          state: selectedProduct.state,
-          city: selectedProduct.city
-        }
-      });
+      console.log('[DynamicBusiness] 提取代理参数:', extractParams);
       
       const response = await extractDynamicProxy(extractParams);
       console.log('[DynamicBusiness] 提取代理响应:', response);
@@ -711,58 +691,89 @@ const DynamicBusinessContent: React.FC = () => {
   }, [areaList, products, selectedProduct]);
 
   // 处理州/省变更
-  const handleStateChange = (value: string) => {
-    if (!selectedProduct) return;
+  const handleStateChange = useCallback((value: string, option: any) => {
+    const record = option as ProductPrice;
+    console.log('[DynamicBusiness] 处理州/省变更:', {
+      value,
+      record,
+      currentArea: record.area,
+      currentCountry: record.country
+    });
 
-    console.log('[DynamicBusiness] 选择州/省:', value);
+    // 更新产品列表中的对应产品
+    const updatedProducts = products.map(p => {
+      if (p.id === record.id) {
+        return {
+          ...p,
+          state: value,
+          city: '' // 清空城市选择
+        };
+      }
+      return p;
+    });
+    setProducts(updatedProducts);
 
-    // 更新产品信息
-    setSelectedProduct(prev => ({
-      ...prev!,
-      state: value
-    }));
+    // 如果是当前选中的产品，也更新选中产品的状态
+    if (selectedProduct?.id === record.id) {
+      setSelectedProduct(prev => ({
+        ...prev!,
+        state: value,
+        city: ''
+      }));
+    }
 
-    // 获取选中的国家
-    const selectedCountry = areaList
-      .find(area => area.areaCode === selectedProduct.area)
-      ?.countries.find(country => country.countryCode === selectedProduct.country);
+    // 查找选中的区域和国家数据
+    const selectedArea = areaList.find(area => area.areaCode === record.area);
+    const selectedCountry = selectedArea?.countries.find(
+      country => country.countryCode === record.country
+    );
 
-    if (!selectedCountry) return;
+    if (selectedCountry) {
+      // 更新城市选项
+      const cities = selectedCountry.cities || [];
+      setFilterOptions(prev => ({
+        ...prev,
+        cities: cities.map(city => ({
+          value: city.cityCode,
+          label: city.cityName || '未知城市'
+        }))
+      }));
 
-    // 更新过滤选项
-    const cities = selectedCountry.cities || [];
-    setFilterOptions(prev => ({
-      ...prev,
-      cities: cities.map((city: DynamicProxyCity) => ({
-        value: city.cityCode,
-        label: city.cityName || '未知城市'
-      }))
-    }));
-  };
+      console.log('[DynamicBusiness] 更新城市选项:', {
+        citiesCount: cities.length,
+        cities: cities.map(c => ({ code: c.cityCode, name: c.cityName }))
+      });
+    }
+  }, [areaList, products, selectedProduct]);
 
   // 处理城市变更
-  const handleCityChange = (value: string) => {
-    if (!selectedProduct) return;
+  const handleCityChange = useCallback((value: string, option: any) => {
+    const record = option as ProductPrice;
+    console.log('[DynamicBusiness] 处理城市变更:', {
+      value,
+      record
+    });
 
-    console.log('[DynamicBusiness] 选择城市:', value);
+    // 更新产品列表中的对应产品
+    const updatedProducts = products.map(p => {
+      if (p.id === record.id) {
+        return {
+          ...p,
+          city: value
+        };
+      }
+      return p;
+    });
+    setProducts(updatedProducts);
 
-    // 获取选中的国家
-    const selectedCountry = areaList
-      .find(area => area.areaCode === selectedProduct.area)
-      ?.countries.find(country => country.countryCode === selectedProduct.country);
-
-    if (!selectedCountry) return;
-
-    // 获取选中的城市
-    const selectedCity = selectedCountry.cities?.find(city => city.cityCode === value);
-    if (!selectedCity) return;
-
-    // 更新产品信息
-    setSelectedProduct(prev => ({
-      ...prev!,
-      city: value
-    }));
-  };
+    // 如果是当前选中的产品，也更新选中产品的状态
+    if (selectedProduct?.id === record.id) {
+      setSelectedProduct(prev => ({
+        ...prev!,
+        city: value
+      }));
+    }
+  }, [products, selectedProduct]);
 
   // 处理流量变更
   const handleFlowChange = (value: number | null) => {
@@ -848,78 +859,74 @@ const DynamicBusinessContent: React.FC = () => {
     } catch (error) {
       console.error('[DynamicBusiness] 加载区域列表失败:', error);
       setAreaList([]);
+      setFilterOptions({
+        areas: [],
+        countries: [],
+        states: [],
+        cities: []
+      });
     }
   }, []);
 
   // 修改 computedFilterOptions 函数
   const computedFilterOptions = useMemo(() => {
+    console.log('[DynamicBusiness] 计算过滤选项:', {
+      areaListLength: areaList.length,
+      selectedProduct,
+      areaList
+    });
+
     const options: FilterOptions = {
-      areas: [],
+      areas: areaList.map((area: DynamicProxyArea) => ({
+        value: area.areaCode,
+        label: AREA_NAME_MAP[area.areaCode] || area.areaName || '未知区域'
+      })),
       countries: [],
       states: [],
       cities: []
     };
 
-    // 处理区域列表
-    const processAreas = () => {
-      options.areas = areaList.map((area: DynamicProxyArea) => ({
-        value: area.areaCode,
-        label: AREA_NAME_MAP[area.areaCode] || area.areaName || '未知区域'
-      }));
-    };
-
-    // 处理国家列表
-    const processCountries = (selectedAreaData: DynamicProxyArea) => {
-      options.countries = selectedAreaData.countries.map((country: DynamicProxyCountry) => ({
-        value: country.countryCode,
-        label: country.countryName || '未知国家'
-      }));
-    };
-
-    // 处理州/省列表
-    const processStates = (selectedCountry: DynamicProxyCountry) => {
-      options.states = selectedCountry.states.map((state: DynamicProxyState) => ({
-        value: state.code,
-        label: state.name || '未知州/省'
-      }));
-    };
-
-    // 处理城市列表
-    const processCities = (country: DynamicProxyCountry) => {
-      if (country.cities && Array.isArray(country.cities)) {
-        const validCities = country.cities.filter((city): city is DynamicProxyCity => {
-          return city && typeof city === 'object' && 'cityCode' in city && Boolean(city.cityCode);
-        });
-        
-        options.cities = validCities.map((city) => ({
-          value: city.cityCode,
-          label: city.cityName || '未知城市'
-        }));
-      }
-    };
-
-    // 主处理逻辑
-    processAreas();
-
     if (selectedProduct?.area) {
-      const selectedAreaData = areaList.find((area: DynamicProxyArea) => area.areaCode === selectedProduct.area);
-      if (selectedAreaData) {
-        processCountries(selectedAreaData);
+      const selectedArea = areaList.find(area => area.areaCode === selectedProduct.area);
+      if (selectedArea) {
+        // 设置国家选项
+        options.countries = selectedArea.countries.map(country => ({
+          value: country.countryCode,
+          label: country.countryName || '未知国家'
+        }));
 
+        // 如果选择了国家，设置州/省和城市选项
         if (selectedProduct.country) {
-          const selectedCountry = selectedAreaData.countries.find(
-            (country: DynamicProxyCountry) => country.countryCode === selectedProduct.country
+          const selectedCountry = selectedArea.countries.find(
+            country => country.countryCode === selectedProduct.country
           );
+          
           if (selectedCountry) {
-            processStates(selectedCountry);
+            // 设置州/省选项
+            options.states = (selectedCountry.states || []).map(state => ({
+              value: state.code,
+              label: state.name || '未知州/省'
+            }));
 
+            // 如果选择了州/省，设置城市选项
             if (selectedProduct.state) {
-              processCities(selectedCountry);
+              options.cities = (selectedCountry.cities || []).map(city => ({
+                value: city.cityCode,
+                label: city.cityName || '未知城市'
+              }));
             }
           }
         }
       }
     }
+
+    console.log('[DynamicBusiness] 计算后的过滤选项:', {
+      areas: options.areas.length,
+      countries: options.countries.length,
+      states: options.states.length,
+      cities: options.cities.length,
+      selectedProduct
+    });
 
     return options;
   }, [areaList, selectedProduct]);
@@ -947,9 +954,11 @@ const DynamicBusinessContent: React.FC = () => {
         key: 'area',
         width: 520,
         render: (_: any, record: ProductPrice) => {
-          const isAreaSelected = Boolean(record.area);
-          const isCountrySelected = Boolean(record.country);
-          const isStateSelected = Boolean(record.state);
+          console.log('[DynamicBusiness] 渲染区域选择:', {
+            record,
+            filterOptions: computedFilterOptions,
+            areaListLength: areaList.length
+          });
 
           return (
             <Space style={{ display: 'flex', flexWrap: 'nowrap', gap: '8px' }}>
@@ -960,8 +969,13 @@ const DynamicBusinessContent: React.FC = () => {
                   value={record.area}
                   onChange={(value: string) => handleAreaChange(value, record)}
                   placeholder="请选择区域"
-                  options={computedFilterOptions.areas}
-                />
+                >
+                  {areaList.map((area) => (
+                    <Option key={area.areaCode} value={area.areaCode}>
+                      {AREA_NAME_MAP[area.areaCode] || area.areaName || '未知区域'}
+                    </Option>
+                  ))}
+                </Select>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -971,9 +985,14 @@ const DynamicBusinessContent: React.FC = () => {
                   value={record.country}
                   onChange={(value: string) => handleCountryChange(value, record)}
                   placeholder="请选择国家"
-                  disabled={!isAreaSelected}
-                  options={computedFilterOptions.countries}
-                />
+                  disabled={!record.area}
+                >
+                  {computedFilterOptions.countries.map((country) => (
+                    <Option key={country.value} value={country.value}>
+                      {country.label}
+                    </Option>
+                  ))}
+                </Select>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -981,11 +1000,16 @@ const DynamicBusinessContent: React.FC = () => {
                 <Select
                   style={{ width: '120px' }}
                   value={record.state}
-                  onChange={handleStateChange}
+                  onChange={(value: string) => handleStateChange(value, record)}
                   placeholder="请选择州/省"
-                  disabled={!isCountrySelected}
-                  options={computedFilterOptions.states}
-                />
+                  disabled={!record.country}
+                >
+                  {computedFilterOptions.states.map((state) => (
+                    <Option key={state.value} value={state.value}>
+                      {state.label}
+                    </Option>
+                  ))}
+                </Select>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -993,11 +1017,16 @@ const DynamicBusinessContent: React.FC = () => {
                 <Select
                   style={{ width: '120px' }}
                   value={record.city}
-                  onChange={handleCityChange}
+                  onChange={(value: string) => handleCityChange(value, record)}
                   placeholder="请选择城市"
-                  disabled={!isStateSelected}
-                  options={computedFilterOptions.cities}
-                />
+                  disabled={!record.state}
+                >
+                  {computedFilterOptions.cities.map((city) => (
+                    <Option key={city.value} value={city.value}>
+                      {city.label}
+                    </Option>
+                  ))}
+                </Select>
               </div>
             </Space>
           );

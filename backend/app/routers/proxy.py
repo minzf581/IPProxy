@@ -609,11 +609,15 @@ async def extract_dynamic_proxy(
         
         logger.info(f"[{func_name}] 流量参数: flow={flow}, maxFlowLimit={flow}")
         
-        # 添加地址代码
-        if "addressCode" in request:
-            extract_params["addressCode"] = request["addressCode"]
-            logger.info(f"[{func_name}] 使用地址代码: {request['addressCode']}")
-        
+        # 添加国家和城市代码
+        if "countryCode" in request:
+            extract_params["countryCode"] = request["countryCode"]
+            logger.info(f"[{func_name}] 使用国家代码: {request['countryCode']}")
+            
+        if "cityCode" in request:
+            extract_params["cityCode"] = request["cityCode"]
+            logger.info(f"[{func_name}] 使用城市代码: {request['cityCode']}")
+            
         # 获取提取配置
         extract_config = request.get("extractConfig", {})
         extract_method = extract_config.get("method", "api")

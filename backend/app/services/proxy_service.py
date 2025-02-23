@@ -974,7 +974,6 @@ class ProxyService(IPIPVBaseAPI):
             # 5. 进行API提取
             draw_params = {
                 "appUsername": params["username"],
-                "addressCode": params.get("addressCode", ""),
                 "proxyType": params["proxyType"],
                 "maxFlowLimit": params["maxFlowLimit"],
                 "productNo": params["productNo"],
@@ -983,6 +982,12 @@ class ProxyService(IPIPVBaseAPI):
                 "delimiter": 1         # 默认分隔符
             }
             
+            # 添加国家和城市代码
+            if "countryCode" in params:
+                draw_params["countryCode"] = params["countryCode"]
+            if "cityCode" in params:
+                draw_params["cityCode"] = params["cityCode"]
+                
             logger.info(f"[ProxyService] 开始API提取，参数: {json.dumps(draw_params, ensure_ascii=False)}")
             draw_result = await self._make_request("api/open/app/proxy/draw/api/v2", draw_params)
             
@@ -1006,6 +1011,147 @@ class ProxyService(IPIPVBaseAPI):
                 **order.proxy_info,
                 "proxyUrl": proxy_url,
                 "drawResult": draw_result.get("data")
+            }
+            db.commit()
+            
+            # 构建返回数据
+            order_dict = order.to_dict()
+            logger.info(f"[ProxyService] 订单数据: {json.dumps(order_dict, ensure_ascii=False)}")
+            
+            response_data = {
+                "code": 0,
+                "message": "success",
+                "data": {
+                    "mainAccount": {
+                        "username": params["username"],
+                        "status": 1
+                    },
+                    "orderInfo": order_dict,
+                    "proxyInfo": {
+                        "list": [{
+                            "proxyUrl": proxy_url,  # 直接使用API返回的代理URL
+                            "username": params["username"],
+                            "password": "agent123",
+                            "status": "active"
+                        }]
+                    },
+                    "noPopup": True  # 添加标志，告诉前端不要显示弹窗
+                }
+            }
+            
+            logger.info(f"[ProxyService] 返回数据: {json.dumps(response_data, ensure_ascii=False)}")
+            return response_data
+            
+        except Exception as e:
+            logger.error(f"[ProxyService] 提取代理失败: {str(e)}")
+            if 'db' in locals():
+                db.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+
+    async def extract_dynamic_proxy(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """提取动态代理"""
+        try:
+            logger.info(f"[ProxyService] 开始完整提取流程: {json.dumps(params, ensure_ascii=False)}")
+            
+            # 创建主账户
+            main_account_params = {
+                "appUsername": params["username"],
+                "password": "12345678",  # 默认密码
+                "version": "v2"
+            }
+            logger.info(f"[ProxyService] 创建主账户参数: {json.dumps(main_account_params, ensure_ascii=False)}")
+            
+            # 调用API创建主账户
+            main_account_response = await self.api_client.create_user(main_account_params)
+            logger.info(f"[ProxyService] 创建主账户成功: {json.dumps(main_account_response, ensure_ascii=False)}")
+            
+            # 检查用户状态
+            user_response = await self.api_client.get_user({"appUsername": params["username"], "version": "v2"})
+            user_data = user_response.get("data", {})
+            status = user_data.get("status", 0)
+            auth_status = user_data.get("authStatus", 0)
+            logger.info(f"[ProxyService] 用户状态: status={status}, authStatus={auth_status}")
+            
+            if status != 1:
+                error_msg = "用户状态异常"
+                logger.error(f"[ProxyService] {error_msg}: status={status}")
+                return {
+                    "code": 400,
+                    "msg": error_msg,
+                    "data": None
+                }
+                
+            # 构建开通参数
+            open_params = {
+                "appOrderNo": f"APP{datetime.now().strftime('%Y%m%d%H%M%S')}{generate_random_string(6)}",
+                "params": [{
+                    "productNo": params["productNo"],
+                    "proxyType": params["proxyType"],
+                    "appUsername": params["username"],
+                    "flow": params["flow"],
+                    "duration": 1,
+                    "unit": 1
+                }]
+            }
+            logger.info(f"[ProxyService] 开通代理请求参数: {json.dumps(open_params, ensure_ascii=False)}")
+            
+            # 调用API开通代理
+            open_response = await self.api_client.open_proxy(open_params)
+            logger.info(f"[ProxyService] 开通代理成功: {json.dumps(open_response, ensure_ascii=False)}")
+            
+            # 创建订单记录
+            order_data = {
+                "order_no": f"DYN{datetime.now().strftime('%Y%m%d%H%M%S')}{generate_random_string(6)}",
+                "app_order_no": open_params["appOrderNo"],
+                "user_id": params["userId"],
+                "agent_id": params.get("agentId"),
+                "pool_type": params["productNo"],
+                "traffic": params["flow"],
+                "unit_price": 0,
+                "total_amount": 0,
+                "proxy_type": "dynamic",
+                "status": "active",
+                "proxy_info": {
+                    **open_response.get("data", {}),
+                },
+                "remark": params.get("remark", "")
+            }
+            
+            order = await self.order_service.create_order(order_data)
+            logger.info(f"[ProxyService] 订单创建成功: {order.id}")
+            
+            # 构建提取参数
+            draw_params = {
+                "appUsername": params["username"],
+                "proxyType": params["proxyType"],
+                "maxFlowLimit": params["maxFlowLimit"],
+                "productNo": params["productNo"],
+                "protocol": params.get("protocol", "socks5"),
+                "returnType": params.get("returnType", "txt"),
+                "delimiter": params.get("delimiter", 1)
+            }
+            
+            # 添加国家和城市代码
+            if "countryCode" in params:
+                draw_params["countryCode"] = params["countryCode"]
+            if "cityCode" in params:
+                draw_params["cityCode"] = params["cityCode"]
+                
+            logger.info(f"[ProxyService] 开始API提取，参数: {json.dumps(draw_params, ensure_ascii=False)}")
+            
+            # 调用API提取代理
+            draw_response = await self.api_client.draw_proxy_api(draw_params)
+            logger.info(f"[ProxyService] API提取成功: {json.dumps(draw_response, ensure_ascii=False)}")
+            
+            # 获取代理URL
+            proxy_url = draw_response.get("data", {}).get("list", [{}])[0].get("proxyUrl", "")
+            logger.info(f"[ProxyService] 获取到的代理URL: {proxy_url}")
+            
+            # 更新订单的代理信息
+            order.proxy_info = {
+                **order.proxy_info,
+                "proxyUrl": proxy_url,
+                "drawResult": draw_response.get("data")
             }
             db.commit()
             

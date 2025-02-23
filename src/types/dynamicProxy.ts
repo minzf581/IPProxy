@@ -99,12 +99,9 @@ export type ExtractParams = {
   productNo: string;
   proxyType: number;
   flow: number;
-  addressCode?: string;
+  countryCode?: string;
+  cityCode?: string;
   maxFlowLimit?: number;
-  num?: number;
-  protocol?: string;
-  returnType?: string;
-  delimiter?: number;
-  extractConfig: ExtractConfig;
   username?: string;
+  extractConfig: ExtractConfig;
 } 
