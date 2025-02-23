@@ -6,6 +6,8 @@ import type { Key } from 'react';
 import type { ColumnType } from 'antd/es/table';
 import { useAuth } from '@/hooks/useAuth';
 import request from '@/utils/request';
+import type { ApiResponse } from '@/types/api';
+import type { UserListResponse } from '@/types/user';
 import { 
   getDynamicProxyProducts,
   createProxyUser,
@@ -46,6 +48,7 @@ import styles from './DynamicBusiness.module.less';
 import type { 
   FilterOptions as DynamicFilterOptions
 } from '@/types/dynamicProxy';
+import type { User } from '@/types/user';
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -267,21 +270,26 @@ const DynamicBusinessContent: React.FC = () => {
   }, [user, isAgent]);
 
   // 加载余额
-  const loadBalance = async (userId?: number) => {
+  const loadBalance = async (userId: number) => {
     try {
-      if (isAgent && user?.id) {
-        const response = await request<BusinessResponse>(`/api/dashboard/agent/${user.id}`, {
-          method: 'GET'
-        });
-        
-        if (response.data?.code === 0 && response.data?.data) {
-          setBalance(response.data.data.agent.balance || 0);
-        } else {
-          message.error('获取余额失败');
-        }
+      console.log('[DynamicBusiness] Loading balance for user:', userId);
+      const apiPath = userId === user?.id 
+        ? '/api/open/app/dashboard/info/v2'
+        : `/api/open/app/dashboard/info/v2?target_user_id=${userId}`;
+      
+      console.log('[DynamicBusiness] Making request to:', apiPath);
+      const response = await request.get<ApiResponse<any>>(apiPath);
+      console.log('[DynamicBusiness] Balance API response:', response);
+
+      if (response.data.code === 0) {
+        const balance = response.data.data.statistics.balance;
+        console.log('[DynamicBusiness] Setting balance:', balance);
+        setBalance(balance);
+      } else {
+        message.error('获取余额失败');
       }
     } catch (error) {
-      console.error('获取余额失败:', error);
+      console.error('[DynamicBusiness] Failed to load balance:', error);
       message.error('获取余额失败');
     }
   };
@@ -340,11 +348,23 @@ const DynamicBusinessContent: React.FC = () => {
     }
   };
 
-  // 初始化时如果是代理商，自动设置selectedAgent
+  // 初始化时如果是代理商，自动设置selectedAgent和加载余额
   useEffect(() => {
     if (isAgent && user?.id) {
-      setSelectedAgent({ id: user.id, name: user.username || '', username: user.username || '' });
+      console.log('[DynamicBusiness] 初始化代理商数据:', {
+        userId: user.id,
+        username: user.username
+      });
+      
+      setSelectedAgent({
+        id: user.id,
+        name: user?.username || '',
+        username: user?.username || ''
+      });
+      
+      // 加载产品列表和余额
       loadProducts(user.id);
+      loadBalance(user.id);
     }
   }, [isAgent, user]);
 
@@ -366,22 +386,29 @@ const DynamicBusinessContent: React.FC = () => {
           availableUsers: userList.map(u => ({ id: u.id, username: u.username }))
         });
         
-        setSelectedAgent({ id: targetId, name: '', username: '' });
+        // 查找选中的用户信息
+        const selectedUser = userList.find(u => u.id === targetId);
+        setSelectedAgent({
+          id: targetId,
+          name: selectedUser?.username || '',
+          username: selectedUser?.username || ''
+        });
         await loadBalance(targetId);
-        await loadProducts(targetId);
       } else {
         console.log('[动态代理页面] 管理员选择代理商:', {
           value,
           availableAgents: agents.map(a => ({ id: a.id, username: a.username }))
         });
         
-        setSelectedAgent(value ? { id: value, name: '', username: '' } : null);
-        await loadBalance(value);
+        // 查找选中的代理商信息
+        const selectedAgent = agents.find(a => a.id === value);
+        setSelectedAgent(value ? {
+          id: value,
+          name: selectedAgent?.username || '',
+          username: selectedAgent?.username || ''
+        } : null);
         if (value) {
-          await loadProducts(value);
-        } else {
-          setAreaList([]);
-          console.log('[动态代理页面] 清空选择和数据');
+          await loadBalance(value);
         }
       }
     } catch (error) {
@@ -464,6 +491,12 @@ const DynamicBusinessContent: React.FC = () => {
           setExtractedUrl(proxyUrl);
           setDisplayedUrl(proxyUrl);
           message.success('提取成功');
+          
+          // 提取成功后更新余额
+          const targetId = selectedAgent?.id || (isAgent ? user?.id : undefined);
+          if (targetId) {
+            await loadBalance(targetId);
+          }
         } else {
           message.error('未获取到代理地址');
         }
@@ -707,14 +740,29 @@ const DynamicBusinessContent: React.FC = () => {
 
     console.log('[DynamicBusiness] 修改流量:', {
       originalValue: value,
-      productId: selectedProduct.id
+      productId: selectedProduct.id,
+      price: selectedProduct.price
     });
 
-    // 更新产品信息
+    const flow = value === null ? undefined : value;
+    const price = selectedProduct.price || 0;
+    const totalPrice = flow ? (flow * price) : 0;
+
+    // 更新产品信息，包括流量和总价
     setSelectedProduct(prev => ({
       ...prev!,
-      flow: value === null ? undefined : value
+      flow: flow,
+      totalPrice: totalPrice
     }));
+
+    // 更新产品列表中的对应产品
+    setProducts(prevProducts => 
+      prevProducts.map(p => 
+        p.id === selectedProduct.id 
+          ? { ...p, flow: flow, totalPrice: totalPrice }
+          : p
+      )
+    );
   };
 
   // 修改区域数据加载函数
@@ -978,11 +1026,9 @@ const DynamicBusinessContent: React.FC = () => {
         dataIndex: 'totalPrice',
         key: 'totalPrice',
         width: 120,
-        render: (_: any, record: ProductPrice) => {
-          const flow = record.flow || 0;
-          const price = typeof record.price === 'number' ? record.price : 0;
-          const totalPrice = (flow * price / 1000).toFixed(2); // 将MB转换为GB
-          return `¥${totalPrice}`;
+        render: (totalPrice: number, record: ProductPrice) => {
+          const displayPrice = totalPrice || 0;
+          return `¥${displayPrice.toFixed(2)}`;
         }
       }
     ];

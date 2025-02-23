@@ -529,9 +529,8 @@ class DashboardService(IPIPVBaseAPI):
             # 获取代理商统计数据
             agent_stats = await self.get_agent_statistics(agent_id, db)
             
-            # 获取资源使用情况
+            # 获取动态资源使用情况
             dynamic_resources = await self.get_dynamic_resources(db, agent_id)
-            static_resources = await self.get_static_resources(db, agent_id)
             
             response_data = {
                 "agent": {
@@ -549,8 +548,7 @@ class DashboardService(IPIPVBaseAPI):
                     "lastMonthConsumption": float(agent_stats.get("last_month_orders", 0)),
                     "balance": float(agent.balance)
                 },
-                "dynamicResources": dynamic_resources,
-                "staticResources": static_resources
+                "dynamicResources": dynamic_resources
             }
             
             return {
@@ -583,4 +581,91 @@ class DashboardService(IPIPVBaseAPI):
             
         except Exception as e:
             logger.error(f"[DashboardService] 获取资源数据失败: {str(e)}")
-            raise Exception(f"获取资源数据失败: {str(e)}") 
+            raise Exception(f"获取资源数据失败: {str(e)}")
+
+    async def get_static_resources(self, db: Session, user_id: int) -> List[Dict[str, Any]]:
+        """获取静态资源使用情况"""
+        try:
+            logger.info(f"[DashboardService] 开始获取静态资源使用情况: user_id={user_id}")
+            
+            # 获取用户信息
+            user = db.query(User).filter(User.id == user_id).first()
+            if not user:
+                logger.error(f"[DashboardService] 用户不存在: user_id={user_id}")
+                return []
+                
+            if not user.username:
+                logger.error(f"[DashboardService] 用户未设置用户名: user_id={user_id}")
+                return []
+
+            # 查询静态资源产品列表 (proxy_type = 103)
+            products = db.query(ProductInventory).filter(
+                ProductInventory.proxy_type == 103,
+                ProductInventory.enable == 1  # 只获取可购买的产品
+            ).all()
+            
+            logger.info(f"[DashboardService] 查询到 {len(products)} 个静态资源产品")
+
+            static_resources = []
+            now = datetime.now()
+            
+            # 获取时间范围
+            today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            last_month_start = (month_start - timedelta(days=1)).replace(day=1)
+            last_month_end = month_start - timedelta(seconds=1)
+
+            for product in products:
+                logger.info(f"[DashboardService] 处理产品: {product.product_no}")
+                
+                try:
+                    # 获取或创建使用统计记录
+                    usage_stats = db.query(ResourceUsageStatistics).filter(
+                        ResourceUsageStatistics.user_id == user_id,
+                        ResourceUsageStatistics.product_no == product.product_no
+                    ).first()
+
+                    if not usage_stats:
+                        logger.info(f"[DashboardService] 创建新的使用统计记录: user_id={user_id}, product_no={product.product_no}")
+                        usage_stats = ResourceUsageStatistics(
+                            user_id=user_id,
+                            product_no=product.product_no,
+                            resource_type="static",
+                            total_amount=product.quantity,
+                            used_amount=0,
+                            today_usage=0,
+                            month_usage=0,
+                            last_month_usage=0
+                        )
+                        db.add(usage_stats)
+                        db.commit()
+
+                    # 获取总量
+                    total_quantity = product.quantity or 0
+
+                    static_resources.append({
+                        "title": product.product_name,
+                        "total": total_quantity,
+                        "used": usage_stats.month_usage,
+                        "remaining": max(0, total_quantity - usage_stats.month_usage),
+                        "percentage": round((usage_stats.month_usage / total_quantity * 100) if total_quantity > 0 else 0, 2),
+                        "today_usage": usage_stats.today_usage,
+                        "month_usage": usage_stats.month_usage,
+                        "last_month_usage": usage_stats.last_month_usage
+                    })
+                    
+                    logger.info(f"[DashboardService] 产品 {product.product_no} 使用情况: "
+                              f"今日={usage_stats.today_usage}, 本月={usage_stats.month_usage}, "
+                              f"上月={usage_stats.last_month_usage}")
+                              
+                except Exception as e:
+                    logger.error(f"[DashboardService] 获取产品 {product.product_no} 使用情况失败: {str(e)}")
+                    logger.error(traceback.format_exc())
+                    continue
+
+            return static_resources
+            
+        except Exception as e:
+            logger.error(f"[DashboardService] 获取静态资源使用情况失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            return [] 
