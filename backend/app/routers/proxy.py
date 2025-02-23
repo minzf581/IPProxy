@@ -577,12 +577,13 @@ async def extract_dynamic_proxy(
                 "data": None
             }
             
-        # 获取用户信息（如果请求中指定了用户，则使用指定的用户）
+        # 获取目标用户
+        target_username = request.get("username")
         target_user = None
-        if "userId" in request:
-            target_user = await get_user_info(db, request["userId"])
+        if target_username:
+            target_user = db.query(User).filter(User.username == target_username).first()
             if not target_user:
-                error_msg = f"指定的用户不存在: {request['userId']}"
+                error_msg = f"指定的用户不存在: {target_username}"
                 logger.error(f"[{func_name}] {error_msg}")
                 return {
                     "code": 404,
@@ -595,26 +596,24 @@ async def extract_dynamic_proxy(
         logger.info(f"[{func_name}] 目标用户: {target_user.username}")
         
         # 构建提取参数
-        flow = request["flow"]  # 获取流量参数
+        flow = request["flow"]
         extract_params = {
             "username": target_user.username,
-            "userId": target_user.id,  # 添加用户ID
-            "agentId": target_user.agent_id,  # 添加代理商ID
+            "userId": target_user.id,
+            "agentId": target_user.agent_id,
             "productNo": request["productNo"],
             "proxyType": request["proxyType"],
             "flow": flow,
-            "maxFlowLimit": flow,  # 设置maxFlowLimit等于flow
+            "maxFlowLimit": flow,
         }
         
         logger.info(f"[{func_name}] 流量参数: flow={flow}, maxFlowLimit={flow}")
         
-        # 添加可选的地址代码
-        for code_type in ["areaCode", "countryCode", "stateCode", "cityCode"]:
-            if code_type in request:
-                extract_params["addressCode"] = request[code_type]
-                logger.info(f"[{func_name}] 使用地址代码: {code_type}={request[code_type]}")
-                break
-                
+        # 添加地址代码
+        if "addressCode" in request:
+            extract_params["addressCode"] = request["addressCode"]
+            logger.info(f"[{func_name}] 使用地址代码: {request['addressCode']}")
+        
         # 获取提取配置
         extract_config = request.get("extractConfig", {})
         extract_method = extract_config.get("method", "api")

@@ -130,13 +130,12 @@ interface DynamicProxyAreaData {
 
 // 添加区域名称映射
 const AREA_NAME_MAP: { [key: string]: string } = {
-  '1': '北美洲',
+  '6': '北美洲',
   '2': '欧洲',
-  '3': '亚洲',
-  '4': '南美洲',
-  '5': '大洋洲',
-  '6': '非洲',
-  '7': '其他地区'
+  '1': '亚洲',
+  '3': '非洲',
+  '4': '大洋洲',
+  '7': '南美洲'
 };
 
 interface ExtractResultItem {
@@ -387,11 +386,22 @@ const DynamicBusinessContent: React.FC = () => {
         });
         
         // 查找选中的用户信息
-        const selectedUser = userList.find(u => u.id === targetId);
+        let selectedUser;
+        if (targetId === user.id) {
+          selectedUser = user;
+        } else {
+          selectedUser = userList.find(u => u.id === targetId);
+        }
+
+        if (!selectedUser) {
+          message.error('未找到选中的用户');
+          return;
+        }
+
         setSelectedAgent({
           id: targetId,
-          name: selectedUser?.username || '',
-          username: selectedUser?.username || ''
+          name: selectedUser.username || '',
+          username: selectedUser.username || ''
         });
         await loadBalance(targetId);
       } else {
@@ -457,35 +467,58 @@ const DynamicBusinessContent: React.FC = () => {
         return;
       }
 
+      if (!selectedAgent) {
+        message.error('请选择用户');
+        return;
+      }
+
+      // 计算总价
+      const totalCost = selectedProduct.flow * (selectedProduct.price || 0);
+      if (totalCost > balance) {
+        message.error(`余额不足，需要 ${totalCost} 元，当前余额 ${balance} 元`);
+        return;
+      }
+
       setLoading(true);
       
       // 构建提取参数
       const extractParams: ExtractParams = {
         productNo: selectedProduct.type,
         proxyType: 104,  // 动态代理类型
-        flow: selectedProduct.flow || 0,  // 添加默认值
-        maxFlowLimit: selectedProduct.flow || 0,  // 添加默认值
+        flow: selectedProduct.flow || 0,
+        maxFlowLimit: selectedProduct.flow || 0,
+        username: selectedAgent.username,  // 添加用户名
         extractConfig
       };
       
-      // 如果选择了地区，添加地区代码
-      if (filterOptions.cities.length > 0) {
-        extractParams.addressCode = filterOptions.cities[0].value;
-      } else if (filterOptions.states.length > 0) {
-        extractParams.addressCode = filterOptions.states[0].value;
-      } else if (filterOptions.countries.length > 0) {
-        extractParams.addressCode = filterOptions.countries[0].value;
-      } else if (filterOptions.areas.length > 0) {
-        extractParams.addressCode = filterOptions.areas[0].value;
+      // 添加地区代码
+      if (selectedProduct.city) {
+        extractParams.addressCode = selectedProduct.city;
+      } else if (selectedProduct.state) {
+        extractParams.addressCode = selectedProduct.state;
+      } else if (selectedProduct.country) {
+        extractParams.addressCode = selectedProduct.country;
+      } else if (selectedProduct.area) {
+        extractParams.addressCode = selectedProduct.area;
       }
       
-      console.log('[DynamicBusiness] 提取代理参数:', extractParams);
+      console.log('[DynamicBusiness] 提取代理参数:', {
+        ...extractParams,
+        selectedAgent,
+        selectedProduct: {
+          id: selectedProduct.id,
+          type: selectedProduct.type,
+          area: selectedProduct.area,
+          country: selectedProduct.country,
+          state: selectedProduct.state,
+          city: selectedProduct.city
+        }
+      });
       
       const response = await extractDynamicProxy(extractParams);
       console.log('[DynamicBusiness] 提取代理响应:', response);
       
-      if (response.data?.code === 0) {  // 修改这里，检查 response.data.code
-        // 获取代理URL
+      if (response.data?.code === 0) {
         const proxyUrl = response.data?.data?.proxyInfo?.list?.[0]?.proxyUrl || '';
         if (proxyUrl) {
           setExtractedUrl(proxyUrl);
@@ -493,10 +526,7 @@ const DynamicBusinessContent: React.FC = () => {
           message.success('提取成功');
           
           // 提取成功后更新余额
-          const targetId = selectedAgent?.id || (isAgent ? user?.id : undefined);
-          if (targetId) {
-            await loadBalance(targetId);
-          }
+          await loadBalance(selectedAgent.id);
         } else {
           message.error('未获取到代理地址');
         }
@@ -1070,8 +1100,9 @@ const DynamicBusinessContent: React.FC = () => {
                   onChange={handleAgentChange}
                   allowClear
                 >
-                  {userList.map(user => (
-                    <Option key={user.id} value={user.id}>{user.username}</Option>
+                  <Option key={user?.id} value={user?.id}>{user?.username} (当前用户)</Option>
+                  {userList.map(u => (
+                    <Option key={u.id} value={u.id}>{u.username}</Option>
                   ))}
                 </Select>
               )}

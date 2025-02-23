@@ -106,4 +106,5 @@ export type ExtractParams = {
   returnType?: string;
   delimiter?: number;
   extractConfig: ExtractConfig;
+  username?: string;
 } 
