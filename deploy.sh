@@ -120,17 +120,44 @@ if [ ! -f "alembic.ini" ]; then
     exit 1
 fi
 
-# 初始化 alembic（如果需要）
-if [ ! -d "alembic" ]; then
-    echo "初始化 alembic..."
-    alembic init alembic
-fi
+# 重置数据库迁移版本
+echo "重置数据库迁移版本..."
+python -c "
+import sys
+import psycopg2
+import os
+from urllib.parse import urlparse
 
-# 创建初始迁移（如果需要）
-if [ ! -f "alembic/versions/initial_migration.py" ]; then
-    echo "创建初始迁移..."
-    alembic revision --autogenerate -m "initial migration"
-fi
+try:
+    database_url = os.environ.get('DATABASE_URL')
+    conn = psycopg2.connect(database_url)
+    cur = conn.cursor()
+    
+    # 检查 alembic_version 表是否存在
+    cur.execute(\"\"\"
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = 'alembic_version'
+        );
+    \"\"\")
+    table_exists = cur.fetchone()[0]
+    
+    if table_exists:
+        print('删除现有的 alembic_version 表...')
+        cur.execute('DROP TABLE alembic_version;')
+        conn.commit()
+    
+    print('alembic_version 表已重置')
+    cur.close()
+    conn.close()
+except Exception as e:
+    print(f'重置迁移版本时出错: {str(e)}')
+    sys.exit(1)
+"
+
+# 创建初始迁移
+echo "创建初始迁移..."
+alembic revision --autogenerate -m "initial migration"
 
 # 运行迁移
 echo "应用数据库迁移..."
