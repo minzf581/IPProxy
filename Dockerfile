@@ -1,26 +1,32 @@
 # 构建阶段
-FROM node:16-alpine as builder
+FROM node:16 as builder
 
 # 设置工作目录
 WORKDIR /app
 
 # 设置环境变量
 ENV NODE_ENV=production
+ENV VITE_API_URL=https://ipproxy-production.up.railway.app:8080
+
+# 安装构建依赖
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 # 复制 package.json 和 package-lock.json
 COPY package*.json ./
 
 # 安装依赖
-RUN npm ci --production=false
+RUN npm ci
 
 # 复制源代码和配置文件
 COPY . .
 
 # 确保.env.production文件存在
-RUN if [ ! -f .env.production ]; then \
-    echo "Error: .env.production file not found"; \
-    exit 1; \
-    fi
+COPY .env.production .env.production
 
 # 构建项目
 RUN npm run build
@@ -33,6 +39,9 @@ RUN if [ ! -d "dist" ] || [ ! -f "dist/index.html" ]; then \
 
 # 运行阶段
 FROM nginx:alpine
+
+# 安装 curl 用于健康检查
+RUN apk add --no-cache curl
 
 # 复制构建产物
 COPY --from=builder /app/dist /usr/share/nginx/html
