@@ -15,6 +15,11 @@ echo "创建必要的目录..."
 mkdir -p /app/alembic/versions
 chown -R app:app /app/alembic
 
+# 安装所有依赖
+echo "安装所有依赖..."
+pip install --no-cache-dir --user -r requirements.txt
+pip install --no-cache-dir --user psycopg2-binary pycryptodome aiohttp gunicorn --timeout 100
+
 # 检查 alembic 命令是否可用
 if ! command -v alembic &> /dev/null; then
     echo "错误: alembic 命令未找到"
@@ -22,10 +27,6 @@ if ! command -v alembic &> /dev/null; then
     pip install --no-cache-dir --user alembic --timeout 100
     export PATH="/home/app/.local/bin:$PATH"
 fi
-
-# 安装必要的包
-echo "安装必要的包..."
-pip install --no-cache-dir --user psycopg2-binary pycryptodome --timeout 100
 
 # 打印数据库连接信息（隐藏敏感信息）
 echo "数据库连接信息:"
