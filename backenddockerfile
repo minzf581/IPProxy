@@ -58,31 +58,50 @@ EXPOSE 8000
 
 # 创建启动脚本
 RUN echo '#!/bin/sh\n\
-echo "Starting container with DATABASE_URL=${DATABASE_URL}"\n\
-echo "Waiting for database..."\n\
+echo "=== Starting application setup ==="\n\
+echo "Current working directory: $(pwd)"\n\
+echo "Directory contents:"\n\
+ls -la\n\
+echo "Python version:"\n\
+python --version\n\
+echo "Installed Python packages:"\n\
+pip list\n\
+echo "Environment variables:"\n\
+env | grep -v "DATABASE_URL"\n\
+echo "Starting container with DATABASE_URL=<hidden>"\n\
+echo "\n=== Checking database connection ==="\n\
 python -c "\
 import time\n\
 import sys\n\
+import os\n\
 from sqlalchemy import create_engine\n\
 from sqlalchemy.exc import OperationalError\n\
+print(f\"Attempting to connect to database...\")\n\
+retries = 0\n\
 while True:\n\
     try:\n\
-        engine = create_engine(\"${DATABASE_URL}\")\n\
+        engine = create_engine(os.environ[\"DATABASE_URL\"])\n\
+        print(\"Created database engine, attempting connection...\")\n\
         conn = engine.connect()\n\
+        print(\"Successfully connected to database\")\n\
         conn.close()\n\
-        print(\"Database is available\")\n\
         break\n\
     except OperationalError as e:\n\
-        print(f\"Database not ready: {e}\")\n\
+        retries += 1\n\
+        print(f\"Database connection attempt {retries} failed: {e}\")\n\
+        if retries >= 30:  # 1分钟后超时\n\
+            print(\"Database connection timeout after 30 attempts\")\n\
+            sys.exit(1)\n\
         time.sleep(2)\n\
     except Exception as e:\n\
-        print(f\"Unexpected error: {e}\")\n\
+        print(f\"Unexpected error during database connection: {e}\")\n\
         sys.exit(1)\n\
 "\n\
-echo "Database is up - executing migrations"\n\
+echo "\n=== Running database migrations ==="\n\
 alembic upgrade head\n\
-echo "Starting application"\n\
-uvicorn app.main:app --host 0.0.0.0 --port 8000\n\
+echo "\n=== Starting FastAPI application ==="\n\
+echo "Starting uvicorn with host=0.0.0.0 port=8000"\n\
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level debug\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 
 # 启动命令
