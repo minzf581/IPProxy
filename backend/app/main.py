@@ -83,6 +83,7 @@ import jwt
 from app.api.v1.api import api_router
 import datetime
 import traceback
+from datetime import datetime
 
 # 使用core/config.py中的配置
 from app.core.config import settings
@@ -127,6 +128,8 @@ app = FastAPI(
 
 # 白名单路径
 SKIP_AUTH_PATHS = [
+    "/health",
+    "/",
     "/api/auth/login",
     "/api/auth/refresh",
     "/docs",
@@ -137,6 +140,10 @@ SKIP_AUTH_PATHS = [
 # 数据库会话中间件类
 class DBSessionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        # 跳过健康检查端点的数据库会话
+        if request.url.path == "/health":
+            return await call_next(request)
+
         db = None
         try:
             # 创建新的数据库会话
@@ -148,19 +155,41 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
             return response
         except Exception as e:
             logger.error(f"[DB Middleware] 数据库会话错误: {str(e)}")
+            logger.error(traceback.format_exc())
             if db:
-                db.close()
+                try:
+                    db.rollback()  # 回滚任何未完成的事务
+                except Exception as rollback_error:
+                    logger.error(f"[DB Middleware] 回滚失败: {str(rollback_error)}")
+                finally:
+                    db.close()
+            
+            # 对于健康检查端点，返回503状态码
+            if request.url.path == "/health":
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "status": "error",
+                        "message": "数据库服务不可用",
+                        "details": str(e)
+                    }
+                )
+            
             raise HTTPException(
                 status_code=500,
                 detail={
                     "code": 500,
-                    "message": f"数据库会话错误: {str(e)}"
+                    "message": "数据库服务错误",
+                    "details": str(e)
                 }
             )
         finally:
             # 确保数据库会话被关闭
             if db:
-                db.close()
+                try:
+                    db.close()
+                except Exception as close_error:
+                    logger.error(f"[DB Middleware] 关闭会话失败: {str(close_error)}")
 
 # 认证中间件类
 class AuthMiddleware(BaseHTTPMiddleware):
