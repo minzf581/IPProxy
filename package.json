@@ -82,7 +82,11 @@
     "d3-color": "^3.1.0",
     "rollup": "^4.9.5",
     "glob": "^10.3.10",
-    "@antv/g6": "^4.8.24"
+    "@antv/g6": "^4.8.24",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@antv/react-g": "^2.0.35",
+    "react-reconciler": "^0.29.0"
   },
   "overrides": {
     "d3-color": "^3.1.0",
@@ -90,7 +94,11 @@
     "glob": "^10.3.10",
     "@antv/g6": "4.8.24",
     "@antv/g6-extension-react": "0.1.17",
-    "@antv/graphin": "2.7.27"
+    "@antv/graphin": "2.7.27",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@antv/react-g": "^2.0.35",
+    "react-reconciler": "^0.29.0"
   },
   "peerDependencies": {
     "react": "^18.2.0",
