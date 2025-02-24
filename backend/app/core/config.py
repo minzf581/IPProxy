@@ -11,26 +11,26 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
+# 环境判断
+ENV = os.getenv("ENV", "development")  # 默认为开发环境
+
 class Settings(BaseSettings):
     PROJECT_NAME: str = "IP Proxy Management System"
     API_V1_STR: str = "/api"
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-here")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     
-    # 数据库配置
-    def get_database_url(self) -> str:
-        """获取数据库 URL，支持多环境"""
-        # Railway 环境
-        if os.getenv("RAILWAY_ENVIRONMENT") == "production":
-            db_url = os.getenv("DATABASE_URL", "")
-            if db_url.startswith("postgres://"):
-                db_url = db_url.replace("postgres://", "postgresql://")
-            return db_url
-        
-        # 开发环境
-        return os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/app.db")
+    # 环境配置
+    ENV: str = ENV
+    DEBUG: bool = ENV == "development"
     
-    DATABASE_URL: str = property(get_database_url)
+    # 数据库配置
+    DATABASE_URL: str = os.getenv(
+        "DATABASE_URL",
+        f"sqlite:///{BASE_DIR}/backend/app.db" if ENV == "development" else ""
+    )
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://")
     
     # IPIPV API 配置
     IPIPV_API_BASE_URL: str = os.getenv("IPIPV_API_BASE_URL", "https://sandbox.ipipv.com")
@@ -110,6 +110,31 @@ class Settings(BaseSettings):
         env_file = ".env"
         case_sensitive = True
         extra = "allow"  # 允许额外的字段
+
+        @classmethod
+        def customise_sources(
+            cls,
+            init_settings,
+            env_settings,
+            file_secret_settings,
+        ):
+            def get_database_url():
+                if ENV == "production":
+                    # Railway 生产环境
+                    db_url = os.getenv("DATABASE_URL", "")
+                    if db_url.startswith("postgres://"):
+                        db_url = db_url.replace("postgres://", "postgresql://")
+                    return {"DATABASE_URL": db_url}
+                else:
+                    # 开发环境使用 SQLite
+                    return {"DATABASE_URL": f"sqlite:///{BASE_DIR}/app.db"}
+
+            return (
+                init_settings,
+                get_database_url,
+                env_settings,
+                file_secret_settings,
+            )
 
 settings = Settings()
 

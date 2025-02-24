@@ -51,6 +51,16 @@ fi
 # 进入后端目录
 cd backend || error "无法进入后端目录"
 
+# 设置开发环境变量
+export ENV="development"
+export PYTHONPATH="$PWD"
+export DATABASE_URL="sqlite:///$PWD/app.db"
+
+log "环境变量设置:"
+log "ENV=$ENV"
+log "PYTHONPATH=$PYTHONPATH"
+log "DATABASE_URL=$DATABASE_URL"
+
 # 检查数据库是否存在
 DB_FILE="app.db"
 INIT_DB=false
@@ -82,16 +92,16 @@ pip3 install -r requirements.txt 2>&1 | tee -a "$LOG_FILE"
 if [ "$INIT_DB" = true ]; then
     # 初始化数据库
     log "初始化数据库..."
-    PYTHONPATH=. python3 scripts/init_db.py 2>&1 | tee -a "$LOG_FILE"
+    python3 scripts/init_db.py 2>&1 | tee -a "$LOG_FILE"
 
     # 添加测试数据
     log "添加测试数据..."
-    PYTHONPATH=. python3 scripts/add_test_data.py 2>&1 | tee -a "$LOG_FILE"
+    python3 scripts/add_test_data.py 2>&1 | tee -a "$LOG_FILE"
 fi
 
 # 启动后端服务
 log "启动后端服务..."
-PYTHONPATH=. python3 -m uvicorn app.main:app --reload --port 8000 2>&1 | tee -a "$LOG_FILE" &
+ENV=development DATABASE_URL="sqlite:///$PWD/app.db" python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 2>&1 | tee -a "$LOG_FILE" &
 
 # 返回根目录并安装前端依赖
 log "安装前端依赖..."
@@ -114,6 +124,7 @@ sleep 2
 log "服务已启动！"
 log "后端服务运行在: http://localhost:8000"
 log "前端服务运行在: http://localhost:3000"
+log "开发环境已配置"
 log "按 Ctrl+C 停止所有服务"
 
 # 等待用户中断
