@@ -102,6 +102,23 @@ done
 
 echo "数据库连接成功！"
 
+# 运行数据库迁移
+echo "运行数据库迁移..."
+echo "当前路径: $(pwd)"
+echo "PATH: $PATH"
+echo "Python 路径: $(which python)"
+echo "Alembic 路径: $(which alembic || echo 'alembic not found')"
+
+# 创建初始迁移（如果需要）
+if [ ! -f "alembic/versions/initial_migration.py" ]; then
+    echo "创建初始迁移..."
+    alembic revision --autogenerate -m "initial migration"
+fi
+
+# 运行迁移
+echo "应用数据库迁移..."
+alembic upgrade head
+
 # 检查数据库表结构
 echo "检查数据库表结构..."
 python3 -c "
