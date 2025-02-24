@@ -36,7 +36,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "npm install terser && vite build",
+    "build": "npm install && npm install terser && vite build",
     "preview": "vite preview",
     "test": "jest",
     "test:watch": "jest --watch",
