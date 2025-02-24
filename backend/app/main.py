@@ -81,7 +81,6 @@ from contextlib import asynccontextmanager
 from fastapi import status
 import jwt
 from app.api.v1.api import api_router
-import datetime
 import traceback
 from datetime import datetime
 
@@ -414,7 +413,7 @@ async def health_check():
                     "status": "unhealthy",
                     "error": "DATABASE_URL environment variable is not set",
                     "database": "configuration_error",
-                    "timestamp": datetime.datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat()
                 }
             )
 
@@ -433,7 +432,7 @@ async def health_check():
                 return {
                     "status": "healthy",
                     "database": "connected",
-                    "timestamp": datetime.datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat()
                 }
             else:
                 raise ValueError("Unexpected database query result")
@@ -449,7 +448,7 @@ async def health_check():
                     "error": str(e),
                     "error_type": type(e).__name__,
                     "database": "query_failed",
-                    "timestamp": datetime.datetime.now().isoformat()
+                    "timestamp": datetime.now().isoformat()
                 }
             )
         finally:
@@ -466,7 +465,7 @@ async def health_check():
                 "error": str(e),
                 "error_type": type(e).__name__,
                 "database": "connection_failed",
-                "timestamp": datetime.datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat()
             }
         )
 
