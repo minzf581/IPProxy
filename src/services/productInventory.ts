@@ -109,6 +109,23 @@ export interface PriceUpdateItem {
   app_username?: string;
 }
 
+export interface BatchUpdatePriceData {
+  prices: Array<{
+    product_id: number;
+    price: number;
+    min_agent_price: number;
+    type: string;
+    proxy_type: number;
+    ip_whitelist: string[];
+    app_username: string;
+    user_id?: number;
+  }>;
+  is_global: boolean;
+  agent_id?: number;
+  app_username: string;
+  user_id?: number;
+}
+
 export async function batchUpdateProductPriceSettings(data: {
   prices: PriceUpdateItem[];
   agent_id?: number;
@@ -123,7 +140,7 @@ export async function batchUpdateProductPriceSettings(data: {
     }
     
     // 确保所有必要字段都存在
-    const modifiedData = {
+    const modifiedData: BatchUpdatePriceData = {
       prices: data.prices.map(item => ({
         product_id: item.product_id,
         price: Number(item.price),

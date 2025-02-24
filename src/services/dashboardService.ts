@@ -144,7 +144,7 @@ export async function getDashboardData(agentId?: string): Promise<ApiResponse<Da
     debug.log('仪表盘响应数据:', response.data);
     
     if (response.data.code !== 0) {
-      throw new Error(response.data.msg || '获取仪表盘数据失败');
+      throw new Error(response.data.message || response.data.msg || '获取仪表盘数据失败');
     }
     
     // 扩展响应数据，添加空的统计数组

@@ -4,6 +4,14 @@ import {
   USER_STATUS_MAP 
 } from './constants';
 
+interface StatusMap {
+  [key: string]: string;
+}
+
+const ORDER_STATUS: StatusMap = ORDER_STATUS_MAP;
+const USER_ROLE: StatusMap = USER_ROLE_MAP;
+const USER_STATUS: StatusMap = USER_STATUS_MAP;
+
 /**
  * 格式化数字为千分位格式
  */
@@ -26,15 +34,15 @@ export const formatMoney = (amount: number): string => {
 };
 
 export const formatOrderStatus = (status: string): string => {
-  return ORDER_STATUS_MAP[status] || status;
+  return ORDER_STATUS[status] || status;
 };
 
 export const formatUserRole = (role: string): string => {
-  return USER_ROLE_MAP[role] || role;
+  return USER_ROLE[role] || role;
 };
 
 export const formatUserStatus = (status: string): string => {
-  return USER_STATUS_MAP[status] || status;
+  return USER_STATUS[status] || status;
 };
 
 export const formatPercent = (num: number): string => {

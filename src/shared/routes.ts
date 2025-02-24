@@ -57,7 +57,8 @@ export const API_ROUTES = {
     UPDATE: `${API_PREFIX.OPEN}/app/agent/{id}`,
     STATISTICS: `${API_PREFIX.OPEN}/app/agent/{id}/statistics`,
     TRANSACTIONS: `${API_PREFIX.OPEN}/agent/transactions`,
-    USERS: `${API_PREFIX.OPEN}/app/agent/{id}/users`
+    USERS: `${API_PREFIX.OPEN}/app/agent/{id}/users`,
+    ORDERS: `${API_PREFIX.OPEN}/agent/{id}/orders`
   },
   ORDER: {
     LIST: `${API_PREFIX.PROXY}/orders`,
@@ -127,7 +128,8 @@ API_ROUTES = {
         "UPDATE": f"{API_PREFIX['OPEN']}/app/agent/{{id}}",
         "STATISTICS": f"{API_PREFIX['OPEN']}/app/agent/{{id}}/statistics",
         "TRANSACTIONS": f"{API_PREFIX['OPEN']}/agent/transactions",
-        "USERS": f"{API_PREFIX['OPEN']}/app/agent/{{id}}/users"
+        "USERS": f"{API_PREFIX['OPEN']}/app/agent/{{id}}/users",
+        "ORDERS": f"{API_PREFIX['OPEN']}/agent/{{id}}/orders"
     },
     "ORDER": {
         "LIST": f"{API_PREFIX['PROXY']}/orders",

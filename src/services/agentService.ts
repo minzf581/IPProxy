@@ -167,10 +167,9 @@ export async function getAgentOrders(params: {
 }): Promise<ApiResponse<{ list: AgentOrder[]; total: number }>> {
   debugAgent.info('Getting agent orders:', params);
   const response = await agentApi.get<ApiResponse<{ list: AgentOrder[]; total: number }>>(
-    API_ROUTES.AGENT.ORDERS,
+    API_ROUTES.AGENT.ORDERS.replace('{id}', String(params.agentId)),
     {
       params: {
-        agentId: params.agentId,
         page: params.page,
         pageSize: params.pageSize,
         status: params.status,
@@ -307,5 +306,17 @@ export async function openDynamicProxy(params: OpenDynamicProxyParams): Promise<
       throw new Error(error.response.data.msg || '开通动态代理失败');
     }
     throw error;
+  }
+}
+
+// 扩展 API_ROUTES 定义
+declare module '@/shared/routes' {
+  interface ApiRoutes {
+    ORDERS: {
+      LIST: string;
+      CREATE: string;
+      UPDATE: string;
+      STATISTICS: string;
+    };
   }
 }

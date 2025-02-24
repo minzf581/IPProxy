@@ -4,7 +4,7 @@ import { updateUserPassword } from '@/services/userService';
 
 export interface ChangePasswordModalProps {
   visible: boolean;
-  userId: string;
+  userId: number;
   onCancel: () => void;
   onSuccess: () => void;
 }
@@ -21,9 +21,10 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
     try {
       const response = await updateUserPassword(userId, values.password);
       if (response.code === 0) {
+        message.success('密码修改成功');
         onSuccess();
       } else {
-        message.error(response.msg || '修改密码失败');
+        message.error(response.message || '修改密码失败');
       }
     } catch (error) {
       message.error('修改密码失败');
