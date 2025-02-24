@@ -9,7 +9,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PATH="/app/.local/bin:$PATH"
+    PATH="/app/.local/bin:$PATH" \
+    DATABASE_URL="postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y \
@@ -50,10 +51,24 @@ COPY backend .
 RUN echo "Current directory structure:" && \
     ls -la && \
     echo "\nPython path:" && \
-    python -c "import sys; print('\n'.join(sys.path))"
+    python -c "import sys; print('\n'.join(sys.path))" && \
+    echo "\nTesting database connection:" && \
+    python -c "from sqlalchemy import create_engine; engine = create_engine('${DATABASE_URL}'); conn = engine.connect(); conn.close()"
 
 # 暴露端口
 EXPOSE 8000
 
-# 启动命令
-CMD uvicorn app.main:app --host 0.0.0.0 --port 8000 
+# 等待数据库并运行迁移
+CMD echo "Waiting for database..." && \
+    python -c "import time; from sqlalchemy import create_engine; \
+    while True: \
+        try: \
+            engine = create_engine('${DATABASE_URL}'); \
+            conn = engine.connect(); \
+            conn.close(); \
+            break; \
+        except Exception as e: \
+            print(f'Database not ready: {e}'); \
+            time.sleep(2);" && \
+    alembic upgrade head && \
+    uvicorn app.main:app --host 0.0.0.0 --port 8000 
