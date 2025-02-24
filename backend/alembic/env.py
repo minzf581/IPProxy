@@ -1,5 +1,5 @@
 from logging.config import fileConfig
-
+import os
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
@@ -28,6 +28,12 @@ target_metadata = Base.metadata
 # ... etc.
 
 def get_url():
+    # 如果是 Railway 环境，使用环境变量中的数据库 URL
+    if os.getenv("RAILWAY_ENVIRONMENT") == "production":
+        url = os.getenv("DATABASE_URL", "")
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://")
+        return url
     return settings.DATABASE_URL
 
 def run_migrations_offline() -> None:

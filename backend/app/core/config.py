@@ -14,26 +14,40 @@ LOG_DIR.mkdir(exist_ok=True)
 class Settings(BaseSettings):
     PROJECT_NAME: str = "IP Proxy Management System"
     API_V1_STR: str = "/api"
-    SECRET_KEY: str = "your-secret-key-here"
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-here")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
-    DATABASE_URL: str = f"sqlite:///{BASE_DIR}/app.db"
+    
+    # 数据库配置
+    def get_database_url(self) -> str:
+        """获取数据库 URL，支持多环境"""
+        # Railway 环境
+        if os.getenv("RAILWAY_ENVIRONMENT") == "production":
+            db_url = os.getenv("DATABASE_URL", "")
+            if db_url.startswith("postgres://"):
+                db_url = db_url.replace("postgres://", "postgresql://")
+            return db_url
+        
+        # 开发环境
+        return os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/app.db")
+    
+    DATABASE_URL: str = property(get_database_url)
     
     # IPIPV API 配置
-    IPIPV_API_BASE_URL: str = "https://sandbox.ipipv.com"
-    IPIPV_API_KEY: str = "AK20241120145620"
-    IPIPV_API_SECRET: str = "bf3ffghlt0hpc4omnvc2583jt0fag6a4"
+    IPIPV_API_BASE_URL: str = os.getenv("IPIPV_API_BASE_URL", "https://sandbox.ipipv.com")
+    IPIPV_API_KEY: str = os.getenv("IPIPV_API_KEY", "AK20241120145620")
+    IPIPV_API_SECRET: str = os.getenv("IPIPV_API_SECRET", "bf3ffghlt0hpc4omnvc2583jt0fag6a4")
     
     # 认证信息配置
-    IPIPV_MAIN_AUTH_TYPE: int = 1
-    IPIPV_MAIN_AUTH_NAME: str = "测试公司"
-    IPIPV_MAIN_AUTH_NO: str = "3101112"
-    IPIPV_MAIN_PHONE: str = "13800138000"
-    IPIPV_MAIN_EMAIL: str = "test1006@test.com"
+    IPIPV_MAIN_AUTH_TYPE: int = int(os.getenv("IPIPV_MAIN_AUTH_TYPE", "1"))
+    IPIPV_MAIN_AUTH_NAME: str = os.getenv("IPIPV_MAIN_AUTH_NAME", "测试公司")
+    IPIPV_MAIN_AUTH_NO: str = os.getenv("IPIPV_MAIN_AUTH_NO", "3101112")
+    IPIPV_MAIN_PHONE: str = os.getenv("IPIPV_MAIN_PHONE", "13800138000")
+    IPIPV_MAIN_EMAIL: str = os.getenv("IPIPV_MAIN_EMAIL", "test1006@test.com")
     
     # API配置
-    API_BASE_URL: str = "https://sandbox.ipipv.com"
-    API_KEY: str = "AK20241120145620"
-    API_SECRET: str = "bf3ffghlt0hpc4omnvc2583jt0fag6a4"
+    API_BASE_URL: str = os.getenv("API_BASE_URL", "https://sandbox.ipipv.com")
+    API_KEY: str = os.getenv("API_KEY", "AK20241120145620")
+    API_SECRET: str = os.getenv("API_SECRET", "bf3ffghlt0hpc4omnvc2583jt0fag6a4")
     
     # 日志配置
     LOGGING_CONFIG: ClassVar[Dict[str, Any]] = {

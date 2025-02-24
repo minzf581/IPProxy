@@ -21,6 +21,9 @@ wheels/
 *.egg
 
 # Virtual Environment
+.env
+.venv
+env/
 venv/
 ENV/
 
@@ -52,3 +55,23 @@ yarn-error.log*
 
 # Mac
 .DS_Store
+
+# Build
+/dist
+/build
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Local development
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Railway specific
+.railway/
+railway.json
+railway.toml
