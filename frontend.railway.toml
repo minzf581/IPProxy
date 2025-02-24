@@ -1,0 +1,21 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/"
+healthcheckTimeout = 180
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+
+[deploy.healthcheck]
+path = "/"
+interval = "15s"
+timeout = "5s"
+retries = 5
+startPeriod = "30s"
+
+[env]
+VITE_API_URL = "https://ipproxy-production.up.railway.app:8080"
+VITE_API_PROXY_URL = "https://ipproxy-production.up.railway.app:8080"
+VITE_APP_ENV = "production" 
