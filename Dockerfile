@@ -1,5 +1,5 @@
 # 构建阶段
-FROM node:16 as builder
+FROM node:18 as builder
 
 # 设置工作目录
 WORKDIR /app
@@ -22,8 +22,8 @@ COPY package*.json ./
 
 # 清理 npm 缓存并安装依赖
 RUN npm cache clean --force && \
-    npm install && \
-    npm install -D @vitejs/plugin-react vite
+    npm install --legacy-peer-deps && \
+    npm install -D @vitejs/plugin-react@4.2.1 vite@4.5.2
 
 # 复制源代码和配置文件
 COPY . ./
@@ -34,12 +34,11 @@ RUN touch .env.production
 # 显示环境信息和依赖
 RUN node -v && \
     npm -v && \
-    npm list vite && \
-    npm list @vitejs/plugin-react && \
-    ls -la node_modules/.bin/
+    npm ls vite && \
+    npm ls @vitejs/plugin-react
 
 # 构建项目
-RUN NODE_ENV=production VITE_API_URL=$VITE_API_URL node node_modules/vite/bin/vite.js build || \
+RUN NODE_ENV=production VITE_API_URL=$VITE_API_URL npm run build || \
     (echo "Build failed" && ls -la && cat vite.config.ts && exit 1)
 
 # 验证构建输出
