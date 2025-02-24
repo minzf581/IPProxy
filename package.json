@@ -29,14 +29,16 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.2",
     "recharts": "^2.10.3",
+    "terser": "^5.27.2",
     "typescript": "^5.3.3",
     "uuid": "^9.0.1",
+    "vite": "^4.5.2",
     "web-vitals": "^3.5.1",
     "xlsx": "^0.18.5"
   },
   "scripts": {
     "dev": "vite",
-    "build": "npm install && npm install terser && vite build",
+    "build": "npm install && npm install terser && npx vite build",
     "preview": "vite preview",
     "test": "jest",
     "test:watch": "jest --watch",
@@ -74,10 +76,8 @@
     "jest": "^29.7.0",
     "less": "^4.2.2",
     "postcss": "^8.4.33",
-    "terser": "^5.27.2",
     "ts-jest": "^29.2.5",
-    "ts-node": "^10.9.2",
-    "vite": "^4.5.2"
+    "ts-node": "^10.9.2"
   },
   "resolutions": {
     "d3-color": "^3.1.0",
