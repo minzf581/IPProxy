@@ -20,12 +20,17 @@ COPY backend/requirements.txt .
 COPY backend/app ./app
 COPY backend/alembic.ini .
 COPY backend/alembic ./alembic
+COPY deploy.sh .
+
+# 设置脚本权限
+RUN chmod +x deploy.sh
 
 # 安装 Python 依赖
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install gunicorn
 
 # 暴露端口
 EXPOSE 8000
 
 # 启动命令
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"] 
+CMD ["./deploy.sh"] 
