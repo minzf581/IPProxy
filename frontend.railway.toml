@@ -16,6 +16,6 @@ retries = 5
 startPeriod = "30s"
 
 [env]
-VITE_API_URL = "https://ipproxy-production.up.railway.app:8080"
-VITE_API_PROXY_URL = "https://ipproxy-production.up.railway.app:8080"
+VITE_API_URL = "http://ipproxy.railway.internal:8000"
+VITE_API_PROXY_URL = "http://ipproxy.railway.internal:8000"
 VITE_APP_ENV = "production" 
