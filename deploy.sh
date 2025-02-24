@@ -18,7 +18,7 @@ chown -R app:app /app/alembic
 # 安装所有依赖
 echo "安装所有依赖..."
 pip install --no-cache-dir --user -r requirements.txt
-pip install --no-cache-dir --user psycopg2-binary pycryptodome aiohttp gunicorn --timeout 100
+pip install --no-cache-dir --user "pydantic[email]" psycopg2-binary pycryptodome aiohttp gunicorn --timeout 100
 
 # 检查 alembic 命令是否可用
 if ! command -v alembic &> /dev/null; then
