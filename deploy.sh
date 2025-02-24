@@ -10,6 +10,11 @@ export PIP_DEFAULT_TIMEOUT=100
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export PIP_NO_CACHE_DIR=1
 
+# 检查并创建必要的目录
+echo "创建必要的目录..."
+mkdir -p /app/alembic/versions
+chown -R app:app /app/alembic
+
 # 检查 alembic 命令是否可用
 if ! command -v alembic &> /dev/null; then
     echo "错误: alembic 命令未找到"
@@ -108,6 +113,18 @@ echo "当前路径: $(pwd)"
 echo "PATH: $PATH"
 echo "Python 路径: $(which python)"
 echo "Alembic 路径: $(which alembic || echo 'alembic not found')"
+
+# 检查 alembic.ini 是否存在
+if [ ! -f "alembic.ini" ]; then
+    echo "错误: alembic.ini 不存在"
+    exit 1
+fi
+
+# 初始化 alembic（如果需要）
+if [ ! -d "alembic" ]; then
+    echo "初始化 alembic..."
+    alembic init alembic
+fi
 
 # 创建初始迁移（如果需要）
 if [ ! -f "alembic/versions/initial_migration.py" ]; then
