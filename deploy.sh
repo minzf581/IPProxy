@@ -103,10 +103,10 @@ echo "PATH: $PATH"
 echo "Python 路径: $(which python)"
 echo "Alembic 路径: $(which alembic || echo 'alembic not found')"
 
-# 尝试运行数据库迁移
+# 尝试运行数据库迁移，如果失败则跳过
+echo "尝试运行数据库迁移..."
 if ! alembic upgrade head; then
-    echo "数据库迁移失败，尝试使用 python -m alembic"
-    python -m alembic upgrade head
+    echo "警告: 数据库迁移失败，但继续部署..."
 fi
 
 # 等待其他服务准备就绪
