@@ -14,24 +14,30 @@ import sys
 import psycopg2
 import os
 import logging
+import traceback
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 try:
     logger.info('尝试连接数据库...')
+    logger.info(f'数据库URL: {os.environ.get("DATABASE_URL")}')
     conn = psycopg2.connect(
         os.environ['DATABASE_URL'],
         connect_timeout=5
     )
     cur = conn.cursor()
     cur.execute('SELECT 1')
+    result = cur.fetchone()
+    logger.info(f'查询结果: {result}')
     cur.close()
     conn.close()
     logger.info('数据库连接成功')
     sys.exit(0)
 except Exception as e:
     logger.error(f'数据库连接失败: {str(e)}')
+    logger.error(f'错误类型: {type(e).__name__}')
+    logger.error(f'错误详情: {traceback.format_exc()}')
     sys.exit(1)
 "; do
     if [ $count -eq $max_retries ]; then

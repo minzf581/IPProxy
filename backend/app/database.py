@@ -5,6 +5,7 @@ from sqlalchemy.pool import QueuePool
 from app.core.config import settings
 import os
 import logging
+import traceback
 from app.models.base import Base, TimestampMixin
 
 logger = logging.getLogger(__name__)
@@ -21,18 +22,18 @@ SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_FILE}"
 # 创建数据库引擎
 engine = create_engine(
     settings.DATABASE_URL,
-    pool_size=5,  # 连接池大小
-    max_overflow=10,  # 超出连接池大小后可以创建的最大连接数
-    pool_timeout=30,  # 连接池获取连接的超时时间
-    pool_recycle=1800,  # 连接在连接池中的存活时间
-    pool_pre_ping=True,  # 每次连接前ping一下数据库，确保连接有效
-    poolclass=QueuePool,  # 使用队列池
+    pool_size=3,  # 减小连接池大小
+    max_overflow=5,  # 减小最大溢出连接数
+    pool_timeout=10,  # 减小超时时间
+    pool_recycle=300,  # 减小连接回收时间
+    pool_pre_ping=True,
+    poolclass=QueuePool,
     connect_args={
-        "connect_timeout": 10,  # 连接超时时间
-        "keepalives": 1,  # 启用keepalive
-        "keepalives_idle": 30,  # 空闲多久后发送keepalive
-        "keepalives_interval": 10,  # keepalive的间隔
-        "keepalives_count": 5  # keepalive重试次数
+        "connect_timeout": 5,  # 减小连接超时
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 3
     }
 )
 
@@ -44,12 +45,17 @@ Base = declarative_base()
 
 def get_db():
     """获取数据库会话"""
+    logger.info("尝试获取数据库会话...")
     db = SessionLocal()
     try:
+        logger.info("成功创建数据库会话")
         yield db
     except Exception as e:
         logger.error(f"数据库会话错误: {str(e)}")
+        logger.error(f"错误类型: {type(e).__name__}")
+        logger.error(f"错误详情: {traceback.format_exc()}")
         db.rollback()
         raise
     finally:
+        logger.info("关闭数据库会话")
         db.close()

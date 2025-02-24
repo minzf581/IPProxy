@@ -82,6 +82,7 @@ from fastapi import status
 import jwt
 from app.api.v1.api import api_router
 import datetime
+import traceback
 
 # 使用core/config.py中的配置
 from app.core.config import settings
@@ -378,31 +379,46 @@ async def health_check():
         # 检查数据库连接
         db = next(get_db())
         try:
-            # 简单的数据库检查
-            db.execute("SELECT 1").scalar()
+            # 添加详细的日志
+            logger.info("开始健康检查...")
+            logger.info(f"数据库URL: {settings.DATABASE_URL}")
+            
+            # 尝试执行查询
+            result = db.execute("SELECT 1").scalar()
+            logger.info(f"数据库查询结果: {result}")
+            
             return {
                 "status": "healthy",
+                "database": "connected",
                 "timestamp": datetime.datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"Health check failed: {str(e)}")
+            logger.error(f"数据库查询失败: {str(e)}")
+            logger.error(f"错误类型: {type(e).__name__}")
+            logger.error(f"错误详情: {traceback.format_exc()}")
             return JSONResponse(
                 status_code=503,
                 content={
                     "status": "unhealthy",
                     "error": str(e),
+                    "error_type": type(e).__name__,
+                    "database": "query_failed",
                     "timestamp": datetime.datetime.now().isoformat()
                 }
             )
         finally:
             db.close()
     except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
+        logger.error(f"数据库连接失败: {str(e)}")
+        logger.error(f"错误类型: {type(e).__name__}")
+        logger.error(f"错误详情: {traceback.format_exc()}")
         return JSONResponse(
             status_code=503,
             content={
                 "status": "unhealthy",
                 "error": str(e),
+                "error_type": type(e).__name__,
+                "database": "connection_failed",
                 "timestamp": datetime.datetime.now().isoformat()
             }
         )
