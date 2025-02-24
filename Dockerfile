@@ -19,8 +19,9 @@ RUN apt-get update && \
 # 复制 package.json 和 package-lock.json
 COPY package*.json ./
 
-# 安装依赖，包括开发依赖
-RUN npm ci --include=dev && \
+# 安装所有依赖（包括开发依赖）
+RUN npm install && \
+    npm install -D vite @vitejs/plugin-react && \
     npm install -g vite
 
 # 复制源代码和配置文件
@@ -29,12 +30,19 @@ COPY . .
 # 确保.env.production文件存在
 COPY .env.production .env.production
 
+# 显示环境信息
+RUN node -v && \
+    npm -v && \
+    npm list vite && \
+    npm list @vitejs/plugin-react
+
 # 构建项目
-RUN npm run build || (echo "Build failed" && ls -la && cat package.json && exit 1)
+RUN NODE_ENV=production npm run build || (echo "Build failed" && ls -la && cat package.json && exit 1)
 
 # 验证构建输出
 RUN if [ ! -d "dist" ] || [ ! -f "dist/index.html" ]; then \
     echo "Error: Build failed - dist/index.html not found"; \
+    ls -la; \
     exit 1; \
     fi
 
@@ -70,4 +78,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
 EXPOSE 80
 
 # 启动 nginx
-CMD ["nginx", "-g", "daemon off;"] 
+CMD ["nginx", "-g", "daemon off;"]
