@@ -81,6 +81,7 @@ from contextlib import asynccontextmanager
 from fastapi import status
 import jwt
 from app.api.v1.api import api_router
+import datetime
 
 # 使用core/config.py中的配置
 from app.core.config import settings
@@ -369,6 +370,32 @@ async def root():
     """健康检查接口"""
     return {"message": "Welcome to IP Proxy API"}
 
+# 在路由注册之前添加健康检查端点
+@app.get("/health", tags=["health"])
+async def health_check():
+    """健康检查端点"""
+    logger.info("Health check endpoint called")
+    try:
+        # 检查数据库连接
+        db = next(get_db())
+        db.execute("SELECT 1")
+        db.close()
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "error": str(e),
+                "timestamp": datetime.datetime.now().isoformat()
+            }
+        )
+
 # 注册路由
 app.include_router(api_router, prefix=settings.API_V1_STR)
 app.include_router(auth.router, prefix="/api/auth", tags=["认证"])
@@ -383,11 +410,6 @@ app.include_router(area.router, prefix="/api")
 app.include_router(settings_router.router, prefix="/api")
 app.include_router(callback.router, prefix="/api")
 app.include_router(business.router, prefix="/api")
-
-# 添加健康检查端点
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True) 
