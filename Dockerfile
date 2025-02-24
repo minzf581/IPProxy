@@ -9,7 +9,8 @@ ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     TZ=Asia/Shanghai \
     PORT=8000 \
-    DATABASE_URL="postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
+    DATABASE_URL="postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway" \
+    PATH="/home/app/.local/bin:$PATH"
 
 # 安装系统依赖和 Python 包
 RUN apt-get update && apt-get install -y \
@@ -33,13 +34,14 @@ COPY deploy.sh .
 RUN chown -R app:app /app && \
     chmod +x deploy.sh
 
-# 安装 Python 依赖
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip install psycopg2-binary \
-    && pip install gunicorn
-
 # 切换到非 root 用户
 USER app
+
+# 安装 Python 依赖
+RUN pip install --no-cache-dir --user -r requirements.txt \
+    && pip install --no-cache-dir --user psycopg2-binary \
+    && pip install --no-cache-dir --user gunicorn \
+    && pip install --no-cache-dir --user alembic
 
 # 暴露端口
 EXPOSE 8000

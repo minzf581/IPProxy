@@ -5,6 +5,14 @@ set -e
 
 echo "开始部署..."
 
+# 检查 alembic 命令是否可用
+if ! command -v alembic &> /dev/null; then
+    echo "错误: alembic 命令未找到"
+    echo "尝试重新安装 alembic..."
+    pip install --no-cache-dir --user alembic
+    export PATH="/home/app/.local/bin:$PATH"
+fi
+
 # 如果环境变量未设置，使用默认值
 if [ -z "$DATABASE_URL" ]; then
     export DATABASE_URL="postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
@@ -22,7 +30,7 @@ max_retries=10
 count=0
 
 # 首先确保安装了必要的包
-pip install --no-cache-dir psycopg2-binary
+pip install --no-cache-dir --user psycopg2-binary
 
 # 打印所有环境变量（用于调试）
 echo "当前环境变量:"
@@ -90,7 +98,16 @@ echo "数据库连接成功！"
 
 # 运行数据库迁移
 echo "运行数据库迁移..."
-alembic upgrade head
+echo "当前路径: $(pwd)"
+echo "PATH: $PATH"
+echo "Python 路径: $(which python)"
+echo "Alembic 路径: $(which alembic || echo 'alembic not found')"
+
+# 尝试运行数据库迁移
+if ! alembic upgrade head; then
+    echo "数据库迁移失败，尝试使用 python -m alembic"
+    python -m alembic upgrade head
+fi
 
 # 等待其他服务准备就绪
 echo "等待其他服务准备就绪..."
