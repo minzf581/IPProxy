@@ -9,8 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PATH="/app/.local/bin:$PATH" \
-    DATABASE_URL="postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
+    PATH="/app/.local/bin:$PATH"
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y \
@@ -47,28 +46,27 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 # 复制源代码
 COPY backend .
 
-# 显示目录结构和尝试导入
+# 显示目录结构
 RUN echo "Current directory structure:" && \
     ls -la && \
     echo "\nPython path:" && \
-    python -c "import sys; print('\n'.join(sys.path))" && \
-    echo "\nTesting database connection:" && \
-    python -c "from sqlalchemy import create_engine; engine = create_engine('${DATABASE_URL}'); conn = engine.connect(); conn.close()"
+    python -c "import sys; print('\n'.join(sys.path))"
 
 # 暴露端口
 EXPOSE 8000
 
-# 等待数据库并运行迁移
-CMD echo "Waiting for database..." && \
-    python -c "import time; from sqlalchemy import create_engine; \
-    while True: \
-        try: \
-            engine = create_engine('${DATABASE_URL}'); \
-            conn = engine.connect(); \
-            conn.close(); \
-            break; \
-        except Exception as e: \
-            print(f'Database not ready: {e}'); \
-            time.sleep(2);" && \
-    alembic upgrade head && \
-    uvicorn app.main:app --host 0.0.0.0 --port 8000 
+# 创建启动脚本
+RUN echo '#!/bin/sh\n\
+echo "Waiting for database..."\n\
+while ! nc -z postgres.railway.internal 5432; do\n\
+  echo "Database is unavailable - sleeping"\n\
+  sleep 2\n\
+done\n\
+echo "Database is up - executing migrations"\n\
+alembic upgrade head\n\
+echo "Starting application"\n\
+uvicorn app.main:app --host 0.0.0.0 --port 8000\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+# 启动命令
+CMD ["/app/start.sh"] 
