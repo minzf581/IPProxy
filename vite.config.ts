@@ -6,6 +6,7 @@ import path from 'path'
 export default defineConfig(({ command, mode }) => {
   // 加载环境变量
   const env = loadEnv(mode, process.cwd(), '')
+  const apiUrl = process.env.VITE_API_URL || env.VITE_API_URL || 'http://localhost:8000'
   
   return {
     plugins: [react()],
@@ -21,7 +22,7 @@ export default defineConfig(({ command, mode }) => {
       port: 3000,
       proxy: {
         '/api': {
-          target: env.VITE_API_URL || 'http://localhost:8000',
+          target: apiUrl,
           changeOrigin: true,
           secure: false
         }
@@ -62,7 +63,7 @@ export default defineConfig(({ command, mode }) => {
     },
     
     define: {
-      __API_URL__: JSON.stringify(env.VITE_API_URL || 'http://localhost:8000')
+      __API_URL__: JSON.stringify(apiUrl)
     },
     
     optimizeDeps: {
