@@ -10,6 +10,14 @@ export PIP_DEFAULT_TIMEOUT=100
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export PIP_NO_CACHE_DIR=1
 
+# 安装系统依赖
+echo "安装系统依赖..."
+apt-get update && apt-get install -y \
+    gcc \
+    python3-dev \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # 检查并创建必要的目录
 echo "创建必要的目录..."
 mkdir -p /app/alembic/versions
@@ -18,7 +26,7 @@ chown -R app:app /app/alembic
 # 安装所有依赖
 echo "安装所有依赖..."
 pip install --no-cache-dir --user -r requirements.txt
-pip install --no-cache-dir --user "pydantic[email]" psycopg2-binary pycryptodome aiohttp gunicorn --timeout 100
+pip install --no-cache-dir --user "pydantic[email]" psycopg2-binary pycryptodome aiohttp gunicorn pandas numpy --timeout 100
 
 # 检查 alembic 命令是否可用
 if ! command -v alembic &> /dev/null; then

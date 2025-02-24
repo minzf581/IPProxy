@@ -1,15 +1,55 @@
+# Web 框架和服务器
 fastapi==0.104.1
 uvicorn==0.24.0
+gunicorn==21.2.0
+starlette==0.27.0
+
+# 数据库
 sqlalchemy==2.0.23
-pydantic==2.5.1
-pydantic-settings==2.1.0
+alembic==1.13.1
+psycopg2-binary==2.9.9
+
+# 认证和安全
 python-jose==3.3.0
 passlib==1.7.4
 python-multipart==0.0.6
 bcrypt==4.0.1
-httpx==0.25.1
 python-dotenv==1.0.0
-pycryptodome==3.19.1
-aiohttp==3.9.1
-gunicorn==21.2.0
+
+# 数据处理和验证
+pydantic==2.5.1
+pydantic-settings==2.1.0
 email-validator==2.1.0.post1
+pandas==2.1.4
+numpy==1.26.2
+
+# HTTP 客户端
+httpx==0.25.1
+aiohttp==3.9.1
+
+# 加密
+pycryptodome==3.19.1
+
+# 测试
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+requests==2.31.0
+
+# 工具
+python-dateutil==2.8.2
+pytz==2023.3
+aiosqlite==0.19.0
+asyncpg==0.29.0
+redis==5.0.1
+celery==5.3.6
+
+# 日志和监控
+prometheus-client==0.19.0
+sentry-sdk==1.39.1
+
+# 开发工具
+black==23.12.1
+flake8==7.0.0
+mypy==1.8.0
+isort==5.13.2
