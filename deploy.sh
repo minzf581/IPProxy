@@ -27,62 +27,33 @@ fi
 echo "安装必要的包..."
 pip install --no-cache-dir --user psycopg2-binary pycryptodome --timeout 100
 
-# 如果环境变量未设置，使用默认值
-if [ -z "$DATABASE_URL" ]; then
-    export DATABASE_URL="postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
-    echo "使用默认数据库连接信息"
-fi
-
 # 打印数据库连接信息（隐藏敏感信息）
 echo "数据库连接信息:"
-MASKED_URL=$(echo "$DATABASE_URL" | sed -E 's/\/\/[^:]+:[^@]+@/\/\/*****:*****@/')
-echo "DATABASE_URL=$MASKED_URL"
+echo "数据库主机: postgres.railway.internal"
+echo "数据库端口: 5432"
+echo "数据库名称: railway"
 
 # 等待数据库准备就绪
 echo "等待数据库准备就绪..."
 max_retries=10
 count=0
 
-# 打印所有环境变量（用于调试）
-echo "当前环境变量:"
-env | grep -v "PASSWORD\|SECRET\|KEY"
-
 while ! python -c "
 import sys
 import psycopg2
-import os
 import logging
 import traceback
-from urllib.parse import urlparse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 try:
-    database_url = os.environ.get('DATABASE_URL')
-    if not database_url:
-        raise ValueError('DATABASE_URL environment variable is not set')
-        
     logger.info('尝试连接数据库...')
-    # 解析数据库URL并打印非敏感信息
-    db_url = urlparse(database_url)
-    logger.info(f'数据库主机: {db_url.hostname}')
-    logger.info(f'数据库端口: {db_url.port}')
-    logger.info(f'数据库名称: {db_url.path[1:]}')
-    
-    # 添加连接选项
     conn = psycopg2.connect(
-        database_url,
-        connect_timeout=10,
-        keepalives=1,
-        keepalives_idle=30,
-        keepalives_interval=10,
-        keepalives_count=5
+        'postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway',
+        connect_timeout=10
     )
-    
-    # 设置会话参数
     cur = conn.cursor()
-    cur.execute('SET statement_timeout = 10000;')  # 10 秒超时
     cur.execute('SELECT 1')
     result = cur.fetchone()
     logger.info(f'查询结果: {result}')
@@ -92,8 +63,7 @@ try:
     sys.exit(0)
 except Exception as e:
     logger.error(f'数据库连接失败: {str(e)}')
-    logger.error(f'错误类型: {type(e).__name__}')
-    logger.error(f'错误详情: {traceback.format_exc()}')
+    logger.error(traceback.format_exc())
     sys.exit(1)
 "; do
     if [ $count -eq $max_retries ]; then
@@ -112,7 +82,7 @@ echo "运行数据库迁移..."
 echo "当前路径: $(pwd)"
 echo "PATH: $PATH"
 echo "Python 路径: $(which python)"
-echo "Alembic 路径: $(which alembic || echo 'alembic not found')"
+echo "Alembic 路径: $(which alembic)"
 
 # 检查 alembic.ini 是否存在
 if [ ! -f "alembic.ini" ]; then
@@ -120,68 +90,29 @@ if [ ! -f "alembic.ini" ]; then
     exit 1
 fi
 
-# 重置数据库迁移版本
-echo "重置数据库迁移版本..."
+# 确保数据库表存在
 python -c "
-import sys
-import psycopg2
-import os
-from urllib.parse import urlparse
-
-try:
-    database_url = os.environ.get('DATABASE_URL')
-    conn = psycopg2.connect(database_url)
-    cur = conn.cursor()
-    
-    # 检查 alembic_version 表是否存在
-    cur.execute(\"\"\"
-        SELECT EXISTS (
-            SELECT FROM information_schema.tables 
-            WHERE table_name = 'alembic_version'
-        );
-    \"\"\")
-    table_exists = cur.fetchone()[0]
-    
-    if table_exists:
-        print('删除现有的 alembic_version 表...')
-        cur.execute('DROP TABLE alembic_version;')
-        conn.commit()
-    
-    print('alembic_version 表已重置')
-    cur.close()
-    conn.close()
-except Exception as e:
-    print(f'重置迁移版本时出错: {str(e)}')
-    sys.exit(1)
+from sqlalchemy import create_engine, inspect
+engine = create_engine('postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway')
+inspector = inspect(engine)
+tables = inspector.get_table_names()
+if 'users' not in tables:
+    print('创建初始数据库表...')
+    from app.models.base import Base
+    from app.models.user import User
+    Base.metadata.create_all(engine)
+    print('数据库表创建完成')
+else:
+    print('数据库表已存在')
 "
-
-# 创建初始迁移
-echo "创建初始迁移..."
-alembic revision --autogenerate -m "initial migration"
 
 # 运行迁移
 echo "应用数据库迁移..."
-alembic upgrade head
-
-# 检查数据库表结构
-echo "检查数据库表结构..."
-python3 -c "
-from sqlalchemy import create_engine, inspect
-import os
-
-database_url = os.getenv('DATABASE_URL')
-engine = create_engine(database_url)
-inspector = inspect(engine)
-
-if 'users' in inspector.get_table_names():
-    print('users 表已存在')
-    print('表结构:')
-    for column in inspector.get_columns('users'):
-        print(f'{column[\"name\"]}: {column[\"type\"]}')
-else:
-    print('users 表不存在')
-    exit(1)
-"
+alembic upgrade head || {
+    echo "迁移失败，尝试重置迁移..."
+    alembic revision --autogenerate -m "reset migration"
+    alembic upgrade head
+}
 
 # 启动应用
 echo "启动应用..."

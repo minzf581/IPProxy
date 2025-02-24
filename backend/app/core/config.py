@@ -12,7 +12,7 @@ LOG_DIR = BASE_DIR / "logs"
 LOG_DIR.mkdir(exist_ok=True)
 
 # 环境判断
-ENV = os.getenv("ENV", "development")  # 默认为开发环境
+ENV = os.getenv("RAILWAY_ENVIRONMENT", "development")  # 使用 RAILWAY_ENVIRONMENT 判断
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "IP Proxy Management System"
@@ -22,15 +22,23 @@ class Settings(BaseSettings):
     
     # 环境配置
     ENV: str = ENV
-    DEBUG: bool = ENV == "development"
+    DEBUG: bool = ENV != "production"
     
     # 数据库配置
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL",
-        f"sqlite:///{BASE_DIR}/backend/app.db" if ENV == "development" else ""
-    )
-    if DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://")
+    @property
+    def DATABASE_URL(self) -> str:
+        if self.ENV == "production":
+            # Railway 生产环境
+            db_url = "postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
+        else:
+            # 开发环境使用 SQLite
+            db_url = f"sqlite:///{BASE_DIR}/backend/app.db"
+        
+        # 确保 PostgreSQL URL 格式正确
+        if db_url.startswith("postgres://"):
+            db_url = db_url.replace("postgres://", "postgresql://")
+        
+        return db_url
     
     # IPIPV API 配置
     IPIPV_API_BASE_URL: str = os.getenv("IPIPV_API_BASE_URL", "https://sandbox.ipipv.com")
@@ -121,13 +129,16 @@ class Settings(BaseSettings):
             def get_database_url():
                 if ENV == "production":
                     # Railway 生产环境
-                    db_url = os.getenv("DATABASE_URL", "")
-                    if db_url.startswith("postgres://"):
-                        db_url = db_url.replace("postgres://", "postgresql://")
-                    return {"DATABASE_URL": db_url}
+                    db_url = "postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
                 else:
                     # 开发环境使用 SQLite
-                    return {"DATABASE_URL": f"sqlite:///{BASE_DIR}/app.db"}
+                    db_url = f"sqlite:///{BASE_DIR}/app.db"
+                
+                # 确保 PostgreSQL URL 格式正确
+                if db_url.startswith("postgres://"):
+                    db_url = db_url.replace("postgres://", "postgresql://")
+                
+                return {"DATABASE_URL": db_url}
 
             return (
                 init_settings,
