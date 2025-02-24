@@ -566,7 +566,7 @@ async def extract_dynamic_proxy(
         logger.info(f"[{func_name}] 收到提取请求，参数：{json.dumps(request, ensure_ascii=False)}")
         
         # 验证基本参数
-        required_fields = ["productNo", "proxyType", "flow"]
+        required_fields = ["productNo", "proxyType", "flow", "totalAmount", "unitPrice"]
         missing_fields = [field for field in required_fields if field not in request]
         if missing_fields:
             error_msg = f"缺少必要参数: {', '.join(missing_fields)}"
@@ -605,9 +605,12 @@ async def extract_dynamic_proxy(
             "proxyType": request["proxyType"],
             "flow": flow,
             "maxFlowLimit": flow,
+            "unitPrice": request["unitPrice"],
+            "totalAmount": request["totalAmount"]
         }
         
         logger.info(f"[{func_name}] 流量参数: flow={flow}, maxFlowLimit={flow}")
+        logger.info(f"[{func_name}] 价格参数: unitPrice={request['unitPrice']}, totalAmount={request['totalAmount']}")
         
         # 添加国家和城市代码
         if "countryCode" in request:

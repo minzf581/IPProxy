@@ -2,17 +2,17 @@
 代理服务模块
 ==========
 
-此模块提供所有与代理相关的功能，包括：
-1. 代理管理（创建、更新、查询）
-2. 代理统计
-3. 代理监控
-4. 代理配置
+此模块提供代理服务相关的功能，包括：
+1. 代理提取
+2. 代理管理
+3. 订单处理
+4. 资源统计
 
 使用示例：
 --------
 ```python
 proxy_service = ProxyService()
-proxy_info = await proxy_service.get_proxy_info(proxy_id)
+result = await proxy_service.extract_proxy(params)
 ```
 
 注意事项：
@@ -22,26 +22,36 @@ proxy_info = await proxy_service.get_proxy_info(proxy_id)
 3. 添加必要的日志记录
 """
 
+import uuid
+import json
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from .ipipv_base_api import IPIPVBaseAPI
-from sqlalchemy.orm import Session
+from decimal import Decimal
 from app.models.user import User
-from app.models.dashboard import ProxyInfo
+from app.models.transaction import Transaction
+from app.models.dynamic_order import DynamicOrder
+from app.models.static_order import StaticOrder
+from app.models.product_inventory import ProductInventory
+from app.models.resource_usage import ResourceUsageStatistics
+from app.models.area import Area
+from app.services.ipipv_base_api import IPIPVBaseAPI
+from sqlalchemy.orm import Session
 from app.core.security import get_password_hash
-import json
 import traceback
 import time  # 添加 time 模块导入
 from app.database import SessionLocal, get_db
-from app.models.product_inventory import ProductInventory
 from app.core.config import settings
-from app.models.dynamic_order import DynamicOrder
-import uuid
-from decimal import Decimal
 import asyncio
 import random
 from fastapi import HTTPException
+
+# 添加自定义 JSON 编码器
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Decimal):
+            return str(obj)
+        return super(DecimalEncoder, self).default(obj)
 
 logger = logging.getLogger(__name__)
 
@@ -236,9 +246,63 @@ class ProxyService(IPIPVBaseAPI):
                 proxy_info=response.get("data")
             )
             
+            # 获取用户信息
+            user = db.query(User).filter(User.id == params["userId"]).first()
+            if not user:
+                raise Exception("用户不存在")
+                
+            # 计算订单金额
+            order_amount = params.get("totalAmount", 0)
+            
+            # 检查用户余额是否足够
+            if user.balance < order_amount:
+                raise Exception("用户余额不足")
+                
+            # 扣除用户余额
+            user.balance -= order_amount
+            # 更新用户消费总额
+            user.total_consumption += order_amount
+            
+            # 创建交易记录
+            transaction = Transaction(
+                transaction_no=f"DYN{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}",
+                user_id=user.id,
+                agent_id=params["agentId"],
+                order_no=order.order_no,
+                amount=Decimal(str(order_amount)),
+                balance=Decimal(str(user.balance)),
+                type="consumption",  # 消费类型
+                status="success",
+                remark=f"购买动态代理 {params['trafficAmount']}GB"
+            )
+            db.add(transaction)
+            
+            # 获取或创建资源使用记录
+            usage_stats = db.query(ResourceUsageStatistics).filter(
+                ResourceUsageStatistics.user_id == user.id,
+                ResourceUsageStatistics.product_no == params["poolId"]
+            ).first()
+            
+            if not usage_stats:
+                usage_stats = ResourceUsageStatistics(
+                    user_id=user.id,
+                    product_no=params["poolId"],
+                    resource_type="dynamic",
+                    total_amount=params["trafficAmount"],
+                    used_amount=0,
+                    today_usage=0,
+                    month_usage=0,
+                    last_month_usage=0
+                )
+                db.add(usage_stats)
+            else:
+                usage_stats.total_amount += params["trafficAmount"]
+            
+            # 添加订单和更新用户信息
             db.add(order)
             db.commit()
-            logger.info(f"订单创建成功: {order.id}")
+            logger.info(f"[ProxyService] 订单创建成功: {order.id}")
+            logger.info(f"[ProxyService] 用户余额更新成功: 当前余额={user.balance}")
             
             return {
                 "code": 0,
@@ -890,10 +954,28 @@ class ProxyService(IPIPVBaseAPI):
                 - extractMethod: 提取方式
                 - addressCode: 地址代码
                 - remark: 备注
+                - unitPrice: 单价
+                - totalAmount: 总价
         """
         try:
-            logger.info(f"[ProxyService] 开始完整提取流程: {json.dumps(params, ensure_ascii=False)}")
+            logger.info(f"[ProxyService] 开始完整提取流程: {json.dumps(params, ensure_ascii=False, cls=DecimalEncoder)}")
             
+            # 获取用户信息
+            user = db.query(User).filter(User.id == params["userId"]).first()
+            if not user:
+                raise Exception("用户不存在")
+                
+            # 检查总价参数
+            if "totalAmount" not in params:
+                raise Exception("缺少订单总价参数")
+                
+            order_amount = Decimal(str(params["totalAmount"]))
+            logger.info(f"[ProxyService] 订单总价: {order_amount}")
+            
+            # 检查用户余额是否足够
+            if user.balance < order_amount:
+                raise Exception(f"用户余额不足，需要 {order_amount}，当前余额 {user.balance}")
+                
             # 1. 创建主账户
             main_account_params = {
                 "appUsername": params["username"],
@@ -945,6 +1027,28 @@ class ProxyService(IPIPVBaseAPI):
                 raise Exception(f"开通代理失败: {open_proxy_result.get('msg')}")
             logger.info(f"[ProxyService] 开通代理成功: {json.dumps(open_proxy_result, ensure_ascii=False)}")
             
+            # 扣除用户余额
+            original_balance = user.balance
+            user.balance -= order_amount
+            # 更新用户消费总额
+            user.total_consumption += order_amount
+            
+            logger.info(f"[ProxyService] 用户余额更新: 原余额={original_balance}, 扣除金额={order_amount}, 现余额={user.balance}")
+            
+            # 创建交易记录
+            transaction = Transaction(
+                transaction_no=f"DYN{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}",
+                user_id=user.id,
+                agent_id=params["agentId"],
+                order_no=order_no,
+                amount=order_amount,
+                balance=user.balance,
+                type="consumption",  # 消费类型
+                status="success",
+                remark=f"购买动态代理 {params['flow']}GB"
+            )
+            db.add(transaction)
+            
             # 创建订单记录
             order = DynamicOrder(
                 id=str(uuid.uuid4()),
@@ -954,17 +1058,40 @@ class ProxyService(IPIPVBaseAPI):
                 agent_id=params["agentId"],
                 pool_type=params["productNo"],
                 traffic=params["flow"],
-                unit_price=params.get("unitPrice", 0),
-                total_amount=params.get("totalAmount", 0),
+                unit_price=params.get("unitPrice", 0),  # 记录单价
+                total_amount=order_amount,  # 记录实际支付总价
                 proxy_type="dynamic",
                 status="pending",
                 remark=params.get("remark", ""),
                 proxy_info=open_proxy_result.get("data")
             )
             
+            # 获取或创建资源使用记录
+            usage_stats = db.query(ResourceUsageStatistics).filter(
+                ResourceUsageStatistics.user_id == user.id,
+                ResourceUsageStatistics.product_no == params["productNo"]
+            ).first()
+            
+            if not usage_stats:
+                usage_stats = ResourceUsageStatistics(
+                    user_id=user.id,
+                    product_no=params["productNo"],
+                    resource_type="dynamic",
+                    total_amount=params["flow"],
+                    used_amount=0,
+                    today_usage=0,
+                    month_usage=0,
+                    last_month_usage=0
+                )
+                db.add(usage_stats)
+            else:
+                usage_stats.total_amount += params["flow"]
+            
+            # 添加订单和更新用户信息
             db.add(order)
             db.commit()
             logger.info(f"[ProxyService] 订单创建成功: {order.id}")
+            logger.info(f"[ProxyService] 用户余额更新成功: 当前余额={user.balance}")
             
             # 4. 检查订单状态
             order_no = open_proxy_result.get("data", {}).get("orderNo")
@@ -1016,7 +1143,7 @@ class ProxyService(IPIPVBaseAPI):
             
             # 构建返回数据
             order_dict = order.to_dict()
-            logger.info(f"[ProxyService] 订单数据: {json.dumps(order_dict, ensure_ascii=False)}")
+            logger.info(f"[ProxyService] 订单数据: {json.dumps(order_dict, ensure_ascii=False, cls=DecimalEncoder)}")
             
             response_data = {
                 "code": 0,
@@ -1035,11 +1162,12 @@ class ProxyService(IPIPVBaseAPI):
                             "status": "active"
                         }]
                     },
+                    "balance": str(user.balance),  # 将 Decimal 转换为字符串
                     "noPopup": True  # 添加标志，告诉前端不要显示弹窗
                 }
             }
             
-            logger.info(f"[ProxyService] 返回数据: {json.dumps(response_data, ensure_ascii=False)}")
+            logger.info(f"[ProxyService] 返回数据: {json.dumps(response_data, ensure_ascii=False, cls=DecimalEncoder)}")
             return response_data
             
         except Exception as e:
@@ -1157,7 +1285,7 @@ class ProxyService(IPIPVBaseAPI):
             
             # 构建返回数据
             order_dict = order.to_dict()
-            logger.info(f"[ProxyService] 订单数据: {json.dumps(order_dict, ensure_ascii=False)}")
+            logger.info(f"[ProxyService] 订单数据: {json.dumps(order_dict, ensure_ascii=False, cls=DecimalEncoder)}")
             
             response_data = {
                 "code": 0,
@@ -1180,7 +1308,7 @@ class ProxyService(IPIPVBaseAPI):
                 }
             }
             
-            logger.info(f"[ProxyService] 返回数据: {json.dumps(response_data, ensure_ascii=False)}")
+            logger.info(f"[ProxyService] 返回数据: {json.dumps(response_data, ensure_ascii=False, cls=DecimalEncoder)}")
             return response_data
             
         except Exception as e:

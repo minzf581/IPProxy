@@ -281,9 +281,9 @@ const DynamicBusinessContent: React.FC = () => {
       console.log('[DynamicBusiness] Balance API response:', response);
 
       if (response.data.code === 0) {
-        const balance = response.data.data.statistics.balance;
-        console.log('[DynamicBusiness] Setting balance:', balance);
-        setBalance(balance);
+        const newBalance = Number(response.data.data.statistics.balance);
+        console.log('[DynamicBusiness] Setting balance:', newBalance);
+        setBalance(newBalance);
       } else {
         message.error('获取余额失败');
       }
@@ -462,60 +462,57 @@ const DynamicBusinessContent: React.FC = () => {
         return;
       }
 
-      if (!selectedProduct.flow) {
-        message.error('产品流量不能为空');
-        return;
-      }
-
       if (!selectedAgent) {
         message.error('请选择用户');
         return;
       }
 
+      setLoading(true);
+
       // 计算总价
-      const totalCost = selectedProduct.flow * (selectedProduct.price || 0);
-      if (totalCost > balance) {
-        message.error(`余额不足，需要 ${totalCost} 元，当前余额 ${balance} 元`);
+      const totalAmount = Number((selectedProduct.price * (selectedProduct.flow || 1)).toFixed(2));
+
+      // 检查余额是否足够
+      if (totalAmount > balance) {
+        message.error(`余额不足，需要 ${totalAmount} 元，当前余额 ${balance} 元`);
         return;
       }
 
-      setLoading(true);
-      
-      // 构建提取参数
-      const extractParams: ExtractParams = {
+      const params = {
         productNo: selectedProduct.type,
-        proxyType: 104,
-        flow: selectedProduct.flow || 0,
+        proxyType: selectedProduct.proxyType,
+        flow: selectedProduct.flow || 1,
+        countryCode: selectedProduct.country,
+        cityCode: selectedProduct.city,
         maxFlowLimit: selectedProduct.flow || 0,
         username: selectedAgent.username,
-        countryCode: selectedProduct.country,  // 使用countryCode
-        cityCode: selectedProduct.city,        // 使用cityCode
-        extractConfig
+        extractConfig,
+        unitPrice: selectedProduct.price || 0,
+        totalAmount: totalAmount,
+        remark: ''
       };
-      
-      console.log('[DynamicBusiness] 提取代理参数:', extractParams);
-      
-      const response = await extractDynamicProxy(extractParams);
-      console.log('[DynamicBusiness] 提取代理响应:', response);
-      
-      if (response.data?.code === 0) {
-        const proxyUrl = response.data?.data?.proxyInfo?.list?.[0]?.proxyUrl || '';
-        if (proxyUrl) {
-          setExtractedUrl(proxyUrl);
-          setDisplayedUrl(proxyUrl);
-          message.success('提取成功');
-          
-          // 提取成功后更新余额
-          await loadBalance(selectedAgent.id);
-        } else {
-          message.error('未获取到代理地址');
+
+      const response = await extractDynamicProxy(params);
+
+      if (response.data.code === 0 && response.data.data) {
+        message.success('提取成功');
+        // 更新余额显示
+        if (response.data.data.balance !== undefined) {
+          setBalance(response.data.data.balance);
+        }
+        // 处理提取结果
+        if (response.data.data.url) {
+          setExtractedUrl(response.data.data.url);
+          setDisplayedUrl(response.data.data.url);
+        } else if (response.data.data.list) {
+          setExtractedUrl(response.data.data.list[0]?.proxyUrl || '');
+          setDisplayedUrl(response.data.data.list[0]?.proxyUrl || '');
         }
       } else {
-        message.error(response.data?.msg || '提取失败');
+        message.error(response.data.msg || '提取失败');
       }
-    } catch (error) {
-      console.error('[DynamicBusiness] 提取代理失败:', error);
-      message.error('提取代理失败');
+    } catch (error: any) {
+      message.error(error.message || '提取失败');
     } finally {
       setLoading(false);
     }
@@ -1152,7 +1149,7 @@ const DynamicBusinessContent: React.FC = () => {
             <Space direction="vertical" size="small">
               <div>账户余额</div>
               <Text style={{ fontSize: '24px', color: '#52c41a' }}>
-                ¥{balance.toFixed(2)}
+                ¥{Number(balance).toFixed(2)}
               </Text>
             </Space>
           </Space>
