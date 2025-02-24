@@ -5,11 +5,17 @@ set -e
 
 echo "开始部署..."
 
-# 检查必要的环境变量
+# 检查数据库 URL
 if [ -z "$DATABASE_URL" ]; then
     echo "错误: DATABASE_URL 环境变量未设置"
+    echo "请在 Railway 项目设置中配置数据库连接信息"
     exit 1
 fi
+
+# 打印数据库连接信息（隐藏敏感信息）
+echo "数据库连接信息:"
+MASKED_URL=$(echo "$DATABASE_URL" | sed -E 's/\/\/[^:]+:[^@]+@/\/\/*****:*****@/')
+echo "DATABASE_URL=$MASKED_URL"
 
 # 等待数据库准备就绪
 echo "等待数据库准备就绪..."
@@ -18,10 +24,6 @@ count=0
 
 # 首先确保安装了必要的包
 pip install --no-cache-dir psycopg2-binary
-
-# 打印数据库连接信息（隐藏敏感信息）
-echo "数据库连接信息:"
-echo "DATABASE_URL=${DATABASE_URL//:*@/:***@}"
 
 while ! python -c "
 import sys
@@ -46,11 +48,19 @@ try:
     logger.info(f'数据库端口: {db_url.port}')
     logger.info(f'数据库名称: {db_url.path[1:]}')
     
+    # 添加连接选项
     conn = psycopg2.connect(
         database_url,
-        connect_timeout=5
+        connect_timeout=5,
+        keepalives=1,
+        keepalives_idle=30,
+        keepalives_interval=10,
+        keepalives_count=5
     )
+    
+    # 设置会话参数
     cur = conn.cursor()
+    cur.execute('SET statement_timeout = 5000;')  # 5 秒超时
     cur.execute('SELECT 1')
     result = cur.fetchone()
     logger.info(f'查询结果: {result}')
