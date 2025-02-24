@@ -8,7 +8,8 @@ WORKDIR /app
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     TZ=Asia/Shanghai \
-    PORT=8000
+    PORT=8000 \
+    DATABASE_URL="postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
 
 # 安装系统依赖和 Python 包
 RUN apt-get update && apt-get install -y \

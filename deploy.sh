@@ -5,11 +5,10 @@ set -e
 
 echo "开始部署..."
 
-# 检查数据库 URL
+# 如果环境变量未设置，使用默认值
 if [ -z "$DATABASE_URL" ]; then
-    echo "错误: DATABASE_URL 环境变量未设置"
-    echo "请在 Railway 项目设置中配置数据库连接信息"
-    exit 1
+    export DATABASE_URL="postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
+    echo "使用默认数据库连接信息"
 fi
 
 # 打印数据库连接信息（隐藏敏感信息）
@@ -24,6 +23,10 @@ count=0
 
 # 首先确保安装了必要的包
 pip install --no-cache-dir psycopg2-binary
+
+# 打印所有环境变量（用于调试）
+echo "当前环境变量:"
+env | grep -v "PASSWORD\|SECRET\|KEY"
 
 while ! python -c "
 import sys
