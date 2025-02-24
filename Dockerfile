@@ -19,8 +19,9 @@ RUN apt-get update && \
 # 复制 package.json 和 package-lock.json
 COPY package*.json ./
 
-# 安装依赖
-RUN npm ci
+# 安装依赖，包括开发依赖
+RUN npm ci --include=dev && \
+    npm install -g vite
 
 # 复制源代码和配置文件
 COPY . .
@@ -29,7 +30,7 @@ COPY . .
 COPY .env.production .env.production
 
 # 构建项目
-RUN npm run build
+RUN npm run build || (echo "Build failed" && ls -la && cat package.json && exit 1)
 
 # 验证构建输出
 RUN if [ ! -d "dist" ] || [ ! -f "dist/index.html" ]; then \
