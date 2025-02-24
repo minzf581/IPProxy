@@ -7,6 +7,7 @@ WORKDIR /app
 # 设置环境变量
 ENV NODE_ENV=production
 ENV VITE_API_URL=https://ipproxy-production.up.railway.app:8080
+ENV PATH /app/node_modules/.bin:$PATH
 
 # 安装构建依赖
 RUN apt-get update && \
@@ -20,9 +21,7 @@ RUN apt-get update && \
 COPY package*.json ./
 
 # 安装所有依赖（包括开发依赖）
-RUN npm install && \
-    npm install -D vite @vitejs/plugin-react && \
-    npm install -g vite
+RUN npm install
 
 # 复制源代码和配置文件
 COPY . .
@@ -33,11 +32,10 @@ COPY .env.production .env.production
 # 显示环境信息
 RUN node -v && \
     npm -v && \
-    npm list vite && \
-    npm list @vitejs/plugin-react
+    ls -la node_modules/.bin/
 
 # 构建项目
-RUN NODE_ENV=production npm run build || (echo "Build failed" && ls -la && cat package.json && exit 1)
+RUN npx vite build || (echo "Build failed" && ls -la && cat package.json && exit 1)
 
 # 验证构建输出
 RUN if [ ! -d "dist" ] || [ ! -f "dist/index.html" ]; then \
