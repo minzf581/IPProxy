@@ -10,13 +10,17 @@ ENV PYTHONPATH=/app \
     TZ=Asia/Shanghai \
     PORT=8000 \
     DATABASE_URL="postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway" \
-    PATH="/home/app/.local/bin:$PATH"
+    PATH="/home/app/.local/bin:$PATH" \
+    PIP_DEFAULT_TIMEOUT=100 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
 
-# 安装系统依赖和 Python 包
+# 安装系统依赖
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
     python3-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 创建非 root 用户
@@ -37,11 +41,34 @@ RUN chown -R app:app /app && \
 # 切换到非 root 用户
 USER app
 
-# 安装 Python 依赖
-RUN pip install --no-cache-dir --user -r requirements.txt \
-    && pip install --no-cache-dir --user psycopg2-binary \
-    && pip install --no-cache-dir --user gunicorn \
-    && pip install --no-cache-dir --user alembic
+# 安装 pip 并升级
+RUN curl -sSL https://bootstrap.pypa.io/get-pip.py | python3 || \
+    (sleep 5 && curl -sSL https://bootstrap.pypa.io/get-pip.py | python3)
+
+# 安装基础工具
+RUN pip install --no-cache-dir --user pip setuptools wheel || \
+    (sleep 5 && pip install --no-cache-dir --user pip setuptools wheel)
+
+# 分步安装 Python 依赖，添加重试机制
+RUN for i in 1 2 3; do \
+        pip install --no-cache-dir --user -r requirements.txt && break || \
+        echo "Attempt $i failed! Retrying in 10 seconds..." && \
+        sleep 10; \
+    done
+
+# 安装额外的依赖，添加重试机制
+RUN for i in 1 2 3; do \
+        pip install --no-cache-dir --user \
+            psycopg2-binary \
+            gunicorn \
+            alembic \
+            pydantic[email] \
+            aiohttp \
+            pandas \
+            numpy && break || \
+        echo "Attempt $i failed! Retrying in 10 seconds..." && \
+        sleep 10; \
+    done
 
 # 暴露端口
 EXPOSE 8000
