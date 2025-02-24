@@ -22,24 +22,27 @@ COPY package*.json ./
 
 # 清理 npm 缓存并安装依赖
 RUN npm cache clean --force && \
-    npm install --legacy-peer-deps && \
-    npm install -D @vitejs/plugin-react@4.2.1 vite@4.5.2
+    npm install --legacy-peer-deps --force && \
+    npm install -D @vitejs/plugin-react@4.2.1 vite@4.5.2 --force
+
+# 验证关键依赖安装
+RUN npm list @vitejs/plugin-react@4.2.1 || true && \
+    npm list vite@4.5.2 || true && \
+    npm list react || true
 
 # 复制源代码和配置文件
 COPY . ./
 
-# 确保.env.production文件存在（如果存在）
+# 确保.env.production文件存在
 RUN touch .env.production
 
-# 显示环境信息和依赖
+# 显示环境信息
 RUN node -v && \
-    npm -v && \
-    npm ls vite && \
-    npm ls @vitejs/plugin-react
+    npm -v
 
 # 构建项目
-RUN NODE_ENV=production VITE_API_URL=$VITE_API_URL npm run build || \
-    (echo "Build failed" && ls -la && cat vite.config.ts && exit 1)
+RUN VITE_API_URL=$VITE_API_URL npm run build || \
+    (echo "Build failed" && ls -la && cat package.json && cat vite.config.ts && exit 1)
 
 # 验证构建输出
 RUN if [ ! -d "dist" ] || [ ! -f "dist/index.html" ]; then \
