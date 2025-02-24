@@ -374,51 +374,37 @@ async def root():
 @app.get("/health", tags=["health"])
 async def health_check():
     """健康检查端点"""
-    logger.info("Health check endpoint called")
-    health_status = {
-        "status": "unhealthy",
-        "checks": {
-            "database": "unknown",
-            "application": "unknown"
-        },
-        "timestamp": datetime.datetime.now().isoformat()
-    }
-    
     try:
         # 检查数据库连接
         db = next(get_db())
         try:
-            db.execute("SELECT 1")
-            health_status["checks"]["database"] = "connected"
-        except Exception as db_error:
-            logger.error(f"Database check failed: {str(db_error)}")
-            health_status["checks"]["database"] = f"error: {str(db_error)}"
-        finally:
-            db.close()
-        
-        # 检查应用状态
-        health_status["checks"]["application"] = "running"
-        health_status["status"] = "healthy"
-        
-        # 如果所有检查都通过
-        if all(status == "connected" or status == "running" 
-               for status in health_status["checks"].values()):
-            logger.info("Health check passed")
-            return health_status
-        else:
-            logger.warning(f"Health check partially failed: {health_status}")
+            # 简单的数据库检查
+            db.execute("SELECT 1").scalar()
+            return {
+                "status": "healthy",
+                "timestamp": datetime.datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Health check failed: {str(e)}")
             return JSONResponse(
                 status_code=503,
-                content=health_status
+                content={
+                    "status": "unhealthy",
+                    "error": str(e),
+                    "timestamp": datetime.datetime.now().isoformat()
+                }
             )
-            
+        finally:
+            db.close()
     except Exception as e:
-        logger.error(f"Health check failed with error: {str(e)}")
-        health_status["status"] = "unhealthy"
-        health_status["error"] = str(e)
+        logger.error(f"Health check failed: {str(e)}")
         return JSONResponse(
             status_code=503,
-            content=health_status
+            content={
+                "status": "unhealthy",
+                "error": str(e),
+                "timestamp": datetime.datetime.now().isoformat()
+            }
         )
 
 # 注册路由
