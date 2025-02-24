@@ -33,9 +33,19 @@ export const login = async (username: string, password: string): Promise<ApiResp
   try {
     debug.log('开始登录请求:', { username, timestamp: new Date().toISOString() });
     
+    // 创建 FormData
+    const formData = new FormData();
+    formData.append('username', username);
+    formData.append('password', password);
+    
     const { data: backendResponse } = await apiRequest.post<BackendResponse<LoginResponse>>(
-      API_ROUTES.AUTH.LOGIN, 
-      { username, password }
+      API_ROUTES.AUTH.LOGIN,
+      formData,
+      {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      }
     );
     
     debug.log('收到登录响应:', backendResponse);
@@ -79,7 +89,7 @@ export const getCurrentUser = async (): Promise<ApiResponse<User | null>> => {
       };
     }
 
-    const { data: backendResponse } = await apiRequest.get<BackendResponse<User>>(API_ROUTES.AUTH.PROFILE);
+    const { data: backendResponse } = await apiRequest.get<BackendResponse<User>>('/api/auth/current-user');
     debug.log('获取用户信息成功:', backendResponse);
     
     if (backendResponse.code === 0) {
@@ -110,7 +120,7 @@ export const updatePassword = async (data: { oldPassword: string; newPassword: s
   try {
     debug.log('更新密码');
     const { data: backendResponse } = await apiRequest.post<BackendResponse<void>>(
-      API_ROUTES.AUTH.PROFILE, 
+      '/api/auth/password',
       data
     );
     debug.log('密码更新成功');

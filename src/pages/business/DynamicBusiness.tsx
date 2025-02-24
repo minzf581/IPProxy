@@ -6,6 +6,8 @@ import type { Key } from 'react';
 import type { ColumnType } from 'antd/es/table';
 import { useAuth } from '@/hooks/useAuth';
 import request from '@/utils/request';
+import type { ApiResponse } from '@/types/api';
+import type { UserListResponse } from '@/types/user';
 import { 
   getDynamicProxyProducts,
   createProxyUser,
@@ -36,7 +38,8 @@ import {
   ExtractMethod,
   Protocol,
   DataFormat,
-  Delimiter
+  Delimiter,
+  ExtractParams
 } from '@/types/dynamicProxy';
 import { UserRole } from '@/types/user';
 import { getMappedValue, getUniqueValues, PRODUCT_NO_MAP, AREA_MAP, COUNTRY_MAP, CITY_MAP } from '@/constants/mappings';
@@ -45,6 +48,7 @@ import styles from './DynamicBusiness.module.less';
 import type { 
   FilterOptions as DynamicFilterOptions
 } from '@/types/dynamicProxy';
+import type { User } from '@/types/user';
 
 const { Option } = Select;
 const { Text } = Typography;
@@ -126,14 +130,23 @@ interface DynamicProxyAreaData {
 
 // 添加区域名称映射
 const AREA_NAME_MAP: { [key: string]: string } = {
-  '1': '北美洲',
+  '6': '北美洲',
   '2': '欧洲',
-  '3': '亚洲',
-  '4': '南美洲',
-  '5': '大洋洲',
-  '6': '非洲',
-  '7': '其他地区'
+  '1': '亚洲',
+  '3': '非洲',
+  '4': '大洋洲',
+  '7': '南美洲'
 };
+
+interface ExtractResultItem {
+  proxyUrl?: string;
+  list?: string[];
+}
+
+interface ExtractResult {
+  list?: ExtractResultItem[];
+  url?: string;
+}
 
 const DynamicBusinessContent: React.FC = () => {
   const { user } = useAuth();
@@ -153,6 +166,7 @@ const DynamicBusinessContent: React.FC = () => {
     delimiter: Delimiter.CRLF
   });
   const [extractedUrl, setExtractedUrl] = useState<string>('');
+  const [displayedUrl, setDisplayedUrl] = useState<string>('');
   const [showUrlModal, setShowUrlModal] = useState<boolean>(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductPrice | null>(null);
   const [areaData, setAreaData] = useState<DynamicProxyAreaData | null>(null);
@@ -255,21 +269,26 @@ const DynamicBusinessContent: React.FC = () => {
   }, [user, isAgent]);
 
   // 加载余额
-  const loadBalance = async (userId?: number) => {
+  const loadBalance = async (userId: number) => {
     try {
-      if (isAgent && user?.id) {
-        const response = await request<BusinessResponse>(`/api/dashboard/agent/${user.id}`, {
-          method: 'GET'
-        });
-        
-        if (response.data?.code === 0 && response.data?.data) {
-          setBalance(response.data.data.agent.balance || 0);
-        } else {
-          message.error('获取余额失败');
-        }
+      console.log('[DynamicBusiness] Loading balance for user:', userId);
+      const apiPath = userId === user?.id 
+        ? '/api/open/app/dashboard/info/v2'
+        : `/api/open/app/dashboard/info/v2?target_user_id=${userId}`;
+      
+      console.log('[DynamicBusiness] Making request to:', apiPath);
+      const response = await request.get<ApiResponse<any>>(apiPath);
+      console.log('[DynamicBusiness] Balance API response:', response);
+
+      if (response.data.code === 0) {
+        const newBalance = Number(response.data.data.statistics.balance);
+        console.log('[DynamicBusiness] Setting balance:', newBalance);
+        setBalance(newBalance);
+      } else {
+        message.error('获取余额失败');
       }
     } catch (error) {
-      console.error('获取余额失败:', error);
+      console.error('[DynamicBusiness] Failed to load balance:', error);
       message.error('获取余额失败');
     }
   };
@@ -301,7 +320,7 @@ const DynamicBusinessContent: React.FC = () => {
             name: item.name || item.productName,
             type: item.type || item.productNo,
             proxyType: item.proxyType || 104,
-            flow: item.flow || 1000,
+            flow: undefined,
             duration: item.duration || 30,
             unit: item.unit || 1,
             area: item.area || '',
@@ -328,11 +347,23 @@ const DynamicBusinessContent: React.FC = () => {
     }
   };
 
-  // 初始化时如果是代理商，自动设置selectedAgent
+  // 初始化时如果是代理商，自动设置selectedAgent和加载余额
   useEffect(() => {
     if (isAgent && user?.id) {
-      setSelectedAgent({ id: user.id, name: user.username || '', username: user.username || '' });
+      console.log('[DynamicBusiness] 初始化代理商数据:', {
+        userId: user.id,
+        username: user.username
+      });
+      
+      setSelectedAgent({
+        id: user.id,
+        name: user?.username || '',
+        username: user?.username || ''
+      });
+      
+      // 加载产品列表和余额
       loadProducts(user.id);
+      loadBalance(user.id);
     }
   }, [isAgent, user]);
 
@@ -354,22 +385,40 @@ const DynamicBusinessContent: React.FC = () => {
           availableUsers: userList.map(u => ({ id: u.id, username: u.username }))
         });
         
-        setSelectedAgent({ id: targetId, name: '', username: '' });
+        // 查找选中的用户信息
+        let selectedUser;
+        if (targetId === user.id) {
+          selectedUser = user;
+        } else {
+          selectedUser = userList.find(u => u.id === targetId);
+        }
+
+        if (!selectedUser) {
+          message.error('未找到选中的用户');
+          return;
+        }
+
+        setSelectedAgent({
+          id: targetId,
+          name: selectedUser.username || '',
+          username: selectedUser.username || ''
+        });
         await loadBalance(targetId);
-        await loadProducts(targetId);
       } else {
         console.log('[动态代理页面] 管理员选择代理商:', {
           value,
           availableAgents: agents.map(a => ({ id: a.id, username: a.username }))
         });
         
-        setSelectedAgent(value ? { id: value, name: '', username: '' } : null);
-        await loadBalance(value);
+        // 查找选中的代理商信息
+        const selectedAgent = agents.find(a => a.id === value);
+        setSelectedAgent(value ? {
+          id: value,
+          name: selectedAgent?.username || '',
+          username: selectedAgent?.username || ''
+        } : null);
         if (value) {
-          await loadProducts(value);
-        } else {
-          setAreaList([]);
-          console.log('[动态代理页面] 清空选择和数据');
+          await loadBalance(value);
         }
       }
     } catch (error) {
@@ -407,30 +456,63 @@ const DynamicBusinessContent: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    console.log('[DynamicBusiness] 开始提取代理:', {
-      selectedAgent,
-      extractConfig,
-      timestamp: new Date().toISOString()
-    });
-
     try {
-      setLoading(true);
-      const response = await extractDynamicProxy({
-        addressCode: selectedProduct?.area || '',
-        maxFlowLimit: selectedProduct?.flow || 1000,
-        extractConfig
-      });
-
-      if (response.code === 0 && response.data?.url) {
-        setExtractedUrl(response.data.url);
-        setShowUrlModal(true);
-        message.success('提取成功');
-      } else {
-        message.error(response.msg || '提取失败');
+      if (!selectedProduct) {
+        message.error('请选择产品');
+        return;
       }
-    } catch (error) {
-      console.error('[DynamicBusiness] 提取失败:', error);
-      message.error('提取失败，请稍后重试');
+
+      if (!selectedAgent) {
+        message.error('请选择用户');
+        return;
+      }
+
+      setLoading(true);
+
+      // 计算总价
+      const totalAmount = Number((selectedProduct.price * (selectedProduct.flow || 1)).toFixed(2));
+
+      // 检查余额是否足够
+      if (totalAmount > balance) {
+        message.error(`余额不足，需要 ${totalAmount} 元，当前余额 ${balance} 元`);
+        return;
+      }
+
+      const params = {
+        productNo: selectedProduct.type,
+        proxyType: selectedProduct.proxyType,
+        flow: selectedProduct.flow || 1,
+        countryCode: selectedProduct.country,
+        cityCode: selectedProduct.city,
+        maxFlowLimit: selectedProduct.flow || 0,
+        username: selectedAgent.username,
+        extractConfig,
+        unitPrice: selectedProduct.price || 0,
+        totalAmount: totalAmount,
+        remark: ''
+      };
+
+      const response = await extractDynamicProxy(params);
+
+      if (response.data.code === 0 && response.data.data) {
+        message.success('提取成功');
+        // 更新余额显示
+        if (response.data.data.balance !== undefined) {
+          setBalance(response.data.data.balance);
+        }
+        // 处理提取结果
+        if (response.data.data.url) {
+          setExtractedUrl(response.data.data.url);
+          setDisplayedUrl(response.data.data.url);
+        } else if (response.data.data.list) {
+          setExtractedUrl(response.data.data.list[0]?.proxyUrl || '');
+          setDisplayedUrl(response.data.data.list[0]?.proxyUrl || '');
+        }
+      } else {
+        message.error(response.data.msg || '提取失败');
+      }
+    } catch (error: any) {
+      message.error(error.message || '提取失败');
     } finally {
       setLoading(false);
     }
@@ -606,70 +688,119 @@ const DynamicBusinessContent: React.FC = () => {
   }, [areaList, products, selectedProduct]);
 
   // 处理州/省变更
-  const handleStateChange = (value: string) => {
-    if (!selectedProduct) return;
+  const handleStateChange = useCallback((value: string, option: any) => {
+    const record = option as ProductPrice;
+    console.log('[DynamicBusiness] 处理州/省变更:', {
+      value,
+      record,
+      currentArea: record.area,
+      currentCountry: record.country
+    });
 
-    console.log('[DynamicBusiness] 选择州/省:', value);
+    // 更新产品列表中的对应产品
+    const updatedProducts = products.map(p => {
+      if (p.id === record.id) {
+        return {
+          ...p,
+          state: value,
+          city: '' // 清空城市选择
+        };
+      }
+      return p;
+    });
+    setProducts(updatedProducts);
 
-    // 更新产品信息
-    setSelectedProduct(prev => ({
-      ...prev!,
-      state: value
-    }));
+    // 如果是当前选中的产品，也更新选中产品的状态
+    if (selectedProduct?.id === record.id) {
+      setSelectedProduct(prev => ({
+        ...prev!,
+        state: value,
+        city: ''
+      }));
+    }
 
-    // 获取选中的国家
-    const selectedCountry = areaList
-      .find(area => area.areaCode === selectedProduct.area)
-      ?.countries.find(country => country.countryCode === selectedProduct.country);
+    // 查找选中的区域和国家数据
+    const selectedArea = areaList.find(area => area.areaCode === record.area);
+    const selectedCountry = selectedArea?.countries.find(
+      country => country.countryCode === record.country
+    );
 
-    if (!selectedCountry) return;
+    if (selectedCountry) {
+      // 更新城市选项
+      const cities = selectedCountry.cities || [];
+      setFilterOptions(prev => ({
+        ...prev,
+        cities: cities.map(city => ({
+          value: city.cityCode,
+          label: city.cityName || '未知城市'
+        }))
+      }));
 
-    // 更新过滤选项
-    const cities = selectedCountry.cities || [];
-    setFilterOptions(prev => ({
-      ...prev,
-      cities: cities.map((city: DynamicProxyCity) => ({
-        value: city.cityCode,
-        label: city.cityName || '未知城市'
-      }))
-    }));
-  };
+      console.log('[DynamicBusiness] 更新城市选项:', {
+        citiesCount: cities.length,
+        cities: cities.map(c => ({ code: c.cityCode, name: c.cityName }))
+      });
+    }
+  }, [areaList, products, selectedProduct]);
 
   // 处理城市变更
-  const handleCityChange = (value: string) => {
-    if (!selectedProduct) return;
+  const handleCityChange = useCallback((value: string, option: any) => {
+    const record = option as ProductPrice;
+    console.log('[DynamicBusiness] 处理城市变更:', {
+      value,
+      record
+    });
 
-    console.log('[DynamicBusiness] 选择城市:', value);
+    // 更新产品列表中的对应产品
+    const updatedProducts = products.map(p => {
+      if (p.id === record.id) {
+        return {
+          ...p,
+          city: value
+        };
+      }
+      return p;
+    });
+    setProducts(updatedProducts);
 
-    // 获取选中的国家
-    const selectedCountry = areaList
-      .find(area => area.areaCode === selectedProduct.area)
-      ?.countries.find(country => country.countryCode === selectedProduct.country);
-
-    if (!selectedCountry) return;
-
-    // 获取选中的城市
-    const selectedCity = selectedCountry.cities?.find(city => city.cityCode === value);
-    if (!selectedCity) return;
-
-    // 更新产品信息
-    setSelectedProduct(prev => ({
-      ...prev!,
-      city: value
-    }));
-  };
+    // 如果是当前选中的产品，也更新选中产品的状态
+    if (selectedProduct?.id === record.id) {
+      setSelectedProduct(prev => ({
+        ...prev!,
+        city: value
+      }));
+    }
+  }, [products, selectedProduct]);
 
   // 处理流量变更
   const handleFlowChange = (value: number | null) => {
-    if (!selectedProduct || !value) return;
+    if (!selectedProduct) return;
 
-    console.log('[DynamicBusiness] 修改流量:', value);
+    console.log('[DynamicBusiness] 修改流量:', {
+      originalValue: value,
+      productId: selectedProduct.id,
+      price: selectedProduct.price
+    });
 
-    // 更新产品信息
+    const flow = value === null ? undefined : value;
+    const price = selectedProduct.price || 0;
+    const totalPrice = flow ? (flow * price) : 0;
+
+    // 更新产品信息，包括流量和总价
     setSelectedProduct(prev => ({
       ...prev!,
-      flow: value
+      flow: flow,
+      totalPrice: totalPrice
     }));
+
+    // 更新产品列表中的对应产品
+    setProducts(prevProducts => 
+      prevProducts.map(p => 
+        p.id === selectedProduct.id 
+          ? { ...p, flow: flow, totalPrice: totalPrice }
+          : p
+      )
+    );
   };
 
   // 修改区域数据加载函数
@@ -725,78 +856,74 @@ const DynamicBusinessContent: React.FC = () => {
     } catch (error) {
       console.error('[DynamicBusiness] 加载区域列表失败:', error);
       setAreaList([]);
+      setFilterOptions({
+        areas: [],
+        countries: [],
+        states: [],
+        cities: []
+      });
     }
   }, []);
 
   // 修改 computedFilterOptions 函数
   const computedFilterOptions = useMemo(() => {
+    console.log('[DynamicBusiness] 计算过滤选项:', {
+      areaListLength: areaList.length,
+      selectedProduct,
+      areaList
+    });
+
     const options: FilterOptions = {
-      areas: [],
+      areas: areaList.map((area: DynamicProxyArea) => ({
+        value: area.areaCode,
+        label: AREA_NAME_MAP[area.areaCode] || area.areaName || '未知区域'
+      })),
       countries: [],
       states: [],
       cities: []
     };
 
-    // 处理区域列表
-    const processAreas = () => {
-      options.areas = areaList.map((area: DynamicProxyArea) => ({
-        value: area.areaCode,
-        label: AREA_NAME_MAP[area.areaCode] || area.areaName || '未知区域'
-      }));
-    };
-
-    // 处理国家列表
-    const processCountries = (selectedAreaData: DynamicProxyArea) => {
-      options.countries = selectedAreaData.countries.map((country: DynamicProxyCountry) => ({
-        value: country.countryCode,
-        label: country.countryName || '未知国家'
-      }));
-    };
-
-    // 处理州/省列表
-    const processStates = (selectedCountry: DynamicProxyCountry) => {
-      options.states = selectedCountry.states.map((state: DynamicProxyState) => ({
-        value: state.code,
-        label: state.name || '未知州/省'
-      }));
-    };
-
-    // 处理城市列表
-    const processCities = (country: DynamicProxyCountry) => {
-      if (country.cities && Array.isArray(country.cities)) {
-        const validCities = country.cities.filter((city): city is DynamicProxyCity => {
-          return city && typeof city === 'object' && 'cityCode' in city && Boolean(city.cityCode);
-        });
-        
-        options.cities = validCities.map((city) => ({
-          value: city.cityCode,
-          label: city.cityName || '未知城市'
-        }));
-      }
-    };
-
-    // 主处理逻辑
-    processAreas();
-
     if (selectedProduct?.area) {
-      const selectedAreaData = areaList.find((area: DynamicProxyArea) => area.areaCode === selectedProduct.area);
-      if (selectedAreaData) {
-        processCountries(selectedAreaData);
+      const selectedArea = areaList.find(area => area.areaCode === selectedProduct.area);
+      if (selectedArea) {
+        // 设置国家选项
+        options.countries = selectedArea.countries.map(country => ({
+          value: country.countryCode,
+          label: country.countryName || '未知国家'
+        }));
 
+        // 如果选择了国家，设置州/省和城市选项
         if (selectedProduct.country) {
-          const selectedCountry = selectedAreaData.countries.find(
-            (country: DynamicProxyCountry) => country.countryCode === selectedProduct.country
+          const selectedCountry = selectedArea.countries.find(
+            country => country.countryCode === selectedProduct.country
           );
+          
           if (selectedCountry) {
-            processStates(selectedCountry);
+            // 设置州/省选项
+            options.states = (selectedCountry.states || []).map(state => ({
+              value: state.code,
+              label: state.name || '未知州/省'
+            }));
 
+            // 如果选择了州/省，设置城市选项
             if (selectedProduct.state) {
-              processCities(selectedCountry);
+              options.cities = (selectedCountry.cities || []).map(city => ({
+                value: city.cityCode,
+                label: city.cityName || '未知城市'
+              }));
             }
           }
         }
       }
     }
+
+    console.log('[DynamicBusiness] 计算后的过滤选项:', {
+      areas: options.areas.length,
+      countries: options.countries.length,
+      states: options.states.length,
+      cities: options.cities.length,
+      selectedProduct
+    });
 
     return options;
   }, [areaList, selectedProduct]);
@@ -824,9 +951,11 @@ const DynamicBusinessContent: React.FC = () => {
         key: 'area',
         width: 520,
         render: (_: any, record: ProductPrice) => {
-          const isAreaSelected = Boolean(record.area);
-          const isCountrySelected = Boolean(record.country);
-          const isStateSelected = Boolean(record.state);
+          console.log('[DynamicBusiness] 渲染区域选择:', {
+            record,
+            filterOptions: computedFilterOptions,
+            areaListLength: areaList.length
+          });
 
           return (
             <Space style={{ display: 'flex', flexWrap: 'nowrap', gap: '8px' }}>
@@ -837,8 +966,13 @@ const DynamicBusinessContent: React.FC = () => {
                   value={record.area}
                   onChange={(value: string) => handleAreaChange(value, record)}
                   placeholder="请选择区域"
-                  options={computedFilterOptions.areas}
-                />
+                >
+                  {areaList.map((area) => (
+                    <Option key={area.areaCode} value={area.areaCode}>
+                      {AREA_NAME_MAP[area.areaCode] || area.areaName || '未知区域'}
+                    </Option>
+                  ))}
+                </Select>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -848,9 +982,14 @@ const DynamicBusinessContent: React.FC = () => {
                   value={record.country}
                   onChange={(value: string) => handleCountryChange(value, record)}
                   placeholder="请选择国家"
-                  disabled={!isAreaSelected}
-                  options={computedFilterOptions.countries}
-                />
+                  disabled={!record.area}
+                >
+                  {computedFilterOptions.countries.map((country) => (
+                    <Option key={country.value} value={country.value}>
+                      {country.label}
+                    </Option>
+                  ))}
+                </Select>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -858,11 +997,16 @@ const DynamicBusinessContent: React.FC = () => {
                 <Select
                   style={{ width: '120px' }}
                   value={record.state}
-                  onChange={handleStateChange}
+                  onChange={(value: string) => handleStateChange(value, record)}
                   placeholder="请选择州/省"
-                  disabled={!isCountrySelected}
-                  options={computedFilterOptions.states}
-                />
+                  disabled={!record.country}
+                >
+                  {computedFilterOptions.states.map((state) => (
+                    <Option key={state.value} value={state.value}>
+                      {state.label}
+                    </Option>
+                  ))}
+                </Select>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -870,11 +1014,16 @@ const DynamicBusinessContent: React.FC = () => {
                 <Select
                   style={{ width: '120px' }}
                   value={record.city}
-                  onChange={handleCityChange}
+                  onChange={(value: string) => handleCityChange(value, record)}
                   placeholder="请选择城市"
-                  disabled={!isStateSelected}
-                  options={computedFilterOptions.cities}
-                />
+                  disabled={!record.state}
+                >
+                  {computedFilterOptions.cities.map((city) => (
+                    <Option key={city.value} value={city.value}>
+                      {city.label}
+                    </Option>
+                  ))}
+                </Select>
               </div>
             </Space>
           );
@@ -890,9 +1039,31 @@ const DynamicBusinessContent: React.FC = () => {
             min={1}
             max={1000}
             value={record.flow}
-            onChange={handleFlowChange}
+            onChange={(value) => {
+              console.log('[DynamicBusiness] 流量输入变更:', {
+                originalValue: value,
+                recordId: record.id
+              });
+              handleFlowChange(value);
+            }}
             placeholder="请输入流量"
             style={{ width: '100%' }}
+            precision={0}
+            step={1}
+            controls={true}
+            parser={(value) => {
+              if (!value) return 0;
+              const parsed = parseInt(value, 10);
+              console.log('[DynamicBusiness] 流量输入解析:', {
+                input: value,
+                parsed: parsed
+              });
+              return isNaN(parsed) ? 0 : parsed;
+            }}
+            formatter={(value) => {
+              if (!value && value !== 0) return '';
+              return value.toString();
+            }}
           />
         )
       },
@@ -911,11 +1082,9 @@ const DynamicBusinessContent: React.FC = () => {
         dataIndex: 'totalPrice',
         key: 'totalPrice',
         width: 120,
-        render: (_: any, record: ProductPrice) => {
-          const flow = record.flow || 0;
-          const price = typeof record.price === 'number' ? record.price : 0;
-          const totalPrice = (flow * price / 1000).toFixed(2); // 将MB转换为GB
-          return `¥${totalPrice}`;
+        render: (totalPrice: number, record: ProductPrice) => {
+          const displayPrice = totalPrice || 0;
+          return `¥${displayPrice.toFixed(2)}`;
         }
       }
     ];
@@ -957,8 +1126,9 @@ const DynamicBusinessContent: React.FC = () => {
                   onChange={handleAgentChange}
                   allowClear
                 >
-                  {userList.map(user => (
-                    <Option key={user.id} value={user.id}>{user.username}</Option>
+                  <Option key={user?.id} value={user?.id}>{user?.username} (当前用户)</Option>
+                  {userList.map(u => (
+                    <Option key={u.id} value={u.id}>{u.username}</Option>
                   ))}
                 </Select>
               )}
@@ -979,7 +1149,7 @@ const DynamicBusinessContent: React.FC = () => {
             <Space direction="vertical" size="small">
               <div>账户余额</div>
               <Text style={{ fontSize: '24px', color: '#52c41a' }}>
-                ¥{balance.toFixed(2)}
+                ¥{Number(balance).toFixed(2)}
               </Text>
             </Space>
           </Space>
@@ -1069,6 +1239,21 @@ const DynamicBusinessContent: React.FC = () => {
               >
                 提取
               </Button>
+              {displayedUrl && (
+                <div style={{ marginTop: '16px' }}>
+                  <Typography.Paragraph copyable={{ text: displayedUrl }}>
+                    {displayedUrl}
+                  </Typography.Paragraph>
+                  <Space>
+                    <Button onClick={() => navigator.clipboard.writeText(displayedUrl)}>
+                      拷贝链接
+                    </Button>
+                    <Button onClick={() => window.open(displayedUrl, '_blank')}>
+                      打开链接
+                    </Button>
+                  </Space>
+                </div>
+              )}
             </Space>
           </Card>
         </Space>
@@ -1085,9 +1270,26 @@ const DynamicBusinessContent: React.FC = () => {
           okText="复制"
           cancelText="关闭"
         >
-          <Typography.Paragraph copyable>
-            {extractedUrl}
-          </Typography.Paragraph>
+          <Alert
+            message="提取成功"
+            description={
+              <div>
+                <Typography.Paragraph>
+                  {extractConfig.method === ExtractMethod.PASSWORD ? '代理地址列表：' : 'API地址：'}
+                </Typography.Paragraph>
+                <Typography.Paragraph copyable style={{ whiteSpace: 'pre-wrap' }}>
+                  {extractedUrl}
+                </Typography.Paragraph>
+                {extractConfig.method === ExtractMethod.PASSWORD && (
+                  <Typography.Text type="secondary">
+                    注意：代理地址有效期为 {extractConfig.validTime} 分钟
+                  </Typography.Text>
+                )}
+              </div>
+            }
+            type="success"
+            showIcon
+          />
         </Modal>
       </Card>
     </PageContainer>

@@ -76,7 +76,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Body, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models.resource_type import ResourceType
 from app.models.user import User
 from app.models.prices import AgentPrice
 from app.models.product_inventory import ProductInventory
@@ -84,24 +83,73 @@ from typing import Dict, Any, List, Optional
 from app.services.auth import get_current_user
 from app.crud import product_prices
 import logging
+from app.services.ipipv_base_api import IPIPVBaseAPI
+from app.core.deps import get_ipipv_api
+import json
+import traceback
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["设置"])
 
-@router.get("/settings/resource-types")
-def get_resource_types(db: Session = Depends(get_db)):
-    """获取所有资源类型"""
+@router.get("/resources")
+async def get_resources(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """获取资源列表"""
     try:
-        resource_types = db.query(ResourceType).all()
+        # 查询所有可用的产品
+        resources = db.query(ProductInventory).filter(
+            ProductInventory.enable == 1
+        ).all()
+        
         return {
             "code": 0,
             "msg": "success",
-            "data": [rt.to_dict() for rt in resource_types]
+            "data": [resource.to_dict() for resource in resources]
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"获取资源列表失败: {str(e)}")
+        return {
+            "code": 500,
+            "msg": f"获取资源列表失败: {str(e)}",
+            "data": None
+        }
+
+@router.get("/resource/{resource_id}")
+async def get_resource(
+    resource_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """获取资源详情"""
+    try:
+        resource = db.query(ProductInventory).filter(
+            ProductInventory.id == resource_id,
+            ProductInventory.enable == 1
+        ).first()
+        
+        if not resource:
+            return {
+                "code": 404,
+                "msg": "资源不存在",
+                "data": None
+            }
+            
+        return {
+            "code": 0,
+            "msg": "success",
+            "data": resource.to_dict()
+        }
+    except Exception as e:
+        logger.error(f"获取资源详情失败: {str(e)}")
+        return {
+            "code": 500,
+            "msg": f"获取资源详情失败: {str(e)}",
+            "data": None
+        }
 
 @router.get("/settings/prices")
 async def get_resource_prices(
@@ -142,7 +190,7 @@ def update_resource_prices(prices: Dict[str, float], db: Session = Depends(get_d
             if not key.startswith("resource_"):
                 continue
             resource_id = int(key.split("_")[1])
-            resource = db.query(ResourceType).filter(ResourceType.id == resource_id).first()
+            resource = db.query(ProductInventory).filter(ProductInventory.id == resource_id).first()
             if resource:
                 resource.price = Decimal(str(price))
         db.commit()
@@ -234,124 +282,160 @@ async def update_agent_prices(
         logger.error(f"更新代理商价格设置失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+async def handle_ip_whitelist(
+    db: Session,
+    product_id: int,
+    new_ips: List[str],
+    app_username: str,
+    ipipv_api: IPIPVBaseAPI
+) -> None:
+    """处理IP白名单变更"""
+    try:
+        # 获取产品信息
+        product = db.query(ProductInventory).filter(ProductInventory.id == product_id).first()
+        if not product:
+            raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
+            
+        # 获取当前IP白名单
+        current_ips = product.ip_whitelist or []
+        logger.info(f"当前IP白名单: {current_ips}")
+        logger.info(f"新IP白名单: {new_ips}")
+        
+        # 找出需要添加和删除的IP
+        ips_to_add = set(new_ips) - set(current_ips)
+        ips_to_remove = set(current_ips) - set(new_ips)
+        
+        logger.info(f"需要添加的IP: {ips_to_add}")
+        logger.info(f"需要删除的IP: {ips_to_remove}")
+        
+        # 添加新IP
+        for ip in ips_to_add:
+            try:
+                response = await ipipv_api._make_request(
+                    "api/open/app/proxy/addIpWhiteList/v2",
+                    {
+                        "appUsername": app_username,
+                        "ip": ip,
+                        "proxyType": product.proxy_type,
+                        "productNo": product.product_no
+                    }
+                )
+                # 修改判断逻辑：同时接受 code=0 和 code=200 作为成功标志
+                if response and (response.get("code") == 0 or response.get("code") == 200):
+                    logger.info(f"成功添加IP白名单: {ip}")
+                else:
+                    error_msg = response.get("msg") if response else "未知错误"
+                    logger.error(f"添加IP白名单失败: {ip}, 错误: {error_msg}")
+                    if error_msg != "OK":  # 只有在真正失败时才抛出异常
+                        raise HTTPException(status_code=500, detail=f"添加IP白名单失败: {error_msg}")
+            except Exception as e:
+                logger.error(f"添加IP白名单失败: {ip}, 错误: {str(e)}")
+                if "OK" not in str(e):  # 如果错误信息不包含 OK，则认为是真正的错误
+                    raise HTTPException(status_code=500, detail=f"添加IP白名单失败: {str(e)}")
+                
+        # 删除旧IP
+        for ip in ips_to_remove:
+            try:
+                response = await ipipv_api._make_request(
+                    "api/open/app/proxy/delIpWhiteList/v2",
+                    {
+                        "appUsername": app_username,
+                        "ip": ip,
+                        "proxyType": product.proxy_type,
+                        "productNo": product.product_no
+                    }
+                )
+                # 修改判断逻辑：同时接受 code=0 和 code=200 作为成功标志
+                if response and (response.get("code") == 0 or response.get("code") == 200):
+                    logger.info(f"成功删除IP白名单: {ip}")
+                else:
+                    error_msg = response.get("msg") if response else "未知错误"
+                    logger.error(f"删除IP白名单失败: {ip}, 错误: {error_msg}")
+                    if error_msg != "OK":  # 只有在真正失败时才抛出异常
+                        raise HTTPException(status_code=500, detail=f"删除IP白名单失败: {error_msg}")
+            except Exception as e:
+                logger.error(f"删除IP白名单失败: {ip}, 错误: {str(e)}")
+                if "OK" not in str(e):  # 如果错误信息不包含 OK，则认为是真正的错误
+                    raise HTTPException(status_code=500, detail=f"删除IP白名单失败: {str(e)}")
+        
+        # 更新数据库中的白名单
+        product.ip_whitelist = new_ips
+        logger.info(f"更新数据库中的IP白名单: {new_ips}")
+        
+    except Exception as e:
+        logger.error(f"处理IP白名单变更失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        if "OK" not in str(e):  # 如果错误信息不包含 OK，则认为是真正的错误
+            raise
+
 @router.post("/settings/prices/batch")
 async def batch_update_prices(
     request_data: Dict[str, Any],
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    ipipv_api: IPIPVBaseAPI = Depends(get_ipipv_api)
 ) -> Dict[str, Any]:
-    """批量更新价格设置"""
     try:
         logger.info(f"收到价格更新请求数据: {request_data}")
-        
-        # 权限检查
-        if not current_user.is_admin and not current_user.is_agent:
-            raise HTTPException(status_code=403, detail="没有权限修改价格设置")
-        
-        # 验证请求数据
-        if not isinstance(request_data, dict) or 'prices' not in request_data:
-            logger.error(f"无效的请求数据格式: {request_data}")
-            raise HTTPException(status_code=400, detail="无效的请求数据格式")
-        
-        prices = request_data['prices']
-        is_global = request_data.get('is_global', True)
-        agent_id = request_data.get('agent_id')
-        
-        if not isinstance(prices, list):
-            logger.error("价格数据必须是数组格式")
-            raise HTTPException(status_code=400, detail="价格数据必须是数组格式")
+        prices = request_data.get('prices', [])
+        app_username = request_data.get('app_username')
         
         if not prices:
-            logger.error("没有需要更新的数据")
-            raise HTTPException(status_code=400, detail="没有需要更新的数据")
-        
+            raise HTTPException(status_code=400, detail="没有需要更新的价格数据")
+            
         logger.info(f"开始处理 {len(prices)} 条价格数据")
-        logger.info(f"更新模式: {'全局价格' if is_global else '代理商价格'}")
-        if agent_id:
-            logger.info(f"代理商ID: {agent_id}")
+        logger.info(f"更新模式: 代理商价格")
+        logger.info(f"操作用户: {app_username}")
         
-        # 处理价格更新
-        total = len(prices)
-        success = 0
-        failed = 0
+        success_count = 0
+        failed_count = 0
         
         for price_data in prices:
             try:
                 logger.info(f"处理价格数据: {price_data}")
                 product_id = price_data.get('product_id')
-                if not product_id:
-                    logger.warning(f"缺少产品ID: {price_data}")
-                    failed += 1
-                    continue
+                new_price = price_data.get('price')
+                ip_whitelist = price_data.get('ip_whitelist', [])
                 
-                product = db.query(ProductInventory).filter(
-                    ProductInventory.id == product_id
+                # 更新IP白名单
+                await handle_ip_whitelist(db, product_id, ip_whitelist, app_username, ipipv_api)
+                
+                # 更新代理商价格
+                agent_price = db.query(AgentPrice).filter(
+                    AgentPrice.agent_id == current_user.id,
+                    AgentPrice.product_id == product_id
                 ).first()
                 
-                if not product:
-                    logger.warning(f"未找到产品: {product_id}")
-                    failed += 1
-                    continue
+                if agent_price:
+                    agent_price.price = new_price
+                else:
+                    new_agent_price = AgentPrice(
+                        agent_id=current_user.id,
+                        product_id=product_id,
+                        price=new_price
+                    )
+                    db.add(new_agent_price)
                 
-                if is_global:
-                    old_price = product.global_price
-                    new_price = float(price_data['price'])
-                    product.global_price = new_price
-                    logger.info(f"更新全局价格: product_id={product_id}, old={old_price}, new={new_price}")
-                    
-                    if 'min_agent_price' in price_data:
-                        old_min = product.min_agent_price
-                        new_min = float(price_data['min_agent_price'])
-                        product.min_agent_price = new_min
-                        logger.info(f"更新最低代理商价格: product_id={product_id}, old={old_min}, new={new_min}")
-                
-                elif agent_id:
-                    agent_price = db.query(AgentPrice).filter(
-                        AgentPrice.agent_id == agent_id,
-                        AgentPrice.product_id == product_id
-                    ).first()
-                    
-                    new_price = float(price_data['price'])
-                    
-                    if agent_price:
-                        old_price = agent_price.price
-                        agent_price.price = new_price
-                        logger.info(f"更新代理商价格: agent_id={agent_id}, product_id={product_id}, old={old_price}, new={new_price}")
-                    else:
-                        agent_price = AgentPrice(
-                            agent_id=agent_id,
-                            product_id=product_id,
-                            price=new_price
-                        )
-                        db.add(agent_price)
-                        logger.info(f"创建代理商价格记录: agent_id={agent_id}, product_id={product_id}, price={new_price}")
-                
-                success += 1
+                success_count += 1
                 
             except Exception as e:
-                logger.error(f"更新产品价格失败: {str(e)}")
-                failed += 1
+                logger.error(f"处理价格数据失败: {str(e)}")
+                failed_count += 1
                 continue
         
-        try:
-            db.commit()
-            logger.info(f"价格更新完成: 总数={total}, 成功={success}, 失败={failed}")
-            return {
-                "code": 0,
-                "msg": "success",
-                "data": {
-                    "total": total,
-                    "success": success,
-                    "failed": failed
-                }
-            }
-        except Exception as e:
-            db.rollback()
-            logger.error(f"提交数据库更改失败: {str(e)}")
-            raise HTTPException(status_code=500, detail="数据库更新失败")
+        db.commit()
+        logger.info(f"价格更新完成: 总数={len(prices)}, 成功={success_count}, 失败={failed_count}")
         
-    except HTTPException:
-        raise
+        return {
+            "code": 0,
+            "message": "价格更新成功",
+            "data": {
+                "total": len(prices),
+                "success": success_count,
+                "failed": failed_count
+            }
+        }
+        
     except Exception as e:
         logger.error(f"批量更新价格失败: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e)) 

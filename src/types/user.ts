@@ -10,6 +10,7 @@ export enum UserRole {
 export interface User {
   id: number;
   username: string;
+  app_username: string;
   email?: string;
   agent_id?: number;
   status: 'active' | 'disabled';
@@ -66,5 +67,24 @@ export interface BusinessActivationForm {
   ipRange?: string;
   duration?: number;
   quantity?: number;
+  remark?: string;
+}
+
+export interface UserLoginForm {
+  username: string;
+  password: string;
+}
+
+export interface UserRegisterForm {
+  username: string;
+  password: string;
+  email?: string;
+  app_username?: string;
+}
+
+export interface UserUpdateForm {
+  email?: string;
+  password?: string;
+  app_username?: string;
   remark?: string;
 }

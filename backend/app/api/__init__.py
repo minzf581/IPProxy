@@ -1,6 +1,5 @@
 from fastapi import APIRouter
 from app.api.endpoints import product
-from app.routers import callback
 
 api_router = APIRouter()
 
@@ -8,10 +7,4 @@ api_router = APIRouter()
 api_router.include_router(
     product.router,
     tags=["product"]
-)
-
-# 注册回调路由
-api_router.include_router(
-    callback.router,
-    tags=["callback"]
 ) 

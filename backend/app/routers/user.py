@@ -137,13 +137,22 @@ from pydantic import BaseModel
 import logging
 from passlib.hash import bcrypt
 from app.services.ipipv_base_api import IPIPVBaseAPI
-from app.schemas.user import UserCreate, UserResponse, UserLogin, UserBase, UserInDB
+from app.schemas.user import UserCreate, UserResponse, UserLogin, UserBase, UserInDB, BalanceAdjust
 import json
 import traceback
 from app.services.static_order_service import StaticOrderService
+from decimal import Decimal
+from app.services.user_service import UserService
+from app.schemas.user import UserUpdate, UserListResponse
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
+
+# 定义API响应模型
+class ApiResponse(BaseModel):
+    code: int
+    msg: str
+    data: Optional[Any] = None
 
 def calculate_business_cost(data: dict) -> float:
     """计算业务费用"""
@@ -186,26 +195,29 @@ class CreateUserRequest(BaseModel):
 
 router = APIRouter()
 
-@router.get("/user/list")
+@router.get("/open/app/users/list")
 async def get_user_list(
     page: int = Query(1, ge=1),
     pageSize: int = Query(10, ge=1, le=100),
     username: Optional[str] = None,
     status: Optional[str] = None,
+    agentId: Optional[int] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """获取用户列表"""
     try:
-        logger.info(f"Getting user list. Page: {page}, PageSize: {pageSize}, Username: {username}, Status: {status}")
+        logger.info(f"Getting user list. Page: {page}, PageSize: {pageSize}, Username: {username}, Status: {status}, AgentId: {agentId}")
         logger.info(f"Current user: {current_user.username}, Is admin: {current_user.is_admin}")
         
         # 如果是代理商，只能查看自己创建的用户
         if current_user.is_agent:
             query = db.query(User).filter(User.agent_id == current_user.id)
         else:
-            # 管理员可以看到所有用户
+            # 管理员可以看到所有用户，或者根据指定的代理商ID筛选
             query = db.query(User)
+            if agentId:
+                query = query.filter(User.agent_id == agentId)
         
         # 添加搜索条件
         if username:
@@ -226,9 +238,9 @@ async def get_user_list(
                 "id": user.id,
                 "username": user.username,
                 "email": user.email,
-                "status": "active" if user.status == 1 else "disabled",  # 将整数状态转换为字符串
+                "status": "active" if user.status == 1 else "disabled",  # 转换状态值
                 "agent_id": user.agent_id,
-                "balance": user.balance,
+                "balance": float(user.balance) if user.balance else 0.0,
                 "remark": user.remark,
                 "created_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S") if user.created_at else None,
                 "updated_at": user.updated_at.strftime("%Y-%m-%d %H:%M:%S") if user.updated_at else None
@@ -237,22 +249,22 @@ async def get_user_list(
             
         return {
             "code": 0,
-            "msg": "success",
+            "message": "success",
             "data": {
                 "total": total,
                 "list": user_list
             }
         }
-        
     except Exception as e:
         logger.error(f"获取用户列表失败: {str(e)}")
-        logger.exception("详细错误信息:")
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取用户列表失败: {str(e)}"
-        )
+        logger.error(traceback.format_exc())
+        return {
+            "code": 500,
+            "message": f"获取用户列表失败: {str(e)}",
+            "data": None
+        }
 
-@router.post("/open/app/user/create/v2", response_model=UserResponse)
+@router.post("/open/app/user/create/v2", response_model=ApiResponse)
 async def create_user(
     request: Request,
     user_data: UserCreate,
@@ -260,7 +272,135 @@ async def create_user(
     db: Session = Depends(get_db)
 ):
     """创建新用户"""
-    return await create_user_handler(request, user_data, current_user, db)
+    logger.info(f"[用户创建] 收到请求: {user_data}")
+
+    try:
+        # 权限检查
+        if not (current_user.is_admin or current_user.is_agent):
+            raise HTTPException(
+                status_code=403,
+                detail="没有创建用户的权限"
+            )
+
+        # 确定 agent_id
+        agent_id = None
+        if current_user.is_agent:
+            agent_id = current_user.id
+        elif user_data.agent_id:
+            agent_id = user_data.agent_id
+
+        # 检查用户名是否已存在（在同一个代理商下）
+        existing_user = db.query(User).filter(
+            User.username == user_data.username,
+            User.agent_id == agent_id
+        ).first()
+        
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail="该代理商下已存在相同用户名"
+            )
+
+        # 创建用户基本信息
+        user_dict = {
+            "username": user_data.username,
+            "password": bcrypt.hash(user_data.password),
+            "email": user_data.email,
+            "phone": user_data.phone,
+            "remark": user_data.remark,
+            "is_agent": user_data.is_agent,
+            "agent_id": agent_id,
+            "status": 1,
+            "balance": user_data.balance or 0.0,  # 添加初始余额
+            "created_at": datetime.now(),
+            "updated_at": datetime.now()
+        }
+
+        # 如果是管理员创建代理用户，需要调用 IPIPV API
+        if current_user.is_admin and user_data.is_agent:
+            if not all([user_data.phone, user_data.email]):
+                raise HTTPException(
+                    status_code=400,
+                    detail="创建代理用户需要提供手机号和邮箱"
+                )
+            
+            try:
+                ipipv_api = IPIPVBaseAPI()
+                # 调用IPIPV API创建代理用户
+                ipipv_user = await ipipv_api.create_proxy_user({
+                    "appUsername": user_data.username,
+                    "limitFlow": 1024,
+                    "remark": user_data.remark or f"代理商{user_data.username}",
+                    "platformAccount": user_data.username,
+                    "channelAccount": user_data.username
+                })
+                
+                if not ipipv_user or ipipv_user.get("code") != 0:
+                    error_msg = ipipv_user.get("msg") if ipipv_user else "未知错误"
+                    logger.error(f"[用户创建] 调用 IPIPV API 失败: {error_msg}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"创建 IPIPV 用户失败: {error_msg}"
+                    )
+                
+                # 设置app_username和platform_account
+                user_dict["app_username"] = user_data.username
+                user_dict["platform_account"] = user_data.username
+                
+            except Exception as e:
+                logger.error(f"[用户创建] 调用 IPIPV API 失败: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"创建 IPIPV 用户失败: {str(e)}"
+                )
+
+        # 创建用户
+        new_user = User(**user_dict)
+        db.add(new_user)
+        db.flush()  # 获取用户ID但不提交事务
+        
+        # 如果有初始余额，创建充值交易记录
+        initial_balance = float(user_dict["balance"])
+        if initial_balance > 0:
+            transaction = Transaction(
+                transaction_no=f"TRX{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}",
+                user_id=new_user.id,
+                agent_id=agent_id or current_user.id,
+                order_no=f"INIT{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                amount=Decimal(str(initial_balance)),
+                balance=Decimal(str(initial_balance)),
+                type="recharge",
+                status="success",
+                remark="初始余额充值"
+            )
+            db.add(transaction)
+            
+            # 更新用户的总充值金额
+            new_user.total_recharge = Decimal(str(initial_balance))
+        
+        db.commit()
+        db.refresh(new_user)
+
+        logger.info(f"[用户创建] 成功创建用户: {new_user.username}")
+        
+        # 构造符合前端期望的响应格式
+        response_data = UserResponse.from_orm(new_user)
+        return {
+            "code": 0,
+            "msg": "创建用户成功",
+            "data": response_data
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        logger.error(f"[用户创建] 发生错误: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
 @router.post("/open/app/user/v2", response_model=UserResponse)
 async def create_user_v2(
@@ -291,19 +431,24 @@ async def create_user_handler(
                 detail="没有创建用户的权限"
             )
 
-        # 检查用户名是否已存在
-        if db.query(User).filter(User.username == user_data.username).first():
-            raise HTTPException(
-                status_code=400,
-                detail="用户名已存在"
-            )
-
         # 确定 agent_id
         agent_id = None
         if current_user.is_agent:
             agent_id = current_user.id
         elif user_data.agent_id:
             agent_id = user_data.agent_id
+
+        # 检查用户名是否已存在（在同一个代理商下）
+        existing_user = db.query(User).filter(
+            User.username == user_data.username,
+            User.agent_id == agent_id
+        ).first()
+        
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail="该代理商下已存在相同用户名"
+            )
 
         # 创建用户基本信息
         user_dict = {
@@ -314,7 +459,8 @@ async def create_user_handler(
             "remark": user_data.remark,
             "is_agent": user_data.is_agent,
             "agent_id": agent_id,
-            "status": 1
+            "status": 1,
+            "balance": user_data.balance or 0.0  # 添加初始余额
         }
 
         # 如果是管理员创建代理用户，需要调用 IPIPV API
@@ -329,11 +475,11 @@ async def create_user_handler(
                 ipipv_api = IPIPVBaseAPI()
                 # 调用IPIPV API创建代理用户
                 ipipv_user = await ipipv_api.create_proxy_user({
-                    "appUsername": user_data.username,  # 使用用户名作为appUsername
-                    "limitFlow": 1024,  # 默认1GB流量
+                    "appUsername": user_data.username,
+                    "limitFlow": 1024,
                     "remark": user_data.remark or f"代理商{user_data.username}",
-                    "platformAccount": user_data.username,  # 使用用户名作为platformAccount
-                    "channelAccount": user_data.username  # 使用用户名作为channelAccount
+                    "platformAccount": user_data.username,
+                    "channelAccount": user_data.username
                 })
                 
                 if not ipipv_user or ipipv_user.get("code") != 0:
@@ -358,6 +504,26 @@ async def create_user_handler(
         # 创建用户
         new_user = User(**user_dict)
         db.add(new_user)
+        
+        # 如果有初始余额，创建充值交易记录
+        initial_balance = float(user_dict["balance"])
+        if initial_balance > 0:
+            transaction = Transaction(
+                transaction_no=f"TRX{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}",
+                user_id=new_user.id,
+                agent_id=agent_id or new_user.id,  # 如果没有代理商ID，使用用户自己的ID
+                order_no=f"INIT{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                amount=Decimal(str(initial_balance)),
+                balance=Decimal(str(initial_balance)),
+                type="recharge",
+                status="success",
+                remark="初始余额充值"
+            )
+            db.add(transaction)
+            
+            # 更新用户的总充值金额
+            new_user.total_recharge = Decimal(str(initial_balance))
+        
         db.commit()
         db.refresh(new_user)
 
@@ -482,7 +648,7 @@ async def update_user_password(
             "data": None
         }
 
-@router.post("/user/{user_id}/change-password")
+@router.post("/open/app/user/{user_id}/change-password")
 async def change_password(
     user_id: int,
     data: dict,
@@ -517,7 +683,7 @@ async def change_password(
         logger.error(f"修改密码失败: {str(e)}")
         raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
 
-@router.post("/user/{user_id}/activate-business")
+@router.post("/open/app/user/{user_id}/activate-business")
 async def activate_business(
     user_id: int,
     data: dict,
@@ -678,7 +844,7 @@ async def activate_business(
             detail={"code": 500, "message": f"业务激活失败: {str(e)}"}
         )
 
-@router.post("/user/{user_id}/renew")
+@router.post("/open/app/user/{user_id}/renew")
 async def renew_business(
     user_id: int,
     data: dict,
@@ -779,7 +945,7 @@ async def renew_business(
         logger.error(f"续费失败: {str(e)}")
         raise HTTPException(status_code=500, detail={"code": 500, "message": str(e)})
 
-@router.post("/user/{user_id}/deactivate-business")
+@router.post("/open/app/user/{user_id}/deactivate-business")
 async def deactivate_business(
     user_id: int,
     data: dict,
@@ -871,98 +1037,24 @@ async def deactivate_business(
 @router.post("/open/app/user/{user_id}/balance")
 async def adjust_user_balance(
     user_id: int,
-    data: dict,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-) -> Dict[str, Any]:
-    """调整用户余额"""
-    logger.info(f"[adjust_user_balance] user_id={user_id}, data={data}, current_user={current_user.id}")
-    
-    # 权限检查
-    if not current_user.is_admin and not current_user.is_agent:
-        raise HTTPException(status_code=403, detail="没有权限执行此操作")
-    
-    # 获取目标用户
-    target_user = db.query(User).filter(User.id == user_id).first()
-    if not target_user:
-        raise HTTPException(status_code=404, detail="用户不存在")
-    
-    # 代理商只能调整自己下级用户的余额
-    if current_user.is_agent and target_user.agent_id != current_user.id:
-        raise HTTPException(status_code=403, detail="没有权限调整此用户的余额")
-    
-    amount = data.get("amount")
-    remark = data.get("remark", "")
-    
-    if not amount:
-        raise HTTPException(status_code=400, detail="调整金额不能为空")
-    
+    adjust_data: BalanceAdjust,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     try:
-        amount = float(amount)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="调整金额格式不正确")
-    
-    try:
-        # 如果是代理商，检查余额是否足够
-        if current_user.is_agent and amount > 0:
-            if current_user.balance < amount:
-                raise HTTPException(status_code=400, detail="代理商余额不足")
-            
-            # 扣除代理商余额
-            current_user.balance -= amount
-            
-            # 记录代理商余额变更
-            agent_transaction = Transaction(
-                transaction_no=str(uuid.uuid4()).replace("-", ""),
-                user_id=current_user.id,
-                agent_id=current_user.id,
-                order_no=str(uuid.uuid4()).replace("-", ""),
-                amount=-amount,
-                balance=current_user.balance,
-                type="consume",
-                status="success",
-                remark=f"调整用户 {target_user.username} 余额: {amount}"
-            )
-            db.add(agent_transaction)
-        
+        # 验证权限（可以根据需求添加更多权限检查）
+        if not current_user.is_agent and not current_user.is_superuser:
+            raise HTTPException(status_code=403, detail="没有权限执行此操作")
+
         # 调整用户余额
-        old_balance = target_user.balance
-        target_user.balance += amount
-        
-        # 记录用户余额变更
-        transaction = Transaction(
-            transaction_no=str(uuid.uuid4()).replace("-", ""),
-            user_id=target_user.id,
-            agent_id=current_user.id,
-            order_no=str(uuid.uuid4()).replace("-", ""),
-            amount=amount,
-            balance=target_user.balance,
-            type="recharge" if amount > 0 else "consume",
-            status="success",
-            remark=remark or f"管理员调整余额: {amount}"
+        user = await UserService.adjust_balance(
+            db=db, 
+            user_id=user_id, 
+            adjust_data=adjust_data,
+            operator_id=current_user.id
         )
-        db.add(transaction)
-        
-        # 提交事务
-        db.commit()
-        logger.info(f"[adjust_user_balance] 调整成功: user_id={user_id}, old_balance={old_balance}, new_balance={target_user.balance}")
-        
-        # 返回标准响应格式
-        return {
-            "code": 0,
-            "msg": "调整成功",
-            "data": {
-                "transaction_no": transaction.transaction_no,
-                "amount": amount,
-                "old_balance": old_balance,
-                "new_balance": target_user.balance
-            }
-        }
-        
-    except HTTPException:
-        db.rollback()
-        raise
+        return {"code": 0, "data": user}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        db.rollback()
-        logger.error(f"[adjust_user_balance] 调整失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"调整失败: {str(e)}") 
+        raise HTTPException(status_code=500, detail=str(e)) 

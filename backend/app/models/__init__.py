@@ -5,7 +5,6 @@ from app.models.dynamic_order import DynamicOrder
 from app.models.transaction import Transaction
 from app.models.instance import Instance
 from app.models.dashboard import ProxyInfo
-from app.models.resource_type import ResourceType
 from app.models.prices import AgentPrice, UserPrice
 from app.models.product_inventory import ProductInventory
 from app.models.agent_statistics import AgentStatistics
@@ -19,7 +18,6 @@ __all__ = [
     'DynamicOrder',
     'Instance',
     'ProxyInfo',
-    'ResourceType',
     'AgentPrice',
     'UserPrice',
     'ProductInventory',

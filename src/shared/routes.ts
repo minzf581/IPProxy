@@ -41,17 +41,22 @@ export const API_ROUTES = {
     REFRESH: `${API_PREFIX.AUTH}/refresh`
   },
   USER: {
-    LIST: `${API_PREFIX.USER}/list`,
-    CREATE: `${API_PREFIX.USER}/create`,
-    UPDATE: `${API_PREFIX.USER}/{id}`,
-    DELETE: `${API_PREFIX.USER}/{id}`
+    LIST: `${API_PREFIX.OPEN}/app/users/list`,
+    CREATE: `${API_PREFIX.OPEN}/app/user/create/v2`,
+    UPDATE: `${API_PREFIX.OPEN}/app/user/{id}`,
+    DELETE: `${API_PREFIX.OPEN}/app/user/{id}`,
+    CHANGE_PASSWORD: `${API_PREFIX.OPEN}/app/user/{id}/change-password`,
+    ACTIVATE_BUSINESS: `${API_PREFIX.OPEN}/app/user/{id}/activate-business`,
+    RENEW: `${API_PREFIX.OPEN}/app/user/{id}/renew`,
+    DEACTIVATE_BUSINESS: `${API_PREFIX.OPEN}/app/user/{id}/deactivate-business`,
+    ADJUST_BALANCE: `${API_PREFIX.OPEN}/app/user/{id}/balance`
   },
   AGENT: {
     LIST: `${API_PREFIX.OPEN}/app/agent/list`,
     CREATE: `${API_PREFIX.OPEN}/app/proxy/user/v2`,
     UPDATE: `${API_PREFIX.OPEN}/app/agent/{id}`,
     STATISTICS: `${API_PREFIX.OPEN}/app/agent/{id}/statistics`,
-    ORDERS: `${API_PREFIX.OPEN}/app/agent-orders/v2`,
+    TRANSACTIONS: `${API_PREFIX.OPEN}/agent/transactions`,
     USERS: `${API_PREFIX.OPEN}/app/agent/{id}/users`
   },
   ORDER: {
@@ -106,17 +111,22 @@ API_ROUTES = {
         "REFRESH": f"{API_PREFIX['AUTH']}/refresh"
     },
     "USER": {
-        "LIST": f"{API_PREFIX['USER']}/list",
-        "CREATE": f"{API_PREFIX['USER']}/create",
-        "UPDATE": f"{API_PREFIX['USER']}/{{id}}",
-        "DELETE": f"{API_PREFIX['USER']}/{{id}}"
+        "LIST": f"{API_PREFIX['OPEN']}/app/users/list",
+        "CREATE": f"{API_PREFIX['OPEN']}/app/user/create/v2",
+        "UPDATE": f"{API_PREFIX['OPEN']}/app/user/{{id}}",
+        "DELETE": f"{API_PREFIX['OPEN']}/app/user/{{id}}",
+        "CHANGE_PASSWORD": f"{API_PREFIX['OPEN']}/app/user/{{id}}/change-password",
+        "ACTIVATE_BUSINESS": f"{API_PREFIX['OPEN']}/app/user/{{id}}/activate-business",
+        "RENEW": f"{API_PREFIX['OPEN']}/app/user/{{id}}/renew",
+        "DEACTIVATE_BUSINESS": f"{API_PREFIX['OPEN']}/app/user/{{id}}/deactivate-business",
+        "ADJUST_BALANCE": f"{API_PREFIX['OPEN']}/app/user/{{id}}/balance"
     },
     "AGENT": {
         "LIST": f"{API_PREFIX['OPEN']}/app/agent/list",
         "CREATE": f"{API_PREFIX['OPEN']}/app/proxy/user/v2",
         "UPDATE": f"{API_PREFIX['OPEN']}/app/agent/{{id}}",
         "STATISTICS": f"{API_PREFIX['OPEN']}/app/agent/{{id}}/statistics",
-        "ORDERS": f"{API_PREFIX['OPEN']}/app/agent-orders/v2",
+        "TRANSACTIONS": f"{API_PREFIX['OPEN']}/agent/transactions",
         "USERS": f"{API_PREFIX['OPEN']}/app/agent/{{id}}/users"
     },
     "ORDER": {

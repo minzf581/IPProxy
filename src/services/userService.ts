@@ -74,7 +74,9 @@ export interface UserListResponse {
 export async function getUserList(params: UserListParams): Promise<ApiResponse<UserListResponse>> {
   try {
     debug.log('Getting user list with params:', params);
-    const response = await userApi.get<ApiResponse<UserListResponse>>('/user/list', { params });
+    // 移除路径中的第一个 /api 前缀
+    const apiPath = API_ROUTES.USER.LIST.replace(/^\/api/, '');
+    const response = await userApi.get<ApiResponse<UserListResponse>>(apiPath, { params });
     debug.log('User list response:', response.data);
     return response.data;
   } catch (error: any) {
@@ -92,6 +94,7 @@ export interface CreateUserParams {
   status?: string;  // 可选字段
   is_agent?: boolean;  // 是否是代理商
   agent_id?: number;  // 代理商ID
+  balance?: number;  // 用户余额
 }
 
 export async function createUser(data: CreateUserParams): Promise<ExtendedApiResponse<User>> {
@@ -105,23 +108,31 @@ export async function createUser(data: CreateUserParams): Promise<ExtendedApiRes
     const token = localStorage.getItem('token');
     const currentUser = token ? JSON.parse(atob(token.split('.')[1])) : null;
 
-    // 移除空值参数
-    const cleanData = Object.fromEntries(
-      Object.entries(data).filter(([_, v]) => v != null && v !== '')
-    );
+    // 准备请求数据
+    const requestData = {
+      username: data.username,
+      password: data.password,
+      email: data.email || undefined,
+      remark: data.remark || undefined,
+      balance: data.balance === undefined ? 0 : Number(data.balance),
+      is_agent: data.is_agent || false,
+      agent_id: data.agent_id || undefined,
+      auth_type: data.authType || undefined,
+      status: data.status || 'active'
+    };
 
     // 如果当前用户是代理商，自动添加代理商ID
     if (currentUser?.is_agent) {
-      cleanData.agent_id = currentUser.id;
-      cleanData.is_agent = false; // 代理商创建的用户默认不是代理商
+      requestData.agent_id = currentUser.id;
+      requestData.is_agent = false; // 代理商创建的用户默认不是代理商
     }
 
-    debug.log('Cleaned data:', {
-      ...cleanData,
+    debug.log('Request data:', {
+      ...requestData,
       password: '******' // 隐藏密码
     });
 
-    const response = await userApi.post<ExtendedApiResponse<User>>('/api/open/app/user/v2', cleanData);
+    const response = await userApi.post<ExtendedApiResponse<User>>(API_ROUTES.USER.CREATE.replace(/^\/api/, ''), requestData);
     debug.log('Create user API response:', response.data);
 
     if (response.data.code !== 0) {
@@ -239,7 +250,13 @@ export async function getAgentList(): Promise<User[]> {
 
 // 搜索用户
 export async function searchUsers(params: any): Promise<ApiResponse<UserListResponse>> {
-  const response = await api.get<ApiResponse<UserListResponse>>('/open/app/user/list', { params });
+  // 确保 pageSize 不超过100
+  const safeParams = {
+    ...params,
+    pageSize: Math.min(params.pageSize || 10, 100)
+  };
+  // 使用统一的路由配置
+  const response = await api.get<ApiResponse<UserListResponse>>(API_ROUTES.USER.LIST, { params: safeParams });
   return response.data;
 }
 

@@ -34,6 +34,10 @@ from app.models.user import User
 from app.core.security import get_password_hash, verify_password
 import json
 import traceback
+from app.models.transaction import Transaction
+from app.schemas.user import UserCreate, BalanceAdjust
+import uuid
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +86,87 @@ class UserService(IPIPVBaseAPI):
         except Exception as e:
             logger.error(f"[UserService] 更新用户信息失败: {str(e)}")
             db.rollback()
+            return None
+
+    async def create_ipipv_user(
+        self,
+        username: str,
+        password: str,
+        email: Optional[str] = None,
+        phone: Optional[str] = None,
+        remark: Optional[str] = None,
+        db: Session = None
+    ) -> Optional[User]:
+        """
+        创建 IPIPV 用户
+        
+        Args:
+            username: 用户名
+            password: 密码
+            email: 可选，邮箱
+            phone: 可选，手机号
+            remark: 可选，备注
+            db: 数据库会话
+            
+        Returns:
+            Optional[User]: 创建成功返回用户对象，失败返回 None
+        """
+        try:
+            logger.info(f"[UserService] 开始创建 IPIPV 用户: username={username}")
+            
+            # 调用 IPIPV API 创建用户
+            ipipv_response = await self._make_request(
+                "api/open/app/user/v2",
+                {
+                    "appUsername": username,
+                    "password": password,
+                    "phone": phone,
+                    "email": email,
+                    "status": 1,
+                    "authType": 1
+                }
+            )
+            
+            if not ipipv_response or ipipv_response.get("code") not in [0, 200]:
+                error_msg = ipipv_response.get("msg", "未知错误") if ipipv_response else "API返回为空"
+                logger.error(f"[UserService] 创建IPIPV用户失败: {error_msg}")
+                return None
+                
+            # 获取IPIPV返回的用户信息
+            ipipv_data = ipipv_response.get("data", {})
+            ipipv_username = ipipv_data.get("username")
+            ipipv_password = ipipv_data.get("password")
+            
+            logger.info(f"[UserService] IPIPV用户创建成功: username={ipipv_username}")
+            
+            # 创建本地用户记录
+            user = User(
+                username=username,
+                password=get_password_hash(password),
+                email=email,
+                phone=phone,
+                is_admin=False,
+                is_agent=True,
+                balance=0.0,
+                remark=remark,
+                status=1,
+                ipipv_username=ipipv_username,  # 使用 ipipv_username 字段存储 IPIPV 平台用户名
+                ipipv_password=ipipv_password
+            )
+            
+            if db:
+                db.add(user)
+                db.commit()
+                db.refresh(user)
+                logger.info(f"[UserService] 本地用户记录创建成功: id={user.id}")
+            
+            return user
+            
+        except Exception as e:
+            logger.error(f"[UserService] 创建IPIPV用户失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            if db:
+                db.rollback()
             return None
 
     async def create_user(
@@ -241,7 +326,48 @@ class UserService(IPIPVBaseAPI):
             return result.get("list", []) if isinstance(result, dict) else []
         except Exception as e:
             logger.error(f"获取用户列表失败: {str(e)}")
-            return [] 
+            return []
+
+    @staticmethod
+    async def adjust_balance(
+        db: Session, 
+        user_id: int, 
+        adjust_data: BalanceAdjust,
+        operator_id: int
+    ) -> User:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise ValueError("用户不存在")
+
+        new_balance = user.balance + adjust_data.amount
+        if new_balance < 0:
+            raise ValueError("余额不足")
+
+        try:
+            # 更新用户余额
+            user.balance = new_balance
+            user.updated_at = datetime.now()
+
+            # 记录交易
+            transaction = Transaction(
+                transaction_no=f"ADJ{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}",
+                user_id=user_id,
+                agent_id=operator_id,  # 操作人ID作为代理商ID
+                order_no=f"ADJ{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                amount=Decimal(str(adjust_data.amount)),
+                balance=Decimal(str(new_balance)),
+                type="adjust",  # 调整类型
+                status="success",
+                remark=adjust_data.remark
+            )
+            db.add(transaction)
+            
+            db.commit()
+            db.refresh(user)
+            return user
+        except Exception as e:
+            db.rollback()
+            raise e
 
 def get_user_service() -> UserService:
     """

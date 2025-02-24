@@ -49,9 +49,9 @@ export const adminMenuConfig = [
         path: '/order/static'
       },
       {
-        key: 'order/agent',
-        label: '代理订单',
-        path: '/order/agent'
+        key: 'order/transactions',
+        label: '额度订单',
+        path: '/agent/transactions'
       }
     ]
   },

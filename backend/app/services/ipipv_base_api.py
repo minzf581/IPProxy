@@ -402,3 +402,26 @@ class IPIPVBaseAPI:
                 "msg": f"处理响应异常: {str(e)}",
                 "data": None
             }
+
+    async def draw_proxy_api(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """API提取代理"""
+        try:
+            # 添加版本号
+            params["version"] = "v2"
+            
+            # 构建区域参数
+            regions = []
+            if "countryCode" in params:
+                regions.append(params["countryCode"])
+            if "cityCode" in params:
+                regions.append(params["cityCode"])
+            
+            # 如果有区域参数，添加到请求中
+            if regions:
+                params["regions"] = ",".join(regions)
+            
+            logger.info(f"[IPIPVBaseAPI] 开始API提取，参数: {json.dumps(params, ensure_ascii=False)}")
+            return await self._make_request("api/open/app/proxy/draw/api/v2", params)
+        except Exception as e:
+            logger.error(f"[IPIPVBaseAPI] API提取失败: {str(e)}")
+            raise

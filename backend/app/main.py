@@ -126,19 +126,10 @@ app = FastAPI(
 # 白名单路径
 SKIP_AUTH_PATHS = [
     "/api/auth/login",
-    "/api/auth/register",
-    "/api/open/app/area/v2",
-    "/api/open/app/city/list/v2",
-    "/api/open/app/product/query/v2",
-    "/api/open/app/location/options/v2",
-    "/api/open/app/agent/list",
-    "/api/open/app/agent/",  # 代理商相关路径
-    "/api/open/app/static/order/list/v2",
-    "/api/open/app/order/v2",
-    "/api/open/app/proxy/user/v2",
-    "/docs",  # Swagger UI
-    "/redoc",  # ReDoc UI
-    "/openapi.json"  # OpenAPI schema
+    "/api/auth/refresh",
+    "/docs",
+    "/redoc",
+    "/openapi.json"
 ]
 
 # 数据库会话中间件类
@@ -379,19 +370,19 @@ async def root():
     return {"message": "Welcome to IP Proxy API"}
 
 # 注册路由
-app.include_router(auth.router, prefix="/api")  # 认证路由
-app.include_router(user.router, prefix="/api")
+app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(auth.router, prefix="/api/auth", tags=["认证"])
+app.include_router(user.router, prefix="/api", tags=["用户"])
+app.include_router(agent.router, prefix="/api", tags=["代理商"])
+app.include_router(dashboard.router, prefix="/api")
+app.include_router(transaction.router, prefix="/api")
 app.include_router(order.router, prefix="/api")
 app.include_router(proxy.router, prefix="/api")
+app.include_router(instance.router, prefix="/api")
 app.include_router(area.router, prefix="/api")
-app.include_router(dashboard.router, prefix="/api")
-app.include_router(product.router, prefix="/api")
-app.include_router(static_order.router, prefix="/api")
-app.include_router(settings_router.router, prefix="/api")  # 使用重命名后的路由
+app.include_router(settings_router.router, prefix="/api")
 app.include_router(callback.router, prefix="/api")
-app.include_router(agent.router, prefix="/api")  # 添加代理商路由
-app.include_router(business.router, prefix="/api")  # 添加业务路由
-app.include_router(api_router, prefix=settings.API_V1_STR)
+app.include_router(business.router, prefix="/api")
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True) 

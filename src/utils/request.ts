@@ -79,15 +79,17 @@ request.interceptors.response.use(
     if (
       data.code === 0 || 
       data.code === 200 ||
-      (data.data && !data.code)
+      (data.data !== undefined && data.code === undefined)
     ) {
       // 统一转换为标准格式
-      response.data = {
-        code: 0,
-        message: data.message || data.msg || '操作成功',
-        data: data.data
+      return {
+        ...response,
+        data: {
+          code: 0,
+          message: data.message || data.msg || '操作成功',
+          data: data.data !== undefined ? data.data : data
+        }
       };
-      return response;
     }
     
     // 处理错误响应

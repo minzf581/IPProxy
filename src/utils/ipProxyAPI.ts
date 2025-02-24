@@ -168,7 +168,8 @@ export const API_ROUTES = {
     INFO: '/open/app/dashboard/info/v2'
   },
   AGENT: {
-    LIST: '/open/app/agent/list'
+    LIST: '/open/app/agent/list',
+    USERS: '/api/open/app/agent/{id}/users'
   },
   USER: {
     LIST: '/open/app/user/list',

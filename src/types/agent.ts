@@ -1,7 +1,7 @@
 export interface AgentInfo {
-  id: string;
+  id: number;
   username: string;
-  app_username?: string;
+  app_username: string;
   platform_account?: string;
   email?: string;
   phone?: string | null;
@@ -94,6 +94,6 @@ export interface AgentListResponse {
 
 export interface ApiResponse<T> {
   code: number;
-  msg: string;
+  message: string;
   data: T;
 }

@@ -116,7 +116,7 @@ const UserManagementPage: React.FC = () => {
           total: response.data.total
         });
       } else {
-        message.error(response.msg || '获取用户列表失败');
+        message.error('获取用户列表失败');
       }
     } catch (error: any) {
       message.error(error.message || '获取用户列表失败');
@@ -319,11 +319,20 @@ const UserManagementPage: React.FC = () => {
 
       // 创建用户数据
       const createUserData: CreateUserParams = {
-        ...values,
+        username: values.username,
+        password: values.password,
+        email: values.email || undefined,
+        remark: values.remark || undefined,
+        balance: values.balance === undefined ? 0 : Number(values.balance),
         is_agent: false, // 新建用户默认不是代理商
         status: 'active', // 默认状态为激活
         agent_id: values.agent_id ? Number(values.agent_id) : undefined
       };
+
+      console.log('[Create User Debug] Prepared data:', {
+        ...createUserData,
+        password: '******' // 隐藏密码
+      });
 
       const response = await createUser(createUserData);
       console.log('[Create User Debug] API response:', response);
@@ -475,6 +484,21 @@ const UserManagementPage: React.FC = () => {
             rules={[{ type: 'email', message: '请输入有效的邮箱地址' }]}
           >
             <Input placeholder="请输入邮箱" id="create-form-email" autoComplete="email" />
+          </Form.Item>
+          <Form.Item
+            name="balance"
+            label="初始余额"
+            rules={[
+              { type: 'number', min: 0, message: '余额不能小于0' }
+            ]}
+          >
+            <InputNumber
+              placeholder="请输入初始余额（可选）"
+              min={0}
+              precision={2}
+              style={{ width: '100%' }}
+              suffix="元"
+            />
           </Form.Item>
           <Form.Item name="remark" label="备注">
             <TextArea rows={4} placeholder="请输入备注信息" id="create-form-remark" />

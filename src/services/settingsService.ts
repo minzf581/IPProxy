@@ -152,4 +152,38 @@ export async function batchUpdateProductPriceSettings(
     });
     throw new Error(error.response?.data?.message || error.message || '价格更新失败');
   }
+}
+
+// 添加IP白名单
+export async function addIpWhitelist(params: {
+  appUsername: string;
+  ip: string;
+  proxyType: number;
+  productNo: string;
+}): Promise<ApiResponse<void>> {
+  try {
+    debug.log('添加IP白名单:', params);
+    const response = await api.post<ApiResponse<void>>('/api/open/app/proxy/addIpWhiteList/v2', params);
+    return response.data;
+  } catch (error: any) {
+    debug.error('添加IP白名单失败:', error);
+    throw new Error(error.response?.data?.message || '添加IP白名单失败');
+  }
+}
+
+// 删除IP白名单
+export async function deleteIpWhitelist(params: {
+  appUsername: string;
+  ip: string;
+  proxyType: number;
+  productNo: string;
+}): Promise<ApiResponse<void>> {
+  try {
+    debug.log('删除IP白名单:', params);
+    const response = await api.post<ApiResponse<void>>('/api/open/app/proxy/delIpWhiteList/v2', params);
+    return response.data;
+  } catch (error: any) {
+    debug.error('删除IP白名单失败:', error);
+    throw new Error(error.response?.data?.message || '删除IP白名单失败');
+  }
 } 

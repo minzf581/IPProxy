@@ -1,54 +1,61 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Input, Select, Form, message, Card, Alert, Divider, InputNumber, Tooltip } from 'antd';
+import { Card, Table, Button, Space, Select, Alert, message, InputNumber, Tooltip } from 'antd';
 import { SyncOutlined, InfoCircleOutlined } from '@ant-design/icons';
-import { getProductPrices, syncProductStock, batchUpdateProductPriceSettings, type PriceUpdateItem } from '@/services/productInventory';
-import { getAgentList, getAgentUsers } from '@/services/agentService';
-import type { ProductPrice } from '@/types/product';
-import type { ColumnsType } from 'antd/es/table';
-import type { AgentInfo, AgentUser } from '@/types/agent';
-import { getMappedValue, getUniqueValues, PRODUCT_NO_MAP, AREA_MAP, COUNTRY_MAP, CITY_MAP } from '@/constants/mappings';
-import PriceSettingsModal from '@/components/PriceSettings/PriceSettingsModal';
-import PriceImportExport from '@/components/PriceSettings/PriceImportExport';
-import { useRequest } from 'ahooks';
 import { useAuth } from '@/hooks/useAuth';
+import { getProductPrices, syncProductStock, batchUpdateProductPriceSettings, getProductStock, type PriceUpdateItem } from '@/services/productInventory';
+import { getAgentList } from '@/services/agentService';
+import { searchUsers } from '@/services/userService';
+import { ProductPrice, ProductStock } from '@/types/product';
 import { UserRole } from '@/types/user';
-import styles from '../business/StaticBusiness.module.less';
+import { getMappedValue, getUniqueValues, PRODUCT_NO_MAP } from '@/constants/mappings';
+import PriceImportExport from '@/components/PriceSettings/PriceImportExport';
+import PriceSettingsModal from '@/components/PriceSettings/PriceSettingsModal';
+import IpWhitelistInput from '@/components/IpWhitelistInput';
+import './index.less';
+import type { ColumnsType } from 'antd/es/table';
+import { debug } from '@/utils/debug';
+import type { AgentInfo } from '@/types/agent';
+import { useRequest } from 'ahooks';
 
 const { Option } = Select;
 
-interface SelectedAgent {
-  id: number;
-  name: string;
+interface ModifiedPrice {
+  price: number;
+  minAgentPrice: number;
+  ipWhitelist?: string[];
 }
 
-interface ModifiedPrice {
-  product_id: number;
-  price: number;
-  minAgentPrice?: number;
+interface ModifiedPrices {
+  [key: string]: ModifiedPrice;
+}
+
+interface FilterOption {
+  text: string;
+  value: string;
+}
+
+interface FilterOptions {
+  types: FilterOption[];
+}
+
+interface IpChange {
+  productId: number;
+  ip: string;
 }
 
 const DynamicProductPage: React.FC = () => {
-  const { user } = useAuth();
-  const isAgent = user?.role === UserRole.AGENT;
+  const { user, isAgent } = useAuth();
   const [loading, setLoading] = useState(false);
   const [isGlobal, setIsGlobal] = useState(true);
-  const [selectedAgent, setSelectedAgent] = useState<SelectedAgent | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<AgentInfo | null>(null);
   const [prices, setPrices] = useState<ProductPrice[]>([]);
   const [visible, setVisible] = useState(false);
   const [selectedPrice, setSelectedPrice] = useState<ProductPrice | null>(null);
-  const [filterOptions, setFilterOptions] = useState<{
-    types: { text: string; value: string }[];
-    areas: { text: string; value: string }[];
-    countries: { text: string; value: string }[];
-    cities: { text: string; value: string }[];
-  }>({
-    types: [],
-    areas: [],
-    countries: [],
-    cities: [],
-  });
-  const [modifiedPrices, setModifiedPrices] = useState<Record<string, { price: number; minAgentPrice: number }>>({});
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({ types: [] });
+  const [modifiedPrices, setModifiedPrices] = useState<ModifiedPrices>({});
   const [hasChanges, setHasChanges] = useState(false);
+  const [priceChanges, setPriceChanges] = useState<PriceUpdateItem[]>([]);
+  const [ipChanges, setIpChanges] = useState<Array<IpChange>>([]);
 
   // 获取代理商列表
   const { data: agentResponse } = useRequest(
@@ -58,50 +65,128 @@ const DynamicProductPage: React.FC = () => {
       ready: !isAgent
     }
   );
-  const agents = agentResponse?.list || [];
+  const agents = agentResponse?.data?.list || [];
 
   // 获取代理商的用户列表
   const { data: userResponse } = useRequest(
     async () => {
       if (isAgent && user?.id) {
-        const response = await getAgentUsers({
-          agentId: String(user.id),
+        return searchUsers({
           page: 1,
           pageSize: 1000,
-          status: 'active'
+          agentId: user.id
         });
-        return response;
       }
-      return { list: [], total: 0 };
+      return { code: 0, data: { list: [], total: 0 } };
     },
     {
       cacheKey: 'agentUserList',
       ready: !!isAgent && !!user?.id
     }
   );
-  const userList = (userResponse?.list || []) as AgentUser[];
+  const userList = userResponse?.data?.list || [];
+
+  // 处理代理商/用户选择
+  const handleAgentChange = async (value: number | null) => {
+    if (value === null) {
+      setSelectedAgent(null);
+      setIsGlobal(true);
+      return;
+    }
+
+    setIsGlobal(false);
+
+    try {
+      if (isAgent) {
+        // 代理商模式下,value 是用户ID
+        const selectedUser = userList.find(u => u.id === value);
+        if (selectedUser) {
+          const agentInfo: AgentInfo = {
+            id: value,
+            username: selectedUser.username,
+            app_username: selectedUser.app_username || selectedUser.username,
+            balance: selectedUser.balance || 0,
+            status: selectedUser.status || 'active',
+            created_at: selectedUser.created_at,
+            updated_at: selectedUser.updated_at,
+            total_income: 0,
+            total_expense: 0,
+            total_profit: 0,
+            total_orders: 0,
+            total_users: 0
+          };
+          setSelectedAgent(agentInfo);
+          loadPrices();
+        }
+      } else {
+        // 管理员模式下,value 是代理商ID
+        const agent = agents.find(a => a.id === value);
+        if (agent) {
+          setSelectedAgent(agent);
+          loadPrices();
+        }
+      }
+    } catch (error) {
+      console.error('获取用户信息失败:', error);
+      message.error('获取用户信息失败');
+    }
+  };
 
   // 加载价格数据
   const loadPrices = async () => {
     try {
+      debug.log('开始加载价格数据:', {
+        user,
+        selectedAgent,
+        isGlobal,
+        isAgent
+      });
+
+      // 简化逻辑:如果选择了用户就用选择的用户名,否则用当前登录用户名
+      const appUsername = selectedAgent?.app_username || user?.app_username || user?.username;
+      
+      if (!appUsername) {
+        debug.error('无法获取用户名');
+        message.error('无法获取用户名信息，请确保已登录');
+        return;
+      }
+
       setLoading(true);
-      const response = await getProductPrices({ 
-        is_global: isGlobal,
-        agent_id: selectedAgent?.id,
-        proxy_types: [104, 105, 201]
+      const [priceResponse, stockResponse] = await Promise.all([
+        getProductPrices({ 
+          is_global: isGlobal,
+          agent_id: selectedAgent?.id,
+          user_id: selectedAgent?.id,
+          app_username: appUsername,  // 使用统一的用户名逻辑
+          proxy_types: [104, 105, 201]
+        }),
+        getProductStock()
+      ]);
+
+      debug.log('价格和库存数据响应:', {
+        priceResponse,
+        stockResponse
       });
       
-      if ((response.code === 200 || response.code === 0) && response.data) {
-        const priceData = response.data.map(item => ({
+      if ((priceResponse.code === 200 || priceResponse.code === 0) && priceResponse.data) {
+        const stockMap = (stockResponse.data || []).reduce<Record<string, number>>((acc, item: ProductStock) => {
+          acc[item.productId] = item.stock;
+          return acc;
+        }, {});
+
+        const priceData = priceResponse.data.map((item: ProductPrice) => ({
           ...item,
           key: Number(item.id),
           minAgentPrice: Number(item.minAgentPrice || 0),
+          stock: stockMap[item.type] || 0
         }));
         setPrices(priceData);
+      } else {
+        message.error(priceResponse.message || '加载价格数据失败');
       }
-    } catch (error) {
-      message.error('加载价格数据失败');
+    } catch (error: any) {
       console.error('加载价格失败:', error);
+      message.error(error.message || '加载价格数据失败');
     } finally {
       setLoading(false);
     }
@@ -130,31 +215,16 @@ const DynamicProductPage: React.FC = () => {
     } else {
       message.error('请先登录');
     }
-  }, [selectedAgent]);
+  }, [selectedAgent, user]);
 
   useEffect(() => {
     if (prices.length > 0) {
-      const types = getUniqueValues(prices, 'type').map(type => ({
+      const types = getUniqueValues<ProductPrice>(prices, 'type').map(type => ({
         text: getMappedValue(PRODUCT_NO_MAP, type),
         value: type
       }));
       
-      const areas = getUniqueValues(prices, 'area').map(area => ({
-        text: getMappedValue(AREA_MAP, area),
-        value: area
-      }));
-      
-      const countries = getUniqueValues(prices, 'country').map(country => ({
-        text: getMappedValue(COUNTRY_MAP, country),
-        value: country
-      }));
-      
-      const cities = getUniqueValues(prices, 'city').map(city => ({
-        text: city,
-        value: city
-      }));
-
-      setFilterOptions({ types, areas, countries, cities });
+      setFilterOptions({ types });
     }
   }, [prices]);
 
@@ -174,80 +244,89 @@ const DynamicProductPage: React.FC = () => {
     setHasChanges(true);
   };
 
+  // 处理IP白名单变更
+  const handleIpWhitelistChange = (record: ProductPrice, newIpList: string[]) => {
+    debug.log('IP白名单变更:', { productId: record.id, newIpList });
+    
+    // 创建 IP 变更记录
+    const changes: Array<IpChange> = newIpList
+      .filter(ip => ip && ip.trim()) // 过滤掉空字符串和只包含空格的字符串
+      .map(ip => ({
+        productId: typeof record.id === 'string' ? parseInt(record.id, 10) : record.id,
+        ip: ip.trim()
+      }));
+    setIpChanges(changes);
+    
+    setModifiedPrices(prev => ({
+      ...prev,
+      [record.id]: {
+        ...prev[record.id],
+        price: prev[record.id]?.price || record.price,
+        minAgentPrice: prev[record.id]?.minAgentPrice || record.minAgentPrice || 0,
+        ipWhitelist: newIpList.length === 0 ? [''] : newIpList
+      }
+    }));
+    setHasChanges(true);
+  };
+
   // 应用价格变更
   const handleApplyChanges = async () => {
     try {
-      const updates = Object.entries(modifiedPrices).map(([id, values]) => {
+      // 使用相同的用户名获取逻辑
+      const appUsername = selectedAgent?.app_username || user?.app_username || user?.username;
+      
+      if (!appUsername) {
+        message.error('无法获取用户名信息，请确保已登录');
+        return;
+      }
+
+      // 更新价格和IP白名单
+      const priceChanges = Object.entries(modifiedPrices).map(([id, values]) => {
         const productId = Number(id);
         const product = prices.find(p => p.id === productId);
         if (!product) {
-          console.warn(`未找到产品信息: ${id}`);
+          console.warn(`未找到产品信息: ${id}, 跳过处理`);
           return null;
         }
-        
+
         return {
           product_id: productId,
           type: product.type,
           proxy_type: product.proxyType,
           price: values.price,
           min_agent_price: values.minAgentPrice,
-          is_global: !selectedAgent,
-          agent_id: selectedAgent?.id
+          agent_id: selectedAgent?.id,
+          user_id: selectedAgent?.id,
+          app_username: appUsername,
+          ip_whitelist: values.ipWhitelist?.filter(ip => ip && ip.trim()) || []  // 添加IP白名单数据
         } as PriceUpdateItem;
       }).filter((item): item is PriceUpdateItem => item !== null);
 
-      const requestData = {
-        prices: updates,
-        agent_id: selectedAgent?.id,
-        is_global: !selectedAgent
-      };
+      if (priceChanges.length > 0) {
+        const requestData = {
+          prices: priceChanges,
+          agent_id: selectedAgent?.id,
+          user_id: selectedAgent?.id,
+          app_username: appUsername
+        };
 
-      await batchUpdateProductPriceSettings(requestData);
-      message.success('价格更新成功');
-      setModifiedPrices({});
-      setHasChanges(false);
-      loadPrices();
-    } catch (error) {
-      console.error('更新价格失败:', error);
-      message.error('更新价格失败');
-    }
-  };
+        console.log('发送价格和IP白名单更新请求:', requestData);
+        await batchUpdateProductPriceSettings(requestData);
+        message.success('价格和IP白名单更新成功');
 
-  const handleAgentChange = (value: number | null) => {
-    setLoading(true);
-    if (value === null) {
-      setSelectedAgent(null);
-      setIsGlobal(true);
-    } else {
-      if (isAgent) {
-        // 代理商模式下，value 是用户ID
-        const selectedUser = userList.find(u => u.id === value);
-        if (selectedUser) {
-          setSelectedAgent({
-            id: value,
-            name: selectedUser.account || '未命名用户'
-          });
-          setIsGlobal(false);
-        }
-      } else {
-        // 管理员模式下，value 是代理商ID
-        const agent = agents.find(a => Number(a.id) === value);
-        if (agent) {
-          setSelectedAgent({
-            id: value,
-            name: agent.app_username || agent.username || '未命名代理商'
-          });
-          setIsGlobal(false);
-        }
+        // 重置状态
+        setModifiedPrices({});
+        setHasChanges(false);
+        setPriceChanges([]);
+        setIpChanges([]);
+        
+        // 重新加载价格数据
+        await loadPrices();
       }
+    } catch (error: any) {
+      console.error('更新价格失败:', error);
+      message.error(error.message || '更新失败');
     }
-    
-    // 清除修改状态
-    setModifiedPrices({});
-    setHasChanges(false);
-    
-    // 重新加载价格
-    loadPrices();
   };
 
   const columns: ColumnsType<ProductPrice> = [
@@ -266,33 +345,6 @@ const DynamicProductPage: React.FC = () => {
           {getMappedValue(PRODUCT_NO_MAP, type)}
         </span>
       )
-    },
-    {
-      title: '区域',
-      dataIndex: 'area',
-      key: 'area',
-      width: 120,
-      filters: filterOptions.areas,
-      onFilter: (value: any, record: ProductPrice) => record.area === value,
-      render: (area: string) => getMappedValue(AREA_MAP, area)
-    },
-    {
-      title: '国家',
-      dataIndex: 'country',
-      key: 'country',
-      width: 120,
-      filters: filterOptions.countries,
-      onFilter: (value: any, record: ProductPrice) => record.country === value,
-      render: (country: string) => getMappedValue(COUNTRY_MAP, country)
-    },
-    {
-      title: '城市',
-      dataIndex: 'city',
-      key: 'city',
-      width: 120,
-      render: (city: string) => getMappedValue(CITY_MAP, city),
-      filters: filterOptions.cities,
-      onFilter: (value: any, record: ProductPrice) => record.city === value
     },
     {
       title: (
@@ -342,6 +394,17 @@ const DynamicProductPage: React.FC = () => {
       )
     }] : []),
     {
+      title: 'IP白名单',
+      key: 'ipWhitelist',
+      width: 300,
+      render: (_: any, record: ProductPrice) => (
+        <IpWhitelistInput
+          value={modifiedPrices[record.id]?.ipWhitelist ?? record.ipWhitelist ?? ['']}
+          onChange={(value) => handleIpWhitelistChange(record, value)}
+        />
+      )
+    },
+    {
       title: '库存',
       dataIndex: 'stock',
       key: 'stock',
@@ -356,8 +419,45 @@ const DynamicProductPage: React.FC = () => {
     }
   ].filter(Boolean);
 
+  // 渲染选择器部分
+  const renderSelector = () => (
+    <Space direction="vertical" size="small" style={{ width: '100%' }}>
+      <div>{isAgent ? '选择用户' : '设置对象'}</div>
+      <Space direction="vertical" size="small">
+        <Select
+          placeholder={isAgent ? "选择要设置价格的用户" : "选择代理商"}
+          allowClear
+          style={{ width: 300 }}
+          value={selectedAgent?.id}
+          onChange={handleAgentChange}
+        >
+          {isAgent ? (
+            userList.map(user => (
+              <Option key={user.id} value={user.id}>
+                {user.username || user.app_username || '未命名用户'}
+              </Option>
+            ))
+          ) : (
+            agents.map(agent => (
+              <Option key={agent.id} value={agent.id}>
+                {agent.username || '未命名代理商'}
+              </Option>
+            ))
+          )}
+        </Select>
+        <div style={{ color: '#666', fontSize: '12px' }}>
+          {isAgent ? (
+            selectedAgent ? '当前显示所选用户的价格' : '当前显示您的默认价格'
+          ) : (
+            selectedAgent ? '当前显示所选代理商的价格' : '当前显示默认全局价格'
+          )}
+        </div>
+      </Space>
+    </Space>
+  );
+
   return (
-    <div className={styles.dynamicProductPage}>
+    <div className="dynamic-product-page">
       <Card title="动态代理产品管理" bordered={false}>
         <Alert
           message="价格说明"
@@ -378,39 +478,7 @@ const DynamicProductPage: React.FC = () => {
         />
 
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <Space direction="vertical" size="small" style={{ width: '100%' }}>
-            <div>{isAgent ? '选择用户' : '设置对象'}</div>
-            <Space direction="vertical" size="small">
-              <Select
-                placeholder={isAgent ? "选择要设置价格的用户" : "选择代理商"}
-                allowClear
-                style={{ width: 300 }}
-                value={selectedAgent?.id}
-                onChange={handleAgentChange}
-              >
-                {isAgent ? (
-                  userList.map(user => (
-                    <Option key={user.id} value={user.id}>
-                      {user.account || '未命名用户'}
-                    </Option>
-                  ))
-                ) : (
-                  agents.map(agent => (
-                    <Option key={agent.id} value={agent.id}>
-                      {agent.app_username || agent.username || '未命名代理商'}
-                    </Option>
-                  ))
-                )}
-              </Select>
-              <div style={{ color: '#666', fontSize: '12px' }}>
-                {isAgent ? (
-                  selectedAgent ? '当前显示所选用户的价格' : '当前显示您的默认价格'
-                ) : (
-                  selectedAgent ? '当前显示所选代理商的价格' : '当前显示默认全局价格'
-                )}
-              </div>
-            </Space>
-          </Space>
+          {renderSelector()}
 
           <Space>
             <PriceImportExport 

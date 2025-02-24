@@ -14,6 +14,10 @@ export interface ProductPrice {
   updatedAt: string;  // 更新时间
   createdAt: string;  // 创建时间
   key?: number;  // 表格渲染用的key
+  ipWhitelist: string[];  // IP白名单列表，修改为必填字段
+  appUsername?: string;  // 用户名
+  agentId?: number;  // 代理商ID
+  userId?: number;  // 用户ID
 }
 
 export interface ProductPriceUpdate {
@@ -79,4 +83,16 @@ export interface ProductPriceSettings {
   minAgentPrice: number;
   globalPrice: number;
   type: string;
-} 
+}
+
+export interface PriceUpdateItem {
+  product_id: number;
+  type: string;
+  proxy_type: number;
+  price: number;
+  min_agent_price?: number;
+  agent_id?: number;
+  app_username?: string;  // 添加用户名字段
+  user_id?: number;  // 添加用户ID字段
+  ip_whitelist?: string[];  // 添加IP白名单字段
+}

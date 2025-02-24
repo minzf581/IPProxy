@@ -117,6 +117,41 @@
   }
   ```
 
+### 代理商相关接口
+
+- **接口**: `/api/open/app/agent/transactions`
+- **方法**: GET
+- **描述**: 获取代理商额度订单记录
+- **参数**:
+  - page: 页码（必填，默认1）
+  - page_size: 每页数量（必填，默认10）
+  - order_no: 订单号（可选）
+  - start_date: 开始日期（可选，格式：YYYY-MM-DD）
+  - end_date: 结束日期（可选，格式：YYYY-MM-DD）
+- **返回**:
+  ```json
+  {
+    "code": 0,
+    "message": "success",
+    "data": {
+      "total": 100,
+      "items": [
+        {
+          "id": 1,
+          "order_no": "TRX202403201234567890",
+          "amount": 100.00,
+          "type": "recharge",
+          "status": "success",
+          "created_at": "2024-03-20 12:34:56",
+          "operator_name": "admin"
+        }
+      ],
+      "page": 1,
+      "page_size": 10
+    }
+  }
+  ```
+
 ## 3. 订单接口
 
 ### 3.1 获取代理商订单列表
