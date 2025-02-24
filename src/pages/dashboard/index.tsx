@@ -50,7 +50,11 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
 
   useEffect(() => {
     console.log('Dashboard mounted, currentAgent:', currentAgent);
-    fetchDashboardData();
+    if (selectedUserId) {
+      fetchDashboardData(selectedUserId);
+    } else {
+      fetchDashboardData();
+    }
   }, [currentAgent, selectedUserId]);
 
   useEffect(() => {
@@ -58,6 +62,11 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
       fetchUsers();
     }
   }, [user]);
+
+  const handleUserChange: SelectProps['onChange'] = (value) => {
+    console.log('Selected user changed:', value);
+    setSelectedUserId(value as string);
+  };
 
   const fetchDashboardData = async (userId?: string) => {
     try {
@@ -126,12 +135,6 @@ const Dashboard: React.FC<Props> = ({ currentAgent }) => {
       message.error('获取用户列表失败');
       setUsers([]);
     }
-  };
-
-  const handleUserChange: SelectProps['onChange'] = (value) => {
-    console.log('Selected user changed:', value);
-    setSelectedUserId(value as string);
-    fetchDashboardData(value as string);
   };
 
   const renderStatisticsCards = () => {

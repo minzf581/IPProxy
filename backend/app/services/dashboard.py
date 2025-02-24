@@ -31,6 +31,7 @@ import logging
 from .ipipv_base_api import IPIPVBaseAPI
 import traceback
 from app.models.resource_usage import ResourceUsageStatistics
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -145,13 +146,15 @@ class DashboardService(IPIPVBaseAPI):
     ) -> Dict[str, Any]:
         """获取用户统计数据"""
         try:
-            logger.info(f"[DashboardService] 获取用户统计数据: user_id={user_id}")
+            logger.info(f"[DashboardService] 开始获取用户统计数据: user_id={user_id}")
             
             # 获取用户信息
             user = db.query(User).filter(User.id == user_id).first()
             if not user:
                 logger.warning(f"[DashboardService] 用户不存在: {user_id}")
                 return {}
+            
+            logger.info(f"[DashboardService] 用户信息: id={user.id}, username={user.username}, balance={user.balance}, total_recharge={user.total_recharge}, total_consumption={user.total_consumption}")
             
             # 获取本月统计
             first_day = datetime.utcnow().replace(day=1).date()
@@ -161,11 +164,15 @@ class DashboardService(IPIPVBaseAPI):
                 func.date(Transaction.created_at) >= first_day
             ).scalar() or 0
             
+            logger.info(f"[DashboardService] 本月充值金额: {monthly_amount}")
+            
             monthly_consumption = db.query(func.sum(Transaction.amount)).filter(
                 Transaction.user_id == user_id,
                 Transaction.type == "consumption",
                 func.date(Transaction.created_at) >= first_day
             ).scalar() or 0
+            
+            logger.info(f"[DashboardService] 本月消费金额: {monthly_consumption}")
             
             # 获取上月消费
             last_month_start = (datetime.utcnow().replace(day=1) - timedelta(days=1)).replace(day=1).date()
@@ -177,10 +184,12 @@ class DashboardService(IPIPVBaseAPI):
                 func.date(Transaction.created_at).between(last_month_start, last_month_end)
             ).scalar() or 0
             
+            logger.info(f"[DashboardService] 上月消费金额: {last_month_consumption}")
+            
             # 获取动态资源使用情况
             dynamic_resources = await self.get_dynamic_resources(db, user_id)
             
-            return {
+            result = {
                 "total_amount": float(user.total_recharge),
                 "total_orders": float(user.total_consumption),
                 "monthly_amount": float(monthly_amount),
@@ -191,8 +200,12 @@ class DashboardService(IPIPVBaseAPI):
                 "staticResources": []  # 静态资源待实现
             }
             
+            logger.info(f"[DashboardService] 用户统计数据结果: {json.dumps(result, ensure_ascii=False)}")
+            return result
+            
         except Exception as e:
             logger.error(f"[DashboardService] 获取用户统计数据失败: {str(e)}")
+            logger.error(traceback.format_exc())
             return {}
             
     async def get_agent_statistics(

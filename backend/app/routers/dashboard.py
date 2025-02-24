@@ -77,6 +77,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List, Optional
 import logging
+import json
+import traceback
 
 from app.database import get_db
 from app.models.user import User
@@ -97,34 +99,42 @@ async def get_dashboard_info(
 ):
     """获取仪表盘数据"""
     try:
-        logger.info("[Dashboard Router] 开始获取仪表盘数据")
+        logger.info(f"[Dashboard Router] 开始获取仪表盘数据: current_user={current_user.username}, target_user_id={target_user_id}")
         
         # 权限验证
         if target_user_id:
             # 如果指定了目标用户
             target_user = db.query(User).filter(User.id == target_user_id).first()
             if not target_user:
+                logger.error(f"[Dashboard Router] 目标用户不存在: target_user_id={target_user_id}")
                 raise HTTPException(status_code=404, detail="目标用户不存在")
                 
             # 验证访问权限
             if not current_user.is_admin:  # 不是管理员
                 if not current_user.is_agent:  # 也不是代理商
+                    logger.error(f"[Dashboard Router] 权限不足: current_user={current_user.username} 尝试访问用户 {target_user_id} 的数据")
                     raise HTTPException(status_code=403, detail="没有权限查看其他用户数据")
                 # 是代理商，检查目标用户是否为其下属
                 if target_user.agent_id != current_user.id:
+                    logger.error(f"[Dashboard Router] 代理商权限不足: agent={current_user.username} 尝试访问非下属用户 {target_user_id} 的数据")
                     raise HTTPException(status_code=403, detail="没有权限查看非下属用户数据")
+                    
+            logger.info(f"[Dashboard Router] 权限验证通过: current_user={current_user.username} 访问用户 {target_user.username} 的数据")
         else:
             # 未指定目标用户，使用当前用户
             target_user_id = current_user.id
+            logger.info(f"[Dashboard Router] 使用当前用户: user_id={target_user_id}")
             
         # 获取仪表盘数据
         dashboard_data = await dashboard_service.get_dashboard_data(target_user_id, db)
         
-        logger.info("[Dashboard Router] 仪表盘数据获取成功")
+        logger.info(f"[Dashboard Router] 仪表盘数据获取成功: user_id={target_user_id}")
+        logger.info(f"[Dashboard Router] 返回数据: {json.dumps(dashboard_data, ensure_ascii=False)}")
         return dashboard_data
         
     except Exception as e:
         logger.error(f"[Dashboard Router] 获取仪表盘数据失败: {str(e)}")
+        logger.error(f"[Dashboard Router] 错误详情: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/dashboard/agent/{agent_id}")
