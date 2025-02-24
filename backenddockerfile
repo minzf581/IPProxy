@@ -18,7 +18,6 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     libpq-dev \
     curl \
-    netcat \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
@@ -60,13 +59,26 @@ EXPOSE 8000
 # 创建启动脚本
 RUN echo '#!/bin/sh\n\
 echo "Starting container with DATABASE_URL=${DATABASE_URL}"\n\
-echo "Checking netcat installation..."\n\
-which netcat || echo "netcat not found"\n\
 echo "Waiting for database..."\n\
-while ! netcat -z -v postgres.railway.internal 5432; do\n\
-  echo "Database is unavailable - sleeping"\n\
-  sleep 2\n\
-done\n\
+python -c "\
+import time\n\
+import sys\n\
+from sqlalchemy import create_engine\n\
+from sqlalchemy.exc import OperationalError\n\
+while True:\n\
+    try:\n\
+        engine = create_engine(\"${DATABASE_URL}\")\n\
+        conn = engine.connect()\n\
+        conn.close()\n\
+        print(\"Database is available\")\n\
+        break\n\
+    except OperationalError as e:\n\
+        print(f\"Database not ready: {e}\")\n\
+        time.sleep(2)\n\
+    except Exception as e:\n\
+        print(f\"Unexpected error: {e}\")\n\
+        sys.exit(1)\n\
+"\n\
 echo "Database is up - executing migrations"\n\
 alembic upgrade head\n\
 echo "Starting application"\n\
