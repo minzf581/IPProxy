@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
-COPY requirements.txt .
+COPY backend/requirements.txt .
 
 # 安装基础 Python 工具
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
@@ -44,18 +44,16 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     numpy
 
 # 复制源代码
-COPY . .
+COPY backend .
 
 # 显示目录结构和尝试导入
 RUN echo "Current directory structure:" && \
     ls -la && \
     echo "\nPython path:" && \
-    python -c "import sys; print('\n'.join(sys.path))" && \
-    echo "\nTrying to import app:" && \
-    python -c "import app; print('app package location:', app.__file__)"
+    python -c "import sys; print('\n'.join(sys.path))"
 
 # 暴露端口
 EXPOSE 8000
 
 # 启动命令
-CMD cd /app && uvicorn app.main:app --host 0.0.0.0 --port 8000 
+CMD uvicorn app.main:app --host 0.0.0.0 --port 8000 
