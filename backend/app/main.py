@@ -376,22 +376,39 @@ async def root():
 async def health_check():
     """健康检查端点"""
     try:
+        # 检查环境变量
+        if not settings.DATABASE_URL:
+            logger.error("DATABASE_URL 环境变量未设置")
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "unhealthy",
+                    "error": "DATABASE_URL environment variable is not set",
+                    "database": "configuration_error",
+                    "timestamp": datetime.datetime.now().isoformat()
+                }
+            )
+
         # 检查数据库连接
         db = next(get_db())
         try:
             # 添加详细的日志
             logger.info("开始健康检查...")
-            logger.info(f"数据库URL: {settings.DATABASE_URL}")
             
-            # 尝试执行查询
-            result = db.execute("SELECT 1").scalar()
+            # 使用 SQLAlchemy 的方式执行查询
+            from sqlalchemy import text
+            result = db.execute(text("SELECT 1")).scalar()
             logger.info(f"数据库查询结果: {result}")
             
-            return {
-                "status": "healthy",
-                "database": "connected",
-                "timestamp": datetime.datetime.now().isoformat()
-            }
+            if result == 1:
+                return {
+                    "status": "healthy",
+                    "database": "connected",
+                    "timestamp": datetime.datetime.now().isoformat()
+                }
+            else:
+                raise ValueError("Unexpected database query result")
+                
         except Exception as e:
             logger.error(f"数据库查询失败: {str(e)}")
             logger.error(f"错误类型: {type(e).__name__}")
@@ -408,6 +425,7 @@ async def health_check():
             )
         finally:
             db.close()
+            
     except Exception as e:
         logger.error(f"数据库连接失败: {str(e)}")
         logger.error(f"错误类型: {type(e).__name__}")

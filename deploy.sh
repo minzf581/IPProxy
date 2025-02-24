@@ -5,6 +5,12 @@ set -e
 
 echo "开始部署..."
 
+# 检查必要的环境变量
+if [ -z "$DATABASE_URL" ]; then
+    echo "错误: DATABASE_URL 环境变量未设置"
+    exit 1
+fi
+
 # 等待数据库准备就绪
 echo "等待数据库准备就绪..."
 max_retries=10
@@ -13,21 +19,35 @@ count=0
 # 首先确保安装了必要的包
 pip install --no-cache-dir psycopg2-binary
 
+# 打印数据库连接信息（隐藏敏感信息）
+echo "数据库连接信息:"
+echo "DATABASE_URL=${DATABASE_URL//:*@/:***@}"
+
 while ! python -c "
 import sys
 import psycopg2
 import os
 import logging
 import traceback
+from urllib.parse import urlparse
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 try:
+    database_url = os.environ.get('DATABASE_URL')
+    if not database_url:
+        raise ValueError('DATABASE_URL environment variable is not set')
+        
     logger.info('尝试连接数据库...')
-    logger.info(f'数据库URL: {os.environ.get("DATABASE_URL")}')
+    # 解析数据库URL并打印非敏感信息
+    db_url = urlparse(database_url)
+    logger.info(f'数据库主机: {db_url.hostname}')
+    logger.info(f'数据库端口: {db_url.port}')
+    logger.info(f'数据库名称: {db_url.path[1:]}')
+    
     conn = psycopg2.connect(
-        os.environ['DATABASE_URL'],
+        database_url,
         connect_timeout=5
     )
     cur = conn.cursor()
