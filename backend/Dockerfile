@@ -9,7 +9,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PATH="/app/.local/bin:$PATH"
+    PATH="/app/.local/bin:$PATH" \
+    PYTHONPATH="/app"
 
 # 安装系统依赖
 RUN apt-get update && apt-get install -y \
@@ -44,7 +45,13 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     numpy
 
 # 复制源代码
-COPY . .
+COPY . /app/
+
+# 确保工作目录正确
+WORKDIR /app
+
+# 验证应用结构
+RUN python -c "import app.main" || (echo "Error: Could not import app.main. Directory structure:" && ls -R /app)
 
 # 暴露端口
 EXPOSE 8000
