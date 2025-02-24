@@ -9,6 +9,10 @@ echo "开始部署..."
 echo "等待数据库准备就绪..."
 max_retries=10
 count=0
+
+# 首先确保安装了必要的包
+pip install --no-cache-dir psycopg2-binary
+
 while ! python -c "
 import sys
 import psycopg2

@@ -10,10 +10,11 @@ ENV PYTHONPATH=/app \
     TZ=Asia/Shanghai \
     PORT=8000
 
-# 安装系统依赖
+# 安装系统依赖和 Python 包
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # 创建非 root 用户
@@ -33,6 +34,7 @@ RUN chown -R app:app /app && \
 
 # 安装 Python 依赖
 RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install psycopg2-binary \
     && pip install gunicorn
 
 # 切换到非 root 用户
