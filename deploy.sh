@@ -5,17 +5,22 @@ set -e
 
 echo "开始部署..."
 
+# 设置 pip 配置
+export PIP_DEFAULT_TIMEOUT=100
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+export PIP_NO_CACHE_DIR=1
+
 # 检查 alembic 命令是否可用
 if ! command -v alembic &> /dev/null; then
     echo "错误: alembic 命令未找到"
     echo "尝试重新安装 alembic..."
-    pip install --no-cache-dir --user alembic
+    pip install --no-cache-dir --user alembic --timeout 100
     export PATH="/home/app/.local/bin:$PATH"
 fi
 
 # 安装必要的包
 echo "安装必要的包..."
-pip install --no-cache-dir --user psycopg2-binary pycryptodome
+pip install --no-cache-dir --user psycopg2-binary pycryptodome --timeout 100
 
 # 如果环境变量未设置，使用默认值
 if [ -z "$DATABASE_URL" ]; then
@@ -63,7 +68,7 @@ try:
     # 添加连接选项
     conn = psycopg2.connect(
         database_url,
-        connect_timeout=5,
+        connect_timeout=10,
         keepalives=1,
         keepalives_idle=30,
         keepalives_interval=10,
@@ -72,7 +77,7 @@ try:
     
     # 设置会话参数
     cur = conn.cursor()
-    cur.execute('SET statement_timeout = 5000;')  # 5 秒超时
+    cur.execute('SET statement_timeout = 10000;')  # 10 秒超时
     cur.execute('SELECT 1')
     result = cur.fetchone()
     logger.info(f'查询结果: {result}')
@@ -91,26 +96,31 @@ except Exception as e:
         exit 1
     fi
     echo "尝试连接数据库... ($(( count + 1 ))/$max_retries)"
-    sleep 3
+    sleep 5
     count=$((count + 1))
 done
 
 echo "数据库连接成功！"
 
-# 运行数据库迁移
-echo "运行数据库迁移..."
-echo "当前路径: $(pwd)"
-echo "PATH: $PATH"
-echo "Python 路径: $(which python)"
-echo "Alembic 路径: $(which alembic || echo 'alembic not found')"
+# 检查数据库表结构
+echo "检查数据库表结构..."
+python3 -c "
+from sqlalchemy import create_engine, inspect
+import os
 
-# 运行数据库迁移，如果失败则退出
-echo "运行数据库迁移..."
-alembic upgrade head
+database_url = os.getenv('DATABASE_URL')
+engine = create_engine(database_url)
+inspector = inspect(engine)
 
-# 等待其他服务准备就绪
-echo "等待其他服务准备就绪..."
-sleep 5
+if 'users' in inspector.get_table_names():
+    print('users 表已存在')
+    print('表结构:')
+    for column in inspector.get_columns('users'):
+        print(f'{column[\"name\"]}: {column[\"type\"]}')
+else:
+    print('users 表不存在')
+    exit(1)
+"
 
 # 启动应用
 echo "启动应用..."
@@ -121,7 +131,7 @@ if [ "$RAILWAY_ENVIRONMENT" = "production" ]; then
         -w 2 \
         -k uvicorn.workers.UvicornWorker \
         -b 0.0.0.0:$PORT \
-        --timeout 60 \
+        --timeout 120 \
         --keep-alive 60 \
         --access-logfile - \
         --error-logfile - \
@@ -140,5 +150,5 @@ else
         --host 0.0.0.0 \
         --port ${PORT:-8000} \
         --workers 2 \
-        --log-level info
-fi 
+        --log-level info \
+        --timeout-keep-alive 60 
