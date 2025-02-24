@@ -20,22 +20,27 @@ RUN apt-get update && \
 # 复制 package.json 和 package-lock.json
 COPY package*.json ./
 
-# 安装所有依赖（包括开发依赖）
-RUN npm install
+# 清理 npm 缓存并安装依赖
+RUN npm cache clean --force && \
+    npm install && \
+    npm install -D @vitejs/plugin-react vite
 
 # 复制源代码和配置文件
 COPY . .
 
 # 确保.env.production文件存在
-COPY .env.production .env.production
+COPY .env.production .env.production || true
 
-# 显示环境信息
+# 显示环境信息和依赖
 RUN node -v && \
     npm -v && \
+    npm list vite && \
+    npm list @vitejs/plugin-react && \
     ls -la node_modules/.bin/
 
 # 构建项目
-RUN npx vite build || (echo "Build failed" && ls -la && cat package.json && exit 1)
+RUN NODE_ENV=production VITE_API_URL=$VITE_API_URL node node_modules/vite/bin/vite.js build || \
+    (echo "Build failed" && ls -la && cat vite.config.ts && exit 1)
 
 # 验证构建输出
 RUN if [ ! -d "dist" ] || [ ! -f "dist/index.html" ]; then \
