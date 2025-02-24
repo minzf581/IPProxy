@@ -1,7 +1,7 @@
 """modify username constraint
 
 Revision ID: 2024_04_modify_username_constraint
-Revises: 2024_04_add_user_balance
+Revises: 
 Create Date: 2024-04-10 11:00:00.000
 
 """
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic
 revision = '2024_04_modify_username_constraint'
-down_revision = '2024_04_add_user_balance'
+down_revision = None
 branch_labels = None
 depends_on = None
 

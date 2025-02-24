@@ -13,6 +13,10 @@ if ! command -v alembic &> /dev/null; then
     export PATH="/home/app/.local/bin:$PATH"
 fi
 
+# 安装必要的包
+echo "安装必要的包..."
+pip install --no-cache-dir --user psycopg2-binary pycryptodome
+
 # 如果环境变量未设置，使用默认值
 if [ -z "$DATABASE_URL" ]; then
     export DATABASE_URL="postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
@@ -28,9 +32,6 @@ echo "DATABASE_URL=$MASKED_URL"
 echo "等待数据库准备就绪..."
 max_retries=10
 count=0
-
-# 首先确保安装了必要的包
-pip install --no-cache-dir --user psycopg2-binary
 
 # 打印所有环境变量（用于调试）
 echo "当前环境变量:"
@@ -103,11 +104,9 @@ echo "PATH: $PATH"
 echo "Python 路径: $(which python)"
 echo "Alembic 路径: $(which alembic || echo 'alembic not found')"
 
-# 尝试运行数据库迁移，如果失败则跳过
-echo "尝试运行数据库迁移..."
-if ! alembic upgrade head; then
-    echo "警告: 数据库迁移失败，但继续部署..."
-fi
+# 运行数据库迁移，如果失败则退出
+echo "运行数据库迁移..."
+alembic upgrade head
 
 # 等待其他服务准备就绪
 echo "等待其他服务准备就绪..."
