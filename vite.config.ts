@@ -6,7 +6,12 @@ import path from 'path'
 export default defineConfig(({ command, mode }) => {
   // 加载环境变量
   const env = loadEnv(mode, process.cwd(), '')
-  const apiUrl = process.env.VITE_API_URL || env.VITE_API_URL || 'http://localhost:8000'
+  
+  // 获取 API URL，优先使用环境变量
+  const apiUrl = env.VITE_API_URL || process.env.VITE_API_URL || 'http://localhost:8000'
+  console.log('API URL:', apiUrl)
+  console.log('Mode:', mode)
+  console.log('Command:', command)
   
   return {
     plugins: [react()],
@@ -24,7 +29,8 @@ export default defineConfig(({ command, mode }) => {
         '/api': {
           target: apiUrl,
           changeOrigin: true,
-          secure: false
+          secure: false,
+          rewrite: (path) => path.replace(/^\/api/, '')
         }
       }
     },
@@ -32,14 +38,14 @@ export default defineConfig(({ command, mode }) => {
     build: {
       outDir: 'dist',
       assetsDir: 'assets',
-      sourcemap: false,
-      minify: 'terser',
-      terserOptions: {
+      sourcemap: mode === 'development',
+      minify: mode === 'production' ? 'terser' : false,
+      terserOptions: mode === 'production' ? {
         compress: {
           drop_console: true,
           drop_debugger: true
         }
-      },
+      } : undefined,
       rollupOptions: {
         output: {
           manualChunks: {
@@ -63,7 +69,9 @@ export default defineConfig(({ command, mode }) => {
     },
     
     define: {
-      __API_URL__: JSON.stringify(apiUrl)
+      __API_URL__: JSON.stringify(apiUrl),
+      'process.env.VITE_API_URL': JSON.stringify(apiUrl),
+      'process.env.NODE_ENV': JSON.stringify(mode)
     },
     
     optimizeDeps: {
@@ -77,6 +85,11 @@ export default defineConfig(({ command, mode }) => {
         'axios'
       ],
       exclude: ['@ant-design/plots']
-    }
+    },
+
+    // 添加环境变量处理
+    envPrefix: 'VITE_',
+    clearScreen: false,
+    logLevel: 'info'
   }
 })
