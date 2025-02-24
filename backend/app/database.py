@@ -22,19 +22,11 @@ SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_FILE}"
 # 创建数据库引擎
 engine = create_engine(
     settings.DATABASE_URL,
-    pool_size=3,  # 减小连接池大小
-    max_overflow=5,  # 减小最大溢出连接数
-    pool_timeout=10,  # 减小超时时间
-    pool_recycle=300,  # 减小连接回收时间
-    pool_pre_ping=True,
-    poolclass=QueuePool,
-    connect_args={
-        "connect_timeout": 5,  # 减小连接超时
-        "keepalives": 1,
-        "keepalives_idle": 30,
-        "keepalives_interval": 10,
-        "keepalives_count": 3
-    }
+    pool_size=3,
+    max_overflow=5,
+    pool_timeout=10,
+    pool_recycle=300,
+    pool_pre_ping=True
 )
 
 # 创建会话工厂
