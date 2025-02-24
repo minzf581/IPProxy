@@ -46,8 +46,13 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 # 复制源代码
 COPY . .
 
-# 显示目录结构
-RUN echo "Current directory structure:" && ls -la
+# 显示目录结构和尝试导入
+RUN echo "Current directory structure:" && \
+    ls -la && \
+    echo "\nPython path:" && \
+    python -c "import sys; print('\n'.join(sys.path))" && \
+    echo "\nTrying to import app:" && \
+    python -c "import app; print('app package location:', app.__file__)"
 
 # 暴露端口
 EXPOSE 8000
