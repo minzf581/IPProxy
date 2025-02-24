@@ -13,8 +13,8 @@ alembic upgrade head
 echo "启动应用..."
 if [ "$RAILWAY_ENVIRONMENT" = "production" ]; then
     # 生产环境使用 gunicorn
-    gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT
+    gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT --timeout 120
 else
     # 开发环境使用 uvicorn
-    uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 4
 fi 
