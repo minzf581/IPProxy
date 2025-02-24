@@ -26,10 +26,10 @@ RUN npm cache clean --force && \
     npm install -D @vitejs/plugin-react vite
 
 # 复制源代码和配置文件
-COPY . .
+COPY . ./
 
-# 确保.env.production文件存在
-COPY .env.production .env.production || true
+# 确保.env.production文件存在（如果存在）
+RUN touch .env.production
 
 # 显示环境信息和依赖
 RUN node -v && \
