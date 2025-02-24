@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - REDIS_URL=${REDIS_URL}
+      - IPPROXY_API_URL=${IPPROXY_API_URL}
+      - IPPROXY_APP_KEY=${IPPROXY_APP_KEY}
+      - IPPROXY_APP_SECRET=${IPPROXY_APP_SECRET}
+      - IPPROXY_API_VERSION=${IPPROXY_API_VERSION}
+      - IPPROXY_API_ENCRYPT=${IPPROXY_API_ENCRYPT}
+      - IPPROXY_APP_USERNAME=${IPPROXY_APP_USERNAME}
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  redis:
+    image: redis:6-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data: 
