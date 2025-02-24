@@ -159,4 +159,46 @@ export async function getProductStock(): Promise<ApiResponse<ProductStock[]>> {
     console.error('获取产品库存失败:', error);
     throw error;
   }
-} 
+}
+
+import { api } from '@/utils/request';
+
+export interface ProductInventory {
+  id: number;
+  productNo: string;
+  name: string;
+  type: string;
+  minAgentPrice: number;
+  price: number;
+  stock: number;
+  status: string;
+}
+
+export interface CreateProductParams {
+  productNo: string;
+  name: string;
+  type: string;
+  minAgentPrice: number;
+  price: number;
+  stock: number;
+}
+
+export interface UpdateProductParams {
+  id: number;
+  minAgentPrice?: number;
+  price?: number;
+  stock?: number;
+  status?: string;
+}
+
+export async function getProductList(): Promise<ApiResponse<ProductInventory[]>> {
+  return api.get('/api/products');
+}
+
+export async function createProduct(params: CreateProductParams): Promise<ApiResponse<ProductInventory>> {
+  return api.post('/api/products', params);
+}
+
+export async function updateProduct(params: UpdateProductParams): Promise<ApiResponse<ProductInventory>> {
+  return api.put(`/api/products/${params.id}`, params);
+}

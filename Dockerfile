@@ -30,7 +30,7 @@ RUN NODE_ENV=production \
     VITE_API_URL=https://ipproxy-production.up.railway.app:8080 \
     VITE_API_PROXY_URL=https://ipproxy-production.up.railway.app:8080 \
     VITE_APP_ENV=production \
-    npm run build || \
+    npm run build --force || \
     (echo "Build failed" && \
      echo "TypeScript version:" && \
      npx tsc --version && \

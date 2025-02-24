@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { lazy } from 'react';
 import { RouteObject, createBrowserRouter } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import Login from '@/pages/login';
 import Dashboard from '@/pages/dashboard/index';
-import StaticOrderPage from '@frontend/components/StaticOrder/StaticOrderList';
+import StaticOrderList from '@/components/StaticOrder/StaticOrderList';
 import AgentManagement from '@/pages/agents';
 import UserManagement from '@/pages/users';
 import AuthGuard, { PublicRoute } from '@/components/AuthGuard';
@@ -81,7 +81,7 @@ const createRoutes = () => {
         },
         {
           path: 'static',
-          element: <StaticOrderPage />,
+          element: <StaticOrderList />,
         },
         {
           path: 'transactions',
@@ -152,7 +152,7 @@ const createRoutes = () => {
         },
         {
           path: 'static',
-          element: <StaticOrderPage />,
+          element: <StaticOrderList />,
         },
         {
           path: 'balance',
