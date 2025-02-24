@@ -1,61 +1,81 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
 // https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react()],
-  base: '/',  // 为 React Router 使用绝对路径
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@frontend': path.resolve(__dirname, './frontend/src'),
-    },
-  },
-  server: {
-    port: 3000,
-    proxy: {
-      // 统一代理到后端
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        secure: false,
-        configure: (proxy, options) => {
-          proxy.on('error', (err, req, res) => {
-            console.error('[Proxy Error]', err);
-          });
-        }
+export default defineConfig(({ command, mode }) => {
+  // 加载环境变量
+  const env = loadEnv(mode, process.cwd(), '')
+  
+  return {
+    plugins: [react()],
+    base: '/',
+    
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
       }
     },
-    hmr: {
-      overlay: false  // 禁用 HMR 错误覆盖
-    }
-  },
-  envPrefix: 'VITE_',
-  define: {
-    'import.meta.env.VITE_DEBUG': JSON.stringify(true),
-    'import.meta.env.VITE_API_MOCK': JSON.stringify(false),
-    'import.meta.env.VITE_API_BASE_URL': JSON.stringify('http://localhost:8000')
-  },
-  build: {
-    sourcemap: true,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'vendor': ['react', 'react-dom', 'react-router-dom'],
-          'antd': ['antd']
+    
+    server: {
+      port: 3000,
+      proxy: {
+        '/api': {
+          target: env.VITE_API_URL || 'http://localhost:8000',
+          changeOrigin: true,
+          secure: false
         }
       }
-    }
-  },
-  css: {
-    preprocessorOptions: {
-      less: {
-        javascriptEnabled: true,
-        modifyVars: {
-          'primary-color': '#1890ff',
+    },
+    
+    build: {
+      outDir: 'dist',
+      assetsDir: 'assets',
+      sourcemap: false,
+      minify: 'terser',
+      terserOptions: {
+        compress: {
+          drop_console: true,
+          drop_debugger: true
+        }
+      },
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor': ['react', 'react-dom', 'react-router-dom'],
+            'antd': ['antd'],
+            'charts': ['@ant-design/charts', 'recharts']
+          }
         }
       }
+    },
+    
+    css: {
+      preprocessorOptions: {
+        less: {
+          javascriptEnabled: true,
+          modifyVars: {
+            'primary-color': '#1890ff'
+          }
+        }
+      }
+    },
+    
+    define: {
+      __API_URL__: JSON.stringify(env.VITE_API_URL || 'http://localhost:8000')
+    },
+    
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-router-dom',
+        'antd',
+        '@ant-design/icons',
+        '@ant-design/charts',
+        'axios'
+      ],
+      exclude: ['@ant-design/plots']
     }
   }
 })
