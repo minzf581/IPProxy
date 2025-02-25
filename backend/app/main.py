@@ -229,7 +229,7 @@ app.add_middleware(
     allow_origins=[
         "https://zippy-communication-production.up.railway.app",  # 前端域名
         "http://localhost:3000",  # 本地开发
-        "https://backend-production-127a.up.railway.app:8080"  # 后端域名（用于开发测试）
+        "https://backend-production-127a.up.railway.app"  # 后端域名
     ],
     allow_credentials=True,
     allow_methods=["*"],
