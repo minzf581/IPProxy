@@ -114,7 +114,30 @@ while True:\n\
 "\n\
 echo "\n=== Running database migrations ==="\n\
 alembic upgrade head\n\
-echo "\n=== Starting FastAPI application with Gunicorn ==="\n\
+echo "\n=== Starting FastAPI application ==="\n\
+echo "Starting uvicorn with host=0.0.0.0 port=8000"\n\
+python -c "\
+from fastapi import FastAPI\n\
+from fastapi.responses import JSONResponse\n\
+import uvicorn\n\
+\n\
+app = FastAPI()\n\
+\n\
+@app.get(\"/\")\n\
+async def root():\n\
+    return JSONResponse(\n\
+        status_code=200,\n\
+        content={\n\
+            \"status\": \"healthy\",\n\
+            \"message\": \"Welcome to IP Proxy API\",\n\
+            \"service\": \"backend\"\n\
+        }\n\
+    )\n\
+\n\
+if __name__ == \"__main__\":\n\
+    uvicorn.run(app, host=\"0.0.0.0\", port=8000)\n\
+" > /app/healthcheck.py\n\
+\n\
 exec gunicorn -c /app/gunicorn.conf.py app.main:app\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 
