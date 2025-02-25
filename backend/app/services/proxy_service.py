@@ -1073,7 +1073,7 @@ class ProxyService(IPIPVBaseAPI):
             transaction = Transaction(
                 transaction_no=f"DYN{datetime.now().strftime('%Y%m%d%H%M%S')}{uuid.uuid4().hex[:6]}",
                 user_id=user.id,
-                agent_id=params["agentId"],
+                agent_id=user.agent_id if user.agent_id else user.id,  # 如果用户没有代理商，使用用户自己的ID
                 order_no=order_no,
                 amount=order_amount,
                 balance=user.balance,
