@@ -59,138 +59,29 @@ RUN echo 'import multiprocessing\n\
 bind = "0.0.0.0:8000"\n\
 workers = 1\n\
 worker_class = "uvicorn.workers.UvicornWorker"\n\
+worker_connections = 1000\n\
 timeout = 120\n\
 keepalive = 75\n\
+graceful_timeout = 30\n\
+max_requests = 1000\n\
+max_requests_jitter = 50\n\
 errorlog = "-"\n\
 accesslog = "-"\n\
-loglevel = "debug"\n\
+loglevel = "info"\n\
+capture_output = True\n\
+enable_stdio_inheritance = True\n\
 forwarded_allow_ips = "*"\n\
 proxy_allow_ips = "*"\n\
+preload_app = True\n\
+worker_tmp_dir = "/dev/shm"\n\
 ' > /app/gunicorn.conf.py
 
 # 暴露端口
 EXPOSE 8000
 
-# 创建健康检查脚本
-RUN echo '#!/usr/bin/env python3\n\
-import http.server\n\
-import socketserver\n\
-import json\n\
-import threading\n\
-import time\n\
-import requests\n\
-import logging\n\
-import signal\n\
-import sys\n\
-\n\
-logging.basicConfig(\n\
-    level=logging.INFO,\n\
-    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",\n\
-    datefmt="%Y-%m-%d %H:%M:%S"\n\
-)\n\
-logger = logging.getLogger("healthcheck")\n\
-\n\
-class HealthCheckServer:\n\
-    def __init__(self):\n\
-        self.httpd = None\n\
-        self.is_running = True\n\
-        self.app_ready = False\n\
-        self.startup_time = time.time()\n\
-        self.startup_timeout = 30  # 30秒启动超时\n\
-\n\
-    def check_main_app(self):\n\
-        try:\n\
-            # 检查应用是否在启动阶段\n\
-            if not self.app_ready and (time.time() - self.startup_time) < self.startup_timeout:\n\
-                logger.info("Application is still starting up...")\n\
-                return True  # 在启动阶段返回健康状态\n\
-\n\
-            # 尝试访问应用的健康检查端点\n\
-            response = requests.get("http://localhost:8000/health", timeout=2)\n\
-            logger.info(f"Main app response status: {response.status_code}")\n\
-            \n\
-            if response.status_code == 200:\n\
-                self.app_ready = True\n\
-                return True\n\
-            \n\
-            # 如果应用已启动但返回错误状态码\n\
-            if self.app_ready:\n\
-                logger.error(f"Application returned unhealthy status: {response.status_code}")\n\
-                return False\n\
-            \n\
-            # 应用仍在启动中\n\
-            return True\n\
-            \n\
-        except requests.exceptions.ConnectionError:\n\
-            logger.warning("Connection to main app failed - might be starting up")\n\
-            # 如果在启动超时时间内，返回健康状态\n\
-            return not self.app_ready and (time.time() - self.startup_time) < self.startup_timeout\n\
-        except Exception as e:\n\
-            logger.error(f"Error checking main app: {str(e)}")\n\
-            return False\n\
-\n\
-    def handle_signal(self, signum, frame):\n\
-        logger.info(f"Received signal {signum}")\n\
-        self.is_running = False\n\
-        if self.httpd:\n\
-            self.httpd.shutdown()\n\
-\n\
-    def run(self):\n\
-        class Handler(http.server.SimpleHTTPRequestHandler):\n\
-            def do_GET(self_handler):\n\
-                if not self.is_running:\n\
-                    response = {\n\
-                        "status": "shutting_down",\n\
-                        "message": "Service is shutting down",\n\
-                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")\n\
-                    }\n\
-                    self_handler.send_response(503)\n\
-                    self_handler.send_header("Content-type", "application/json")\n\
-                    self_handler.end_headers()\n\
-                    self_handler.wfile.write(json.dumps(response).encode())\n\
-                    return\n\
-\n\
-                if self_handler.path == "/":\n\
-                    try:\n\
-                        is_healthy = self.check_main_app()\n\
-                        status = 200 if is_healthy else 503\n\
-                        response = {\n\
-                            "status": "healthy" if is_healthy else "unhealthy",\n\
-                            "message": "Service is running" if is_healthy else "Service is not ready",\n\
-                            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),\n\
-                            "startup_phase": not self.app_ready and (time.time() - self.startup_time) < self.startup_timeout\n\
-                        }\n\
-                        logger.info(f"Health check response: {response}")\n\
-                        self_handler.send_response(status)\n\
-                        self_handler.send_header("Content-type", "application/json")\n\
-                        self_handler.end_headers()\n\
-                        self_handler.wfile.write(json.dumps(response).encode())\n\
-                    except Exception as e:\n\
-                        logger.error(f"Error in health check: {str(e)}")\n\
-                        self_handler.send_error(500, str(e))\n\
-                else:\n\
-                    self_handler.send_error(404)\n\
-\n\
-            def log_message(self, format, *args):\n\
-                logger.info(f"Health check request: {format%args}")\n\
-\n\
-        try:\n\
-            self.httpd = socketserver.TCPServer(("", 8001), Handler)\n\
-            logger.info("Health check server started on port 8001")\n\
-            self.httpd.serve_forever()\n\
-        except Exception as e:\n\
-            logger.error(f"Error in health check server: {str(e)}")\n\
-            sys.exit(1)\n\
-\n\
-if __name__ == "__main__":\n\
-    server = HealthCheckServer()\n\
-    signal.signal(signal.SIGTERM, server.handle_signal)\n\
-    signal.signal(signal.SIGINT, server.handle_signal)\n\
-    server.run()\n\
-' > /app/healthcheck.py && chmod +x /app/healthcheck.py
-
 # 创建启动脚本
 RUN echo '#!/bin/sh\n\
+\n\
 echo "=== Starting application setup ==="\n\
 echo "Current working directory: $(pwd)"\n\
 echo "Directory contents:"\n\
@@ -202,9 +93,6 @@ pip list\n\
 echo "Environment variables:"\n\
 env | grep -v "DATABASE_URL"\n\
 echo "Starting container with DATABASE_URL=<hidden>"\n\
-\n\
-# 启动健康检查服务器\n\
-python /app/healthcheck.py &\n\
 \n\
 # 等待数据库连接\n\
 python -c "\
@@ -234,7 +122,7 @@ while True:\n\
 "\n\
 \n\
 echo "\n=== Running database migrations ==="\n\
-alembic upgrade head\n\
+alembic upgrade head || { echo "Migration failed"; exit 1; }\n\
 \n\
 echo "\n=== Starting FastAPI application ==="\n\
 echo "Starting uvicorn with host=0.0.0.0 port=8000"\n\
