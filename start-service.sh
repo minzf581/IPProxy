@@ -60,6 +60,9 @@ cd backend || error "无法进入后端目录"
 # 设置环境变量
 export PYTHONPATH="$PWD"
 
+# 创建数据目录
+mkdir -p data
+
 # 根据环境设置数据库连接
 if [ "$ENV" = "production" ]; then
     if [ -z "$DATABASE_URL" ]; then
@@ -67,7 +70,7 @@ if [ "$ENV" = "production" ]; then
     fi
     log "使用生产环境数据库: PostgreSQL"
 else
-    export DATABASE_URL="sqlite:///$PWD/app.db"
+    export DATABASE_URL="sqlite:///$PWD/data/app.db"
     log "使用开发环境数据库: SQLite"
 fi
 
@@ -78,11 +81,16 @@ log "DATABASE_URL=$DATABASE_URL"
 
 # 检查数据库配置
 if [ "$ENV" = "development" ]; then
-    DB_FILE="app.db"
+    DB_FILE="data/app.db"
     INIT_DB=false
 
-    if [ ! -f "$DB_FILE" ]; then
-        log "数据库文件不存在，将进行初始化..."
+    # 确保数据目录存在并有正确的权限
+    mkdir -p "$(dirname "$DB_FILE")"
+    touch "$DB_FILE"
+    chmod 666 "$DB_FILE"
+
+    if [ ! -s "$DB_FILE" ]; then
+        log "数据库文件为空，将进行初始化..."
         INIT_DB=true
     else
         # 检查数据库是否为空（检查users表是否有数据）
@@ -90,6 +98,8 @@ if [ "$ENV" = "development" ]; then
         if [ "$USER_COUNT" = "0" ] || [ -z "$USER_COUNT" ]; then
             log "数据库为空，将进行初始化..."
             rm -f "$DB_FILE"
+            touch "$DB_FILE"
+            chmod 666 "$DB_FILE"
             INIT_DB=true
         else
             log "数据库已存在且包含数据，跳过初始化..."
