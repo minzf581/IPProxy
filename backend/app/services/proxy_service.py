@@ -830,92 +830,128 @@ class ProxyService(IPIPVBaseAPI):
             }
 
     async def sync_inventory(self, db: Session) -> Dict[str, Any]:
-        """同步代理产品库存"""
+        """
+        同步产品库存信息
+        
+        Args:
+            db: 数据库会话
+            
+        Returns:
+            Dict[str, Any]: 同步结果
+                - success: 是否成功
+                - message: 结果消息
+                - data: 同步数据统计
+        """
         try:
-            logger.info("[ProxyService] 开始同步库存数据")
-            total_products = []
+            logger.info("[ProxyService] 开始同步产品库存")
             
-            # 获取所有产品库存
-            for product_type in ["dynamic", "static"]:
-                logger.info(f"[ProxyService] 获取 {product_type} 类型产品库存")
-                response = await self._make_request(
-                    f"api/open/app/proxy/inventory/{product_type}/v2",
-                    {}  # 空参数字典
-                )
-                
-                if not response or "data" not in response:
-                    logger.warning(f"[ProxyService] 获取 {product_type} 类型产品库存失败")
-                    continue
-                    
-                products = response["data"]
-                if isinstance(products, list):
-                    total_products.extend(products)
-                elif isinstance(products, dict):
-                    total_products.append(products)
-                    
-            logger.info(f"[ProxyService] 总共获取到 {len(total_products)} 个库存数据")
+            # 定义要查询的代理类型
+            proxy_types = [101, 103, 104, 201]  # 静态云平台、静态国外家庭、动态国外代理、其他动态代理
             
-            # 更新数据库
-            for product in total_products:
-                try:
-                    # 查找现有记录
-                    inventory = db.query(ProductInventory).filter(
-                        ProductInventory.product_no == product["productNo"]
-                    ).first()
-                    
-                    # 准备更新数据
-                    product_data = {
-                        "product_no": product["productNo"],
-                        "product_name": product.get("productName", ""),
-                        "proxy_type": product.get("proxyType", 0),
-                        "use_type": product.get("useType", ""),
-                        "protocol": product.get("protocol", ""),
-                        "use_limit": product.get("useLimit", 0),
-                        "sell_limit": product.get("sellLimit", 0),
-                        "area_code": product.get("areaCode", ""),
-                        "country_code": product.get("countryCode", ""),
-                        "state_code": product.get("stateCode", ""),
-                        "city_code": product.get("cityCode", ""),
-                        "detail": product.get("detail", ""),
-                        "cost_price": Decimal(str(product.get("costPrice", "0"))),
-                        "inventory": product.get("inventory", 0),
-                        "enable": product.get("enable", 1),
-                        "duration": product.get("duration", 30),  # 默认30天
-                        "unit": product.get("unit", 1),  # 默认单位为天
-                        "updated_at": datetime.now()
-                    }
-                    
-                    if inventory:
-                        # 更新现有记录
-                        for key, value in product_data.items():
-                            setattr(inventory, key, value)
-                    else:
-                        # 创建新记录
-                        inventory = ProductInventory(**product_data)
-                        db.add(inventory)
-                        
-                except Exception as e:
-                    logger.error(f"[ProxyService] 处理产品数据失败: {str(e)}, product={product}")
-                    continue
-                    
-            db.commit()
-            logger.info("[ProxyService] 库存数据同步完成")
-            
-            return {
-                "code": 0,
-                "msg": "success",
-                "data": {
-                    "total": len(total_products)
-                }
+            # 构造请求参数
+            params = {
+                "proxyType": proxy_types
             }
             
+            logger.info(f"[ProxyService] 请求产品库存信息: params={params}")
+            
+            # 调用API获取库存信息
+            response = await self._make_request(
+                "api/open/app/product/query/v2",
+                params
+            )
+            
+            if not response or response.get("code") not in [0, 200]:
+                error_msg = response.get("msg", "未知错误") if response else "API返回为空"
+                logger.error(f"[ProxyService] 获取产品库存失败: {error_msg}")
+                return {
+                    "success": False,
+                    "message": f"获取产品库存失败: {error_msg}",
+                    "data": None
+                }
+            
+            products = response.get("data", [])
+            logger.info(f"[ProxyService] 获取到 {len(products)} 个产品信息")
+            
+            try:
+                # 开始数据库事务
+                logger.info("[ProxyService] 开始更新数据库中的产品库存信息")
+                
+                # 删除所有现有库存记录
+                delete_count = db.query(ProductInventory).delete()
+                logger.info(f"[ProxyService] 已删除 {delete_count} 条旧的库存记录")
+                
+                # 插入新的库存记录
+                new_records = []
+                for product in products:
+                    inventory = ProductInventory(
+                        product_no=product.get("productNo"),
+                        product_name=product.get("productName"),
+                        proxy_type=product.get("proxyType"),
+                        use_type=product.get("useType"),
+                        protocol=product.get("protocol"),
+                        use_limit=product.get("useLimit"),
+                        sell_limit=product.get("sellLimit"),
+                        area_code=product.get("areaCode"),
+                        country_code=product.get("countryCode"),
+                        state_code=product.get("stateCode"),
+                        city_code=product.get("cityCode"),
+                        detail=product.get("detail"),
+                        cost_price=Decimal(str(product.get("costPrice", 0))),
+                        inventory=product.get("inventory", 0),
+                        ip_type=product.get("ipType"),
+                        isp_type=product.get("ispType"),
+                        net_type=product.get("netType"),
+                        duration=product.get("duration"),
+                        unit=product.get("unit"),
+                        band_width=product.get("bandWidth"),
+                        band_width_price=Decimal(str(product.get("bandWidthPrice", 0))),
+                        max_band_width=product.get("maxBandWidth"),
+                        flow=product.get("flow"),
+                        cpu=product.get("cpu"),
+                        memory=product.get("memory"),
+                        enable=product.get("enable", 1),
+                        supplier_code=product.get("supplierCode"),
+                        ip_count=product.get("ipCount"),
+                        ip_duration=product.get("ipDuration"),
+                        assign_ip=product.get("assignIp"),
+                        cidr_status=product.get("cidrStatus"),
+                        updated_at=datetime.now()
+                    )
+                    new_records.append(inventory)
+                
+                # 批量插入新记录
+                db.bulk_save_objects(new_records)
+                db.commit()
+                
+                logger.info(f"[ProxyService] 成功更新 {len(new_records)} 条产品库存记录")
+                
+                return {
+                    "success": True,
+                    "message": "产品库存同步成功",
+                    "data": {
+                        "total": len(new_records),
+                        "deleted": delete_count,
+                        "updated_at": datetime.now().isoformat()
+                    }
+                }
+                
+            except Exception as db_error:
+                db.rollback()
+                logger.error(f"[ProxyService] 更新数据库失败: {str(db_error)}")
+                logger.error(f"[ProxyService] 错误详情: {traceback.format_exc()}")
+                return {
+                    "success": False,
+                    "message": f"更新数据库失败: {str(db_error)}",
+                    "data": None
+                }
+                
         except Exception as e:
-            logger.error(f"[ProxyService] 同步库存数据失败: {str(e)}")
-            logger.error(traceback.format_exc())
-            db.rollback()
+            logger.error(f"[ProxyService] 同步产品库存失败: {str(e)}")
+            logger.error(f"[ProxyService] 错误堆栈: {traceback.format_exc()}")
             return {
-                "code": 500,
-                "msg": f"同步库存数据失败: {str(e)}",
+                "success": False,
+                "message": f"同步产品库存失败: {str(e)}",
                 "data": None
             }
 
