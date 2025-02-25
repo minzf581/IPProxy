@@ -1,3 +1,5 @@
+import { getApiBaseUrl } from './env';
+
 /**
  * API配置文件
  * 
@@ -17,7 +19,7 @@
  */
 
 // API 基础路径配置
-export const API_BASE_URL = '/api';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 // API 版本
 export const API_VERSION = 'v2';
@@ -115,8 +117,8 @@ export const API_CONFIG = {
   HEADERS: {
     'Content-Type': 'application/json'
   },
-  APP_KEY: 'AK20241120145620',
-  APP_SECRET: 'bf3ffghlt0hpc4omnvc2583jt0fag6a4',
+  APP_KEY: import.meta.env.VITE_APP_KEY || 'AK20241120145620',
+  APP_SECRET: import.meta.env.VITE_APP_SECRET || 'bf3ffghlt0hpc4omnvc2583jt0fag6a4',
   version: 'v2',
   encrypt: 'AES'
 };
