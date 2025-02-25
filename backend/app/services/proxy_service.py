@@ -832,43 +832,22 @@ class ProxyService(IPIPVBaseAPI):
     async def sync_inventory(self, db: Session) -> Dict[str, Any]:
         """同步代理产品库存"""
         try:
-            logger.info("[ProxyService] 开始同步代理产品库存")
+            logger.info("[ProxyService] 开始同步库存数据")
             total_products = []
             
-            # 定义需要同步的代理类型
-            proxy_types = [
-                {"type": 103, "productNo": "static_residential"},
-                {"type": 104, "productNo": "out_dynamic_1"},
-                {"type": 105, "productNo": "dynamic_residential"}
-            ]
-            
-            for proxy_config in proxy_types:
-                logger.info(f"[ProxyService] 开始同步代理类型 {proxy_config['type']} 的库存数据")
+            # 获取所有产品库存
+            for product_type in ["dynamic", "static"]:
+                logger.info(f"[ProxyService] 获取 {product_type} 类型产品库存")
+                response = await self._make_request(
+                    f"api/open/app/proxy/inventory/{product_type}/v2",
+                    method="GET"
+                )
                 
-                # 构建请求参数，注意proxyType使用数组格式
-                params = {
-                    "appUsername": "test_user",
-                    "proxyType": [proxy_config['type']],  # 改为数组格式
-                    "productNo": proxy_config['productNo']
-                }
-                
-                logger.info(f"[ProxyService] 请求IPIPV API，参数: {json.dumps(params, ensure_ascii=False)}")
-                
-                # 调用API
-                result = await self._make_request("api/open/app/product/query/v2", params)
-                logger.info(f"[ProxyService] IPIPV API响应: {json.dumps(result, ensure_ascii=False)}")
-                
-                # 检查响应状态
-                if result.get("code") not in [0, 200]:
-                    logger.error(f"[ProxyService] API返回错误: {result.get('msg', '未知错误')}")
+                if not response or "data" not in response:
+                    logger.warning(f"[ProxyService] 获取 {product_type} 类型产品库存失败")
                     continue
                     
-                # 获取产品数据
-                products = result.get("data", [])
-                if not products:
-                    logger.info(f"[ProxyService] 未获取到代理类型 {proxy_config['type']} 的库存数据")
-                    continue
-                    
+                products = response["data"]
                 if isinstance(products, list):
                     total_products.extend(products)
                 elif isinstance(products, dict):
@@ -901,6 +880,8 @@ class ProxyService(IPIPVBaseAPI):
                         "cost_price": Decimal(str(product.get("costPrice", "0"))),
                         "inventory": product.get("inventory", 0),
                         "enable": product.get("enable", 1),
+                        "duration": product.get("duration", 30),  # 默认30天
+                        "unit": product.get("unit", 1),  # 默认单位为天
                         "updated_at": datetime.now()
                     }
                     
