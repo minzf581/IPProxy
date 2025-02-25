@@ -840,7 +840,7 @@ class ProxyService(IPIPVBaseAPI):
                 logger.info(f"[ProxyService] 获取 {product_type} 类型产品库存")
                 response = await self._make_request(
                     f"api/open/app/proxy/inventory/{product_type}/v2",
-                    method="GET"
+                    {}  # 空参数字典
                 )
                 
                 if not response or "data" not in response:
