@@ -116,28 +116,68 @@ echo "\n=== Running database migrations ==="\n\
 alembic upgrade head\n\
 echo "\n=== Starting FastAPI application ==="\n\
 echo "Starting uvicorn with host=0.0.0.0 port=8000"\n\
+\n\
+# 创建一个简单的健康检查服务器
 python -c "\
-from fastapi import FastAPI\n\
-from fastapi.responses import JSONResponse\n\
-import uvicorn\n\
+import http.server\n\
+import socketserver\n\
+import json\n\
+import threading\n\
+import time\n\
+import requests\n\
+import logging\n\
 \n\
-app = FastAPI()\n\
+logging.basicConfig(level=logging.DEBUG)\n\
+logger = logging.getLogger(\"healthcheck\")\n\
 \n\
-@app.get(\"/\")\n\
-async def root():\n\
-    return JSONResponse(\n\
-        status_code=200,\n\
-        content={\n\
-            \"status\": \"healthy\",\n\
-            \"message\": \"Welcome to IP Proxy API\",\n\
-            \"service\": \"backend\"\n\
-        }\n\
-    )\n\
+def check_main_app():\n\
+    try:\n\
+        response = requests.get(\"http://localhost:8000\")\n\
+        logger.info(f\"Main app response status: {response.status_code}\")\n\
+        logger.info(f\"Main app response body: {response.text}\")\n\
+        return response.status_code == 200\n\
+    except Exception as e:\n\
+        logger.error(f\"Error checking main app: {str(e)}\")\n\
+        return False\n\
 \n\
-if __name__ == \"__main__\":\n\
-    uvicorn.run(app, host=\"0.0.0.0\", port=8000)\n\
-" > /app/healthcheck.py\n\
+class HealthCheckHandler(http.server.SimpleHTTPRequestHandler):\n\
+    def do_GET(self):\n\
+        logger.info(f\"Received health check request: {self.path}\")\n\
+        if self.path == \"/\":\n\
+            try:\n\
+                is_healthy = check_main_app()\n\
+                status = 200 if is_healthy else 503\n\
+                response = {\n\
+                    \"status\": \"healthy\" if is_healthy else \"unhealthy\",\n\
+                    \"message\": \"Service is running\" if is_healthy else \"Service is not ready\",\n\
+                    \"timestamp\": time.strftime(\"%Y-%m-%d %H:%M:%S\")\n\
+                }\n\
+                logger.info(f\"Sending response: {response}\")\n\
+                self.send_response(status)\n\
+                self.send_header(\"Content-type\", \"application/json\")\n\
+                self.end_headers()\n\
+                self.wfile.write(json.dumps(response).encode())\n\
+            except Exception as e:\n\
+                logger.error(f\"Error in health check: {str(e)}\")\n\
+                self.send_error(500, str(e))\n\
+        else:\n\
+            self.send_error(404)\n\
 \n\
+def run_health_check_server():\n\
+    try:\n\
+        with socketserver.TCPServer((\"\", 8001), HealthCheckHandler) as httpd:\n\
+            logger.info(\"Health check server started on port 8001\")\n\
+            httpd.serve_forever()\n\
+    except Exception as e:\n\
+        logger.error(f\"Error starting health check server: {str(e)}\")\n\
+\n\
+# 在后台启动健康检查服务器\n\
+health_thread = threading.Thread(target=run_health_check_server)\n\
+health_thread.daemon = True\n\
+health_thread.start()\n\
+" &\n\
+\n\
+# 启动主应用\n\
 exec gunicorn -c /app/gunicorn.conf.py app.main:app\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 
