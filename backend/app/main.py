@@ -142,41 +142,22 @@ SKIP_AUTH_PATHS = [
 # 数据库会话中间件类
 class DBSessionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # 跳过健康检查端点的数据库会话
-        if request.url.path == "/health":
+        # 跳过健康检查相关的端点
+        if request.url.path in ["/", "/health", "/healthz"]:
             return await call_next(request)
 
         db = None
         try:
-            # 创建新的数据库会话
             db = SessionLocal()
-            # 将数据库会话添加到请求状态
             request.state.db = db
-            # 处理请求
             response = await call_next(request)
             return response
         except Exception as e:
             logger.error(f"[DB Middleware] 数据库会话错误: {str(e)}")
             logger.error(traceback.format_exc())
             if db:
-                try:
-                    db.rollback()  # 回滚任何未完成的事务
-                except Exception as rollback_error:
-                    logger.error(f"[DB Middleware] 回滚失败: {str(rollback_error)}")
-                finally:
-                    db.close()
-            
-            # 对于健康检查端点，返回503状态码
-            if request.url.path == "/health":
-                return JSONResponse(
-                    status_code=503,
-                    content={
-                        "status": "error",
-                        "message": "数据库服务不可用",
-                        "details": str(e)
-                    }
-                )
-            
+                db.rollback()
+                db.close()
             raise HTTPException(
                 status_code=500,
                 detail={
@@ -186,80 +167,47 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
                 }
             )
         finally:
-            # 确保数据库会话被关闭
             if db:
-                try:
-                    db.close()
-                except Exception as close_error:
-                    logger.error(f"[DB Middleware] 关闭会话失败: {str(close_error)}")
+                db.close()
 
 # 认证中间件类
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        # 跳过健康检查相关的端点
+        if request.url.path in ["/", "/health", "/healthz"]:
+            return await call_next(request)
+
         try:
-            # 检查是否是白名单路径
-            if any(request.url.path.startswith(path) for path in SKIP_AUTH_PATHS):
-                logger.debug(f"[Auth Middleware] 跳过认证: {request.url.path}")
-                return await call_next(request)
-                
-            # 获取并验证 token
             token = request.headers.get("Authorization", "").replace("Bearer ", "")
             if not token:
-                logger.warning("[Auth Middleware] 未提供认证令牌")
                 raise HTTPException(
                     status_code=401,
-                    detail={
-                        "code": 401,
-                        "message": "未提供认证令牌"
-                    }
+                    detail={"code": 401, "message": "未提供认证令牌"}
                 )
                 
-            # 验证 token 并获取用户信息
             try:
                 from app.services.auth import auth_service
                 payload = auth_service.verify_token(token)
                 if not payload or "sub" not in payload:
                     raise HTTPException(
                         status_code=401,
-                        detail={
-                            "code": 401,
-                            "message": "无效的认证令牌"
-                        }
+                        detail={"code": 401, "message": "无效的认证令牌"}
                     )
                     
-                # 从数据库获取用户信息
-                if not hasattr(request.state, 'db'):
-                    logger.error("[Auth Middleware] 数据库会话未初始化")
-                    raise HTTPException(
-                        status_code=500,
-                        detail={
-                            "code": 500,
-                            "message": "服务器内部错误"
-                        }
-                    )
-                
-                db = request.state.db
-                user = db.query(User).filter(User.id == int(payload["sub"])).first()
-                if not user:
-                    raise HTTPException(
-                        status_code=401,
-                        detail={
-                            "code": 401,
-                            "message": "用户不存在"
-                        }
-                    )
+                if hasattr(request.state, 'db'):
+                    db = request.state.db
+                    user = db.query(User).filter(User.id == int(payload["sub"])).first()
+                    if not user:
+                        raise HTTPException(
+                            status_code=401,
+                            detail={"code": 401, "message": "用户不存在"}
+                        )
+                    request.state.user = user
                     
-                # 将用户信息存储在请求状态中
-                request.state.user = user
-                
             except jwt.InvalidTokenError as e:
-                logger.error(f"[Auth Middleware] JWT解码错误: {str(e)}")
                 raise HTTPException(
                     status_code=401,
-                    detail={
-                        "code": 401,
-                        "message": "无效的认证令牌"
-                    }
+                    detail={"code": 401, "message": "无效的认证令牌"}
                 )
                 
             return await call_next(request)
@@ -270,10 +218,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             logger.error(f"[Auth Middleware] 认证错误: {str(e)}")
             raise HTTPException(
                 status_code=500,
-                detail={
-                    "code": 500,
-                    "message": f"认证过程发生错误: {str(e)}"
-                }
+                detail={"code": 500, "message": f"认证过程发生错误: {str(e)}"}
             )
 
 # 配置中间件
@@ -399,54 +344,22 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 @app.get("/")
 async def root():
-    """健康检查接口"""
-    return {"message": "Welcome to IP Proxy API"}
+    """根路径健康检查"""
+    return {"status": "ok"}
 
-# 在路由注册之前添加健康检查端点
 @app.get("/health")
 async def health_check():
     """简单的健康检查端点"""
-    try:
-        return {"status": "ok"}
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return JSONResponse(
-            status_code=503,
-            content={"status": "error", "message": str(e)}
-        )
+    return {"status": "ok"}
 
-# 添加一个更详细的健康检查端点
 @app.get("/healthz")
 async def detailed_health_check():
-    """详细的健康检查端点，包含数据库连接检查"""
-    try:
-        # 检查数据库连接
-        db = SessionLocal()
-        try:
-            db.execute(text("SELECT 1"))
-            db_status = "connected"
-        except Exception as e:
-            db_status = f"error: {str(e)}"
-            logger.error(f"Database check failed: {str(e)}")
-        finally:
-            db.close()
-
-        return {
-            "status": "ok",
-            "database": db_status,
-            "timestamp": datetime.now().isoformat(),
-            "version": "1.0.0"
-        }
-    except Exception as e:
-        logger.error(f"Detailed health check failed: {str(e)}")
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "error",
-                "message": str(e),
-                "timestamp": datetime.now().isoformat()
-            }
-        )
+    """详细的健康检查端点"""
+    return {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat(),
+        "version": "1.0.0"
+    }
 
 # 注册路由
 app.include_router(api_router, prefix=settings.API_V1_STR)
