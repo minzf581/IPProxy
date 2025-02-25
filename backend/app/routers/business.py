@@ -229,7 +229,7 @@ async def get_dynamic_proxy_inventory(
         
         # 查询动态代理产品库存
         products = db.query(ProductInventory).filter(
-            ProductInventory.proxy_type == 104,  # 动态代理类型
+            ProductInventory.proxy_type == 104,  # 只支持动态国外代理
             ProductInventory.enable == True
         ).all()
         

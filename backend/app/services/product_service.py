@@ -156,11 +156,10 @@ class ProductService(IPIPVBaseAPI):
             
             # 获取远程产品列表
             request_params = {
-                "appUsername": "test_user",
                 "page": 1,
                 "pageSize": 1000,
                 "status": 1,
-                "proxyType": [104]  # 动态代理类型，使用数组格式
+                "proxyType": [104]  # 只支持动态国外代理
             }
             
             # 调用API
@@ -207,7 +206,7 @@ class ProductService(IPIPVBaseAPI):
                     product_data = {
                         "product_no": product_no,
                         "product_name": product.get("name") or f"动态代理 {product_no}",
-                        "proxy_type": product.get("proxyType", 104),
+                        "proxy_type": 104,  # 固定为动态国外代理
                         "use_type": "1",  # 账密
                         "protocol": "1",  # socks5
                         "use_limit": 3,   # 无限制
