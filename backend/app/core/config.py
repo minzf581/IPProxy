@@ -14,6 +14,9 @@ LOG_DIR.mkdir(exist_ok=True)
 # 环境判断
 ENV = os.getenv("RAILWAY_ENVIRONMENT", "development")  # 使用 RAILWAY_ENVIRONMENT 判断
 
+# 创建 logger
+logger = logging.getLogger(__name__)
+
 class Settings(BaseSettings):
     PROJECT_NAME: str = "IP Proxy Management System"
     API_V1_STR: str = "/api"
