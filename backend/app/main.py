@@ -87,6 +87,7 @@ from sqlalchemy import create_engine
 import os
 from sqlalchemy.sql import text
 from tenacity import retry, stop_after_attempt, wait_exponential
+import sys
 
 # 使用core/config.py中的配置
 from app.core.config import settings
@@ -358,91 +359,44 @@ async def check_db_connection():
 @app.get("/health")
 @app.get("/healthz")
 async def health_check():
-    """带详细日志的健康检查端点"""
-    request_time = datetime.now().isoformat()
-    logger.info(f"[Health Check] 收到健康检查请求 - 时间: {request_time}")
-    
-    try:
-        # 记录系统信息
-        import psutil
-        cpu_percent = psutil.cpu_percent()
-        memory = psutil.virtual_memory()
-        disk = psutil.disk_usage('/')
-        
-        logger.info(f"[Health Check] 系统状态 - CPU: {cpu_percent}%, "
-                   f"内存: {memory.percent}%, "
-                   f"磁盘: {disk.percent}%")
-        
-        # 检查数据库连接
-        logger.info("[Health Check] 尝试连接数据库...")
-        try:
-            async with engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
-                logger.info("[Health Check] 数据库连接成功")
-                db_status = "connected"
-        except Exception as db_err:
-            logger.error(f"[Health Check] 数据库连接失败: {str(db_err)}")
-            db_status = "error"
-            
-        # 构建响应
-        response_data = {
-            "status": "ok",
-            "timestamp": request_time,
-            "database": db_status,
-            "system": {
-                "cpu_percent": cpu_percent,
-                "memory_percent": memory.percent,
-                "disk_percent": disk.percent
-            }
-        }
-        
-        logger.info(f"[Health Check] 返回响应: {response_data}")
-        return JSONResponse(
-            status_code=200,
-            content=response_data
-        )
-        
-    except Exception as e:
-        error_msg = f"健康检查遇到错误: {str(e)}"
-        logger.error(f"[Health Check] {error_msg}")
-        logger.error(f"[Health Check] 错误堆栈: {traceback.format_exc()}")
-        
-        # 即使发生错误也返回 200
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": "ok",
-                "timestamp": request_time,
-                "error": error_msg
-            }
-        )
+    """简化的健康检查端点"""
+    logger.info("[Health Check] 收到健康检查请求")
+    return {"status": "ok"}
 
-# 添加启动事件处理器
+# 修改启动事件处理器
 @app.on_event("startup")
 async def startup_event():
     """应用启动时的处理器"""
-    logger.info("\n=== 应用启动 ===")
-    logger.info(f"环境: {os.getenv('ENV', 'development')}")
-    logger.info(f"PYTHONPATH: {os.getenv('PYTHONPATH', 'Not set')}")
-    logger.info(f"工作目录: {os.getcwd()}")
-    logger.info(f"数据库 URL: {settings.DATABASE_URL.replace(settings.DATABASE_URL.split('@')[0], '***')}")
-    
-    # 检查关键目录和文件
-    logger.info("\n=== 目录和文件检查 ===")
-    current_dir = os.getcwd()
-    logger.info(f"当前目录内容: {os.listdir(current_dir)}")
-    
-    # 检查端口占用
-    import socket
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        sock.bind(('0.0.0.0', 8000))
-        logger.info("端口 8000 可用")
-        sock.close()
+        logger.info("\n=== 应用启动 ===")
+        logger.info(f"进程 ID: {os.getpid()}")
+        logger.info(f"环境: {os.getenv('ENV', 'development')}")
+        logger.info(f"PYTHONPATH: {os.getenv('PYTHONPATH', 'Not set')}")
+        logger.info(f"工作目录: {os.getcwd()}")
+        logger.info(f"Python 版本: {sys.version}")
+        
+        # 检查系统资源
+        import psutil
+        process = psutil.Process(os.getpid())
+        logger.info(f"内存使用: {process.memory_info().rss / 1024 / 1024:.2f} MB")
+        logger.info(f"CPU 核心数: {psutil.cpu_count()}")
+        logger.info(f"可用内存: {psutil.virtual_memory().available / 1024 / 1024:.2f} MB")
+        
+        # 检查数据库连接
+        logger.info("尝试连接数据库...")
+        try:
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+                logger.info("数据库连接成功")
+        except Exception as e:
+            logger.error(f"数据库连接失败: {str(e)}")
+            
+        logger.info("=== 启动检查完成 ===\n")
     except Exception as e:
-        logger.error(f"端口 8000 检查失败: {str(e)}")
-    
-    logger.info("=== 启动检查完成 ===\n")
+        logger.error(f"启动检查失败: {str(e)}")
+        logger.error(traceback.format_exc())
+        # 不抛出异常，让应用继续启动
+        pass
 
 # 注册路由
 app.include_router(api_router, prefix=settings.API_V1_STR)
