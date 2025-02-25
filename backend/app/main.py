@@ -85,6 +85,7 @@ import traceback
 from datetime import datetime
 from sqlalchemy import create_engine
 import os
+from sqlalchemy.sql import text
 
 # 使用core/config.py中的配置
 from app.core.config import settings
@@ -402,18 +403,50 @@ async def root():
     return {"message": "Welcome to IP Proxy API"}
 
 # 在路由注册之前添加健康检查端点
-@app.get("/health", tags=["health"])
+@app.get("/health")
 async def health_check():
-    """健康检查端点"""
+    """简单的健康检查端点"""
     try:
-        # 检查数据库连接
-        engine = create_engine(os.environ["DATABASE_URL"])
-        with engine.connect() as conn:
-            conn.execute("SELECT 1")
-        return {"status": "healthy", "database": "connected"}
+        return {"status": "ok"}
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
-        raise HTTPException(status_code=503, detail="Service unavailable")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "message": str(e)}
+        )
+
+# 添加一个更详细的健康检查端点
+@app.get("/healthz")
+async def detailed_health_check():
+    """详细的健康检查端点，包含数据库连接检查"""
+    try:
+        # 检查数据库连接
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+            db_status = "connected"
+        except Exception as e:
+            db_status = f"error: {str(e)}"
+            logger.error(f"Database check failed: {str(e)}")
+        finally:
+            db.close()
+
+        return {
+            "status": "ok",
+            "database": db_status,
+            "timestamp": datetime.now().isoformat(),
+            "version": "1.0.0"
+        }
+    except Exception as e:
+        logger.error(f"Detailed health check failed: {str(e)}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "error",
+                "message": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+        )
 
 # 注册路由
 app.include_router(api_router, prefix=settings.API_V1_STR)
