@@ -63,16 +63,20 @@ def get_prices(
                     price = float(product.global_price) if product.global_price else float(product.cost_price)
                 
                 # 记录IP白名单信息
-                ip_whitelist = product.ip_whitelist if product.ip_whitelist else []
+                ip_whitelist = []  # 默认为空列表，因为 ProductInventory 没有 ip_whitelist 字段
                 logger.info(f"产品 {product.id} 的IP白名单: {ip_whitelist}")
+                
+                # 根据代理类型判断是动态还是静态
+                proxy_type = int(product.proxy_type)
+                product_type = "dynamic" if proxy_type in [104, 105, 201] else "static"
                 
                 price_info = ProductPriceBase(
                     id=product.id,
-                    type=product.product_no,
-                    proxyType=product.proxy_type,
-                    area=product.area_code,
-                    country=product.country_code,
-                    city=product.city_code,
+                    type=product_type,  # 使用正确的类型
+                    proxyType=proxy_type,
+                    area=product.area_code or "",
+                    country=product.country_code or "",
+                    city=product.city_code or "",
                     ipRange=f"{product.ip_start}-{product.ip_end}" if product.ip_start and product.ip_end else None,
                     price=Decimal(str(price)) if price else Decimal(str(product.cost_price)),
                     minAgentPrice=Decimal(str(min_agent_price)) if min_agent_price else Decimal('0'),
