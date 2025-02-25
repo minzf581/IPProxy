@@ -54,6 +54,20 @@ RUN echo "Current directory structure:" && \
     echo "\nPython path:" && \
     python -c "import sys; print('\n'.join(sys.path))"
 
+# 创建 Gunicorn 配置文件
+RUN echo 'import multiprocessing\n\
+bind = "0.0.0.0:8000"\n\
+workers = 1\n\
+worker_class = "uvicorn.workers.UvicornWorker"\n\
+timeout = 120\n\
+keepalive = 75\n\
+errorlog = "-"\n\
+accesslog = "-"\n\
+loglevel = "debug"\n\
+forwarded_allow_ips = "*"\n\
+proxy_allow_ips = "*"\n\
+' > /app/gunicorn.conf.py
+
 # 暴露端口
 EXPOSE 8000
 
@@ -100,9 +114,8 @@ while True:\n\
 "\n\
 echo "\n=== Running database migrations ==="\n\
 alembic upgrade head\n\
-echo "\n=== Starting FastAPI application ==="\n\
-echo "Starting uvicorn with host=0.0.0.0 port=8000"\n\
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --log-level debug --timeout-keep-alive 75 --workers 1 --proxy-headers --forwarded-allow-ips "*"\n\
+echo "\n=== Starting FastAPI application with Gunicorn ==="\n\
+exec gunicorn -c /app/gunicorn.conf.py app.main:app\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 
 # 启动命令
