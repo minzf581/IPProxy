@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
@@ -45,6 +45,7 @@ def get_engine_config():
     
     return config
 
+# 创建数据库引擎
 engine = create_engine(
     settings.DATABASE_URL,
     **get_engine_config()
@@ -71,7 +72,7 @@ def get_db_with_retry():
     db = SessionLocal()
     try:
         # 测试连接是否有效
-        db.execute("SELECT 1")
+        db.execute(text("SELECT 1"))
         return db
     except Exception as e:
         logger.error(f"数据库连接失败: {str(e)}")
