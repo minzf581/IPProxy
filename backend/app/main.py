@@ -418,7 +418,7 @@ async def health_check():
             )
 
         # 检查数据库连接
-        db = next(get_db())
+        db = SessionLocal()
         try:
             # 添加详细的日志
             logger.info("开始健康检查...")
@@ -429,11 +429,16 @@ async def health_check():
             logger.info(f"数据库查询结果: {result}")
             
             if result == 1:
-                return {
-                    "status": "healthy",
-                    "database": "connected",
-                    "timestamp": datetime.now().isoformat()
-                }
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "status": "healthy",
+                        "database": "connected",
+                        "timestamp": datetime.now().isoformat(),
+                        "version": "1.0.0",
+                        "environment": settings.ENV
+                    }
+                )
             else:
                 raise ValueError("Unexpected database query result")
                 
