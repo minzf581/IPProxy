@@ -429,7 +429,7 @@ class ProxyService(IPIPVBaseAPI):
             formatted_products = []
             for product in products:
                 formatted_product = {
-                    "productNo": product.product_no,
+                    "productId": product.product_no,  # 修改为前端期望的字段名
                     "name": product.product_name,
                     "proxyType": product.proxy_type,
                     "area": product.area_code,
@@ -441,7 +441,8 @@ class ProxyService(IPIPVBaseAPI):
                     "status": product.enable,
                     "flow": product.flow,
                     "duration": product.duration,
-                    "unit": product.unit
+                    "unit": product.unit,
+                    "updatedAt": product.updated_at.isoformat() if product.updated_at else None
                 }
                 formatted_products.append(formatted_product)
             
@@ -877,6 +878,16 @@ class ProxyService(IPIPVBaseAPI):
                 # 开始数据库事务
                 logger.info("[ProxyService] 开始更新数据库中的产品库存信息")
                 
+                # 获取现有产品的价格信息
+                existing_products = {
+                    p.product_no: {
+                        'global_price': p.global_price,
+                        'min_agent_price': p.min_agent_price
+                    }
+                    for p in db.query(ProductInventory).all()
+                }
+                logger.info(f"[ProxyService] 获取到 {len(existing_products)} 个现有产品的配置信息")
+                
                 # 删除所有现有库存记录
                 delete_count = db.query(ProductInventory).delete()
                 logger.info(f"[ProxyService] 已删除 {delete_count} 条旧的库存记录")
@@ -884,8 +895,11 @@ class ProxyService(IPIPVBaseAPI):
                 # 插入新的库存记录
                 new_records = []
                 for product in products:
+                    product_no = product.get("productNo")
+                    existing_data = existing_products.get(product_no, {})
+                    
                     inventory = ProductInventory(
-                        product_no=product.get("productNo"),
+                        product_no=product_no,
                         product_name=product.get("productName"),
                         proxy_type=product.get("proxyType"),
                         use_type=product.get("useType"),
@@ -898,6 +912,9 @@ class ProxyService(IPIPVBaseAPI):
                         city_code=product.get("cityCode"),
                         detail=product.get("detail"),
                         cost_price=Decimal(str(product.get("costPrice", 0))),
+                        # 保留现有价格信息,如果没有则使用API返回的价格
+                        global_price=existing_data.get('global_price') or Decimal(str(product.get("price", 0))),
+                        min_agent_price=existing_data.get('min_agent_price') or Decimal(str(product.get("minAgentPrice", 0))),
                         inventory=product.get("inventory", 0),
                         ip_type=product.get("ipType"),
                         isp_type=product.get("ispType"),

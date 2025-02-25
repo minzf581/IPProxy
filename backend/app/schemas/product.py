@@ -31,6 +31,7 @@ class ProductPriceUpdate(BaseModel):
     min_agent_price: Optional[condecimal(max_digits=10, decimal_places=4)] = None
     type: Optional[str] = None
     proxy_type: Optional[int] = None
+    ip_whitelist: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
@@ -38,6 +39,8 @@ class ProductPriceUpdate(BaseModel):
 class ProductPriceUpdateRequest(BaseModel):
     is_global: bool
     agent_id: Optional[int]
+    user_id: Optional[int]
+    app_username: Optional[str]
     prices: List[ProductPriceUpdate]
 
     class Config:

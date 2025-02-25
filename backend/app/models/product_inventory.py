@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, DECIMAL, TIMESTAMP, SmallInteger
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.models.base import Base, TimestampMixin
+import json
 
 class ProductInventory(Base, TimestampMixin):
     __tablename__ = "product_inventory"

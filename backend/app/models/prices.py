@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, DECIMAL, TIMESTAMP, ForeignKey, UniqueConstraint, CheckConstraint
+from sqlalchemy import Column, Integer, DECIMAL, TIMESTAMP, ForeignKey, UniqueConstraint, CheckConstraint, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.models.base import Base
+import json
 
 class AgentPrice(Base):
     """代理商价格模型"""
@@ -44,6 +45,7 @@ class UserPrice(Base):
     product_id = Column(Integer, ForeignKey("product_inventory.id"), nullable=False, index=True)
     agent_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     price = Column(DECIMAL(10, 4), nullable=False)
+    ip_whitelist = Column(Text, comment='IP白名单列表', nullable=True)
     created_at = Column(TIMESTAMP, default=datetime.now)
     updated_at = Column(TIMESTAMP, default=datetime.now, onupdate=datetime.now)
 
@@ -65,6 +67,7 @@ class UserPrice(Base):
             'product_id': self.product_id,
             'agent_id': self.agent_id,
             'price': float(self.price),
+            'ip_whitelist': json.loads(self.ip_whitelist) if self.ip_whitelist else [],
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         } 

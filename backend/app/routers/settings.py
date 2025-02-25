@@ -291,13 +291,22 @@ async def handle_ip_whitelist(
 ) -> None:
     """处理IP白名单变更"""
     try:
+        # 获取用户价格信息
+        user_price = db.query(UserPrice).filter(
+            UserPrice.product_id == product_id,
+            UserPrice.user.has(username=app_username)
+        ).first()
+        
+        if not user_price:
+            raise HTTPException(status_code=404, detail=f"UserPrice for product {product_id} not found")
+            
         # 获取产品信息
         product = db.query(ProductInventory).filter(ProductInventory.id == product_id).first()
         if not product:
             raise HTTPException(status_code=404, detail=f"Product {product_id} not found")
             
         # 获取当前IP白名单
-        current_ips = product.ip_whitelist or []
+        current_ips = json.loads(user_price.ip_whitelist) if user_price.ip_whitelist else []
         logger.info(f"当前IP白名单: {current_ips}")
         logger.info(f"新IP白名单: {new_ips}")
         
@@ -359,8 +368,9 @@ async def handle_ip_whitelist(
                     raise HTTPException(status_code=500, detail=f"删除IP白名单失败: {str(e)}")
         
         # 更新数据库中的白名单
-        product.ip_whitelist = new_ips
+        user_price.ip_whitelist = json.dumps(new_ips)
         logger.info(f"更新数据库中的IP白名单: {new_ips}")
+        db.commit()
         
     except Exception as e:
         logger.error(f"处理IP白名单变更失败: {str(e)}")

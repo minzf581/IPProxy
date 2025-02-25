@@ -13,6 +13,7 @@ from app.schemas.product import (
     ImportPriceItem,
     ImportResult
 )
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +98,7 @@ def update_prices(
 ) -> bool:
     """更新价格"""
     try:
-        logger.info(f"开始更新价格: is_global={request.is_global}, agent_id={request.agent_id}")
+        logger.info(f"开始更新价格: is_global={request.is_global}, agent_id={request.agent_id}, user_id={request.user_id}, app_username={request.app_username}")
         logger.info(f"待更新的价格数据: {[p.dict() for p in request.prices]}")
 
         # 如果有agent_id，强制设置is_global为False
@@ -126,48 +127,56 @@ def update_prices(
                     logger.info(f"全局价格更新成功: product_id={price_update.id}, old_price={old_price}, new_price={price_update.price}, min_agent_price={price_update.min_agent_price if hasattr(price_update, 'min_agent_price') else None}")
                 else:
                     logger.warning(f"未找到产品: product_id={price_update.id}")
-        
-        elif request.agent_id:  # 确保有代理商ID
-            # 更新代理商价格
+        else:
+            # 更新用户或代理商价格
             for price_update in request.prices:
-                logger.info(f"更新代理商价格: agent_id={request.agent_id}, product_id={price_update.id}, price={price_update.price}")
+                logger.info(f"更新用户/代理商价格: product_id={price_update.id}, price={price_update.price}")
                 
-                # 查找产品
-                product = db.query(ProductInventory).get(price_update.id)
-                if not product:
-                    logger.warning(f"未找到产品: product_id={price_update.id}")
-                    continue
+                # 如果提供了user_id，更新用户价格
+                if request.user_id:
+                    user_price = db.query(UserPrice).filter(
+                        UserPrice.user_id == request.user_id,
+                        UserPrice.product_id == price_update.id
+                    ).first()
+                    
+                    if user_price:
+                        user_price.price = price_update.price
+                        if price_update.ip_whitelist is not None:
+                            user_price.ip_whitelist = json.dumps(price_update.ip_whitelist)
+                            logger.info(f"更新用户IP白名单: user_id={request.user_id}, product_id={price_update.id}, whitelist={price_update.ip_whitelist}")
+                    else:
+                        user_price = UserPrice(
+                            user_id=request.user_id,
+                            product_id=price_update.id,
+                            price=price_update.price,
+                            agent_id=request.agent_id,
+                            ip_whitelist=json.dumps(price_update.ip_whitelist) if price_update.ip_whitelist is not None else None
+                        )
+                        db.add(user_price)
+                        logger.info(f"创建新的用户价格: user_id={request.user_id}, product_id={price_update.id}, price={price_update.price}")
                 
-                # 查找或创建代理商价格记录
-                agent_price = db.query(AgentPrice).filter(
-                    AgentPrice.agent_id == request.agent_id,
-                    AgentPrice.product_id == price_update.id
-                ).first()
-                
-                if agent_price:
-                    # 更新现有价格记录
-                    old_price = agent_price.price
-                    agent_price.price = price_update.price
-                    logger.info(f"更新现有代理商价格: agent_id={request.agent_id}, product_id={price_update.id}, old_price={old_price}, new_price={price_update.price}")
-                else:
-                    # 创建新的价格记录
-                    logger.info(f"创建新的代理商价格记录: agent_id={request.agent_id}, product_id={price_update.id}, price={price_update.price}")
-                    agent_price = AgentPrice(
-                        agent_id=request.agent_id,
-                        product_id=price_update.id,
-                        price=price_update.price
-                    )
-                    db.add(agent_price)
-        
-        try:
-            db.commit()
-            logger.info("价格更新提交成功")
-            return True
-        except Exception as e:
-            db.rollback()
-            logger.error(f"价格更新提交失败: {str(e)}")
-            raise
-            
+                # 如果提供了agent_id，更新代理商价格
+                elif request.agent_id:
+                    agent_price = db.query(AgentPrice).filter(
+                        AgentPrice.agent_id == request.agent_id,
+                        AgentPrice.product_id == price_update.id
+                    ).first()
+                    
+                    if agent_price:
+                        agent_price.price = price_update.price
+                    else:
+                        agent_price = AgentPrice(
+                            agent_id=request.agent_id,
+                            product_id=price_update.id,
+                            price=price_update.price
+                        )
+                        db.add(agent_price)
+                        logger.info(f"创建新的代理商价格: agent_id={request.agent_id}, product_id={price_update.id}, price={price_update.price}")
+
+        db.commit()
+        logger.info("价格更新成功")
+        return True
+
     except Exception as e:
         logger.error(f"更新价格失败: {str(e)}")
         db.rollback()
