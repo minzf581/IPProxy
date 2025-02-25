@@ -359,31 +359,22 @@ async def check_db_connection():
 @app.get("/health")
 @app.get("/healthz")
 async def health_check():
-    """简化的健康检查端点"""
-    logger.info("[Health Check] 收到健康检查请求")
+    """健康检查端点"""
     try:
-        # 记录基本信息
-        logger.info(f"[Health Check] 进程 ID: {os.getpid()}")
-        logger.info(f"[Health Check] 工作目录: {os.getcwd()}")
-        
-        # 构建响应
-        response = {
-            "status": "ok",
+        # 检查数据库连接
+        await check_db_connection()
+        return {
+            "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "pid": os.getpid()
+            "database": "connected"
         }
-        
-        logger.info(f"[Health Check] 返回响应: {response}")
-        return JSONResponse(
-            status_code=200,
-            content=response
-        )
     except Exception as e:
-        logger.error(f"[Health Check] 错误: {str(e)}")
+        logger.error(f"健康检查失败: {str(e)}")
         return JSONResponse(
-            status_code=200,
+            status_code=503,
             content={
-                "status": "ok",
+                "status": "unhealthy",
+                "timestamp": datetime.now().isoformat(),
                 "error": str(e)
             }
         )
