@@ -83,6 +83,8 @@ import jwt
 from app.api.v1.api import api_router
 import traceback
 from datetime import datetime
+from sqlalchemy import create_engine
+import os
 
 # 使用core/config.py中的配置
 from app.core.config import settings
@@ -404,75 +406,14 @@ async def root():
 async def health_check():
     """健康检查端点"""
     try:
-        # 检查环境变量
-        if not settings.DATABASE_URL:
-            logger.error("DATABASE_URL 环境变量未设置")
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "status": "unhealthy",
-                    "error": "DATABASE_URL environment variable is not set",
-                    "database": "configuration_error",
-                    "timestamp": datetime.now().isoformat()
-                }
-            )
-
         # 检查数据库连接
-        db = SessionLocal()
-        try:
-            # 添加详细的日志
-            logger.info("开始健康检查...")
-            
-            # 使用 SQLAlchemy 的方式执行查询
-            from sqlalchemy import text
-            result = db.execute(text("SELECT 1")).scalar()
-            logger.info(f"数据库查询结果: {result}")
-            
-            if result == 1:
-                return JSONResponse(
-                    status_code=200,
-                    content={
-                        "status": "healthy",
-                        "database": "connected",
-                        "timestamp": datetime.now().isoformat(),
-                        "version": "1.0.0",
-                        "environment": settings.ENV
-                    }
-                )
-            else:
-                raise ValueError("Unexpected database query result")
-                
-        except Exception as e:
-            logger.error(f"数据库查询失败: {str(e)}")
-            logger.error(f"错误类型: {type(e).__name__}")
-            logger.error(f"错误详情: {traceback.format_exc()}")
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "status": "unhealthy",
-                    "error": str(e),
-                    "error_type": type(e).__name__,
-                    "database": "query_failed",
-                    "timestamp": datetime.now().isoformat()
-                }
-            )
-        finally:
-            db.close()
-            
+        engine = create_engine(os.environ["DATABASE_URL"])
+        with engine.connect() as conn:
+            conn.execute("SELECT 1")
+        return {"status": "healthy", "database": "connected"}
     except Exception as e:
-        logger.error(f"数据库连接失败: {str(e)}")
-        logger.error(f"错误类型: {type(e).__name__}")
-        logger.error(f"错误详情: {traceback.format_exc()}")
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "unhealthy",
-                "error": str(e),
-                "error_type": type(e).__name__,
-                "database": "connection_failed",
-                "timestamp": datetime.now().isoformat()
-            }
-        )
+        logger.error(f"Health check failed: {str(e)}")
+        raise HTTPException(status_code=503, detail="Service unavailable")
 
 # 注册路由
 app.include_router(api_router, prefix=settings.API_V1_STR)
