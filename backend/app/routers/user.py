@@ -1042,9 +1042,15 @@ async def adjust_user_balance(
     current_user: User = Depends(get_current_user)
 ):
     try:
-        # 验证权限（可以根据需求添加更多权限检查）
-        if not current_user.is_agent and not current_user.is_superuser:
-            raise HTTPException(status_code=403, detail="没有权限执行此操作")
+        # 验证权限（只有管理员或代理商可以调整余额）
+        if not current_user.is_admin and not current_user.is_agent:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": 403,
+                    "message": "没有权限执行此操作"
+                }
+            )
 
         # 调整用户余额
         user = await UserService.adjust_balance(
@@ -1053,8 +1059,24 @@ async def adjust_user_balance(
             adjust_data=adjust_data,
             operator_id=current_user.id
         )
-        return {"code": 0, "data": user}
+        return {
+            "code": 0,
+            "message": "余额调整成功",
+            "data": user
+        }
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": 400,
+                "message": str(e)
+            }
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": 500,
+                "message": str(e)
+            }
+        ) 

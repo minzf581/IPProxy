@@ -339,7 +339,9 @@ class UserService(IPIPVBaseAPI):
         if not user:
             raise ValueError("用户不存在")
 
-        new_balance = user.balance + adjust_data.amount
+        # 将 float 转换为 Decimal 以确保精确计算
+        adjustment_amount = Decimal(str(adjust_data.amount))
+        new_balance = user.balance + adjustment_amount
         if new_balance < 0:
             raise ValueError("余额不足")
 
@@ -354,8 +356,8 @@ class UserService(IPIPVBaseAPI):
                 user_id=user_id,
                 agent_id=operator_id,  # 操作人ID作为代理商ID
                 order_no=f"ADJ{datetime.now().strftime('%Y%m%d%H%M%S')}",
-                amount=Decimal(str(adjust_data.amount)),
-                balance=Decimal(str(new_balance)),
+                amount=adjustment_amount,
+                balance=new_balance,
                 type="adjust",  # 调整类型
                 status="success",
                 remark=adjust_data.remark
