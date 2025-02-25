@@ -349,8 +349,28 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """简单的健康检查端点"""
-    return {"status": "ok"}
+    """健康检查端点"""
+    try:
+        # 测试数据库连接
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+            
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "timestamp": datetime.now().isoformat(),
+            "environment": os.getenv("ENV", "development")
+        }
+    except Exception as e:
+        logger.error(f"健康检查失败: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "status": "unhealthy",
+                "database": "disconnected",
+                "error": str(e)
+            }
+        )
 
 @app.get("/healthz")
 async def detailed_health_check():
