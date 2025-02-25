@@ -4,16 +4,16 @@ dockerfilePath = "backenddockerfile"
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 180
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
 [deploy.healthcheck]
 path = "/health"
-interval = "15s"
-timeout = "5s"
-retries = 5
-startPeriod = "30s"
+interval = "30s"
+timeout = "10s"
+retries = 3
+startPeriod = "60s"
 
 # 数据库配置
 [env]
