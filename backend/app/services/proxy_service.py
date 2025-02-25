@@ -838,8 +838,8 @@ class ProxyService(IPIPVBaseAPI):
             
         Returns:
             Dict[str, Any]: 同步结果
-                - success: 是否成功
-                - message: 结果消息
+                - code: 状态码
+                - msg: 结果消息
                 - data: 同步数据统计
         """
         try:
@@ -865,8 +865,8 @@ class ProxyService(IPIPVBaseAPI):
                 error_msg = response.get("msg", "未知错误") if response else "API返回为空"
                 logger.error(f"[ProxyService] 获取产品库存失败: {error_msg}")
                 return {
-                    "success": False,
-                    "message": f"获取产品库存失败: {error_msg}",
+                    "code": response.get("code", 500) if response else 500,
+                    "msg": f"获取产品库存失败: {error_msg}",
                     "data": None
                 }
             
@@ -927,8 +927,8 @@ class ProxyService(IPIPVBaseAPI):
                 logger.info(f"[ProxyService] 成功更新 {len(new_records)} 条产品库存记录")
                 
                 return {
-                    "success": True,
-                    "message": "产品库存同步成功",
+                    "code": 0,
+                    "msg": "产品库存同步成功",
                     "data": {
                         "total": len(new_records),
                         "deleted": delete_count,
@@ -941,8 +941,8 @@ class ProxyService(IPIPVBaseAPI):
                 logger.error(f"[ProxyService] 更新数据库失败: {str(db_error)}")
                 logger.error(f"[ProxyService] 错误详情: {traceback.format_exc()}")
                 return {
-                    "success": False,
-                    "message": f"更新数据库失败: {str(db_error)}",
+                    "code": 500,
+                    "msg": f"更新数据库失败: {str(db_error)}",
                     "data": None
                 }
                 
@@ -950,8 +950,8 @@ class ProxyService(IPIPVBaseAPI):
             logger.error(f"[ProxyService] 同步产品库存失败: {str(e)}")
             logger.error(f"[ProxyService] 错误堆栈: {traceback.format_exc()}")
             return {
-                "success": False,
-                "message": f"同步产品库存失败: {str(e)}",
+                "code": 500,
+                "msg": f"同步产品库存失败: {str(e)}",
                 "data": None
             }
 
