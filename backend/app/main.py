@@ -226,7 +226,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
 # 配置中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("CORS_ORIGINS", "https://zippy-communication-production.up.railway.app")],
+    allow_origins=[
+        "https://zippy-communication-production.up.railway.app",  # 前端域名
+        "http://localhost:3000",  # 本地开发
+        "https://backend-production-127a.up.railway.app:8080"  # 后端域名（用于开发测试）
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
