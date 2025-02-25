@@ -175,8 +175,16 @@ class DBSessionMiddleware(BaseHTTPMiddleware):
 # 认证中间件类
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # 跳过健康检查相关的端点
-        if request.url.path in ["/", "/health", "/healthz"]:
+        # 跳过不需要认证的路径
+        skip_paths = [
+            "/",
+            "/health",
+            "/healthz",
+            "/api/auth/login",
+            "/api/auth/refresh"
+        ]
+        
+        if request.url.path in skip_paths or request.method == "OPTIONS":
             return await call_next(request)
 
         try:
@@ -218,6 +226,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             raise
         except Exception as e:
             logger.error(f"[Auth Middleware] 认证错误: {str(e)}")
+            logger.error(traceback.format_exc())
             raise HTTPException(
                 status_code=500,
                 detail={"code": 500, "message": f"认证过程发生错误: {str(e)}"}

@@ -85,6 +85,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from typing import Dict, Any
 from pydantic import BaseModel
+import traceback
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -93,19 +94,23 @@ router = APIRouter(tags=["认证"])
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
 @router.post("/login")
 async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(),
+    login_data: LoginRequest,
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """用户登录接口"""
     try:
-        logger.info(f"[Auth] 尝试登录: username={form_data.username}")
+        logger.info(f"[Auth] 尝试登录: username={login_data.username}")
         
         # 查找用户
-        user = db.query(User).filter(User.username == form_data.username).first()
+        user = db.query(User).filter(User.username == login_data.username).first()
         if not user:
-            logger.warning(f"[Auth] 用户不存在: {form_data.username}")
+            logger.warning(f"[Auth] 用户不存在: {login_data.username}")
             raise HTTPException(
                 status_code=401,
                 detail={
@@ -115,8 +120,8 @@ async def login(
             )
             
         # 验证密码
-        if not verify_password(form_data.password, user.password):
-            logger.warning(f"[Auth] 密码验证失败: username={form_data.username}")
+        if not verify_password(login_data.password, user.password):
+            logger.warning(f"[Auth] 密码验证失败: username={login_data.username}")
             raise HTTPException(
                 status_code=401,
                 detail={
@@ -127,7 +132,7 @@ async def login(
             
         # 检查用户状态
         if user.status != 1:
-            logger.warning(f"[Auth] 用户已禁用: username={form_data.username}")
+            logger.warning(f"[Auth] 用户已禁用: username={login_data.username}")
             raise HTTPException(
                 status_code=403,
                 detail={
@@ -143,7 +148,7 @@ async def login(
         user.last_login_at = datetime.utcnow()
         db.commit()
         
-        logger.info(f"[Auth] 登录成功: username={form_data.username}")
+        logger.info(f"[Auth] 登录成功: username={login_data.username}")
         
         return {
             "code": 0,
@@ -168,6 +173,7 @@ async def login(
         raise
     except Exception as e:
         logger.error(f"[Auth] 登录失败: {str(e)}")
+        logger.error(f"[Auth] 错误详情: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail={
