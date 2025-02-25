@@ -94,12 +94,37 @@ class HealthCheckServer:\n\
     def __init__(self):\n\
         self.httpd = None\n\
         self.is_running = True\n\
+        self.app_ready = False\n\
+        self.startup_time = time.time()\n\
+        self.startup_timeout = 30  # 30秒启动超时\n\
 \n\
     def check_main_app(self):\n\
         try:\n\
-            response = requests.get("http://localhost:8000", timeout=2)\n\
+            # 检查应用是否在启动阶段\n\
+            if not self.app_ready and (time.time() - self.startup_time) < self.startup_timeout:\n\
+                logger.info("Application is still starting up...")\n\
+                return True  # 在启动阶段返回健康状态\n\
+\n\
+            # 尝试访问应用的健康检查端点\n\
+            response = requests.get("http://localhost:8000/health", timeout=2)\n\
             logger.info(f"Main app response status: {response.status_code}")\n\
-            return response.status_code == 200\n\
+            \n\
+            if response.status_code == 200:\n\
+                self.app_ready = True\n\
+                return True\n\
+            \n\
+            # 如果应用已启动但返回错误状态码\n\
+            if self.app_ready:\n\
+                logger.error(f"Application returned unhealthy status: {response.status_code}")\n\
+                return False\n\
+            \n\
+            # 应用仍在启动中\n\
+            return True\n\
+            \n\
+        except requests.exceptions.ConnectionError:\n\
+            logger.warning("Connection to main app failed - might be starting up")\n\
+            # 如果在启动超时时间内，返回健康状态\n\
+            return not self.app_ready and (time.time() - self.startup_time) < self.startup_timeout\n\
         except Exception as e:\n\
             logger.error(f"Error checking main app: {str(e)}")\n\
             return False\n\
@@ -132,7 +157,8 @@ class HealthCheckServer:\n\
                         response = {\n\
                             "status": "healthy" if is_healthy else "unhealthy",\n\
                             "message": "Service is running" if is_healthy else "Service is not ready",\n\
-                            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")\n\
+                            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),\n\
+                            "startup_phase": not self.app_ready and (time.time() - self.startup_time) < self.startup_timeout\n\
                         }\n\
                         logger.info(f"Health check response: {response}")\n\
                         self_handler.send_response(status)\n\
@@ -144,6 +170,9 @@ class HealthCheckServer:\n\
                         self_handler.send_error(500, str(e))\n\
                 else:\n\
                     self_handler.send_error(404)\n\
+\n\
+            def log_message(self, format, *args):\n\
+                logger.info(f"Health check request: {format%args}")\n\
 \n\
         try:\n\
             self.httpd = socketserver.TCPServer(("", 8001), Handler)\n\
