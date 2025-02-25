@@ -71,6 +71,95 @@ proxy_allow_ips = "*"\n\
 # 暴露端口
 EXPOSE 8000
 
+# 创建健康检查脚本
+RUN echo '#!/usr/bin/env python3\n\
+import http.server\n\
+import socketserver\n\
+import json\n\
+import threading\n\
+import time\n\
+import requests\n\
+import logging\n\
+import signal\n\
+import sys\n\
+\n\
+logging.basicConfig(\n\
+    level=logging.INFO,\n\
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",\n\
+    datefmt="%Y-%m-%d %H:%M:%S"\n\
+)\n\
+logger = logging.getLogger("healthcheck")\n\
+\n\
+class HealthCheckServer:\n\
+    def __init__(self):\n\
+        self.httpd = None\n\
+        self.is_running = True\n\
+\n\
+    def check_main_app(self):\n\
+        try:\n\
+            response = requests.get("http://localhost:8000", timeout=2)\n\
+            logger.info(f"Main app response status: {response.status_code}")\n\
+            return response.status_code == 200\n\
+        except Exception as e:\n\
+            logger.error(f"Error checking main app: {str(e)}")\n\
+            return False\n\
+\n\
+    def handle_signal(self, signum, frame):\n\
+        logger.info(f"Received signal {signum}")\n\
+        self.is_running = False\n\
+        if self.httpd:\n\
+            self.httpd.shutdown()\n\
+\n\
+    def run(self):\n\
+        class Handler(http.server.SimpleHTTPRequestHandler):\n\
+            def do_GET(self_handler):\n\
+                if not self.is_running:\n\
+                    response = {\n\
+                        "status": "shutting_down",\n\
+                        "message": "Service is shutting down",\n\
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")\n\
+                    }\n\
+                    self_handler.send_response(503)\n\
+                    self_handler.send_header("Content-type", "application/json")\n\
+                    self_handler.end_headers()\n\
+                    self_handler.wfile.write(json.dumps(response).encode())\n\
+                    return\n\
+\n\
+                if self_handler.path == "/":\n\
+                    try:\n\
+                        is_healthy = self.check_main_app()\n\
+                        status = 200 if is_healthy else 503\n\
+                        response = {\n\
+                            "status": "healthy" if is_healthy else "unhealthy",\n\
+                            "message": "Service is running" if is_healthy else "Service is not ready",\n\
+                            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")\n\
+                        }\n\
+                        logger.info(f"Health check response: {response}")\n\
+                        self_handler.send_response(status)\n\
+                        self_handler.send_header("Content-type", "application/json")\n\
+                        self_handler.end_headers()\n\
+                        self_handler.wfile.write(json.dumps(response).encode())\n\
+                    except Exception as e:\n\
+                        logger.error(f"Error in health check: {str(e)}")\n\
+                        self_handler.send_error(500, str(e))\n\
+                else:\n\
+                    self_handler.send_error(404)\n\
+\n\
+        try:\n\
+            self.httpd = socketserver.TCPServer(("", 8001), Handler)\n\
+            logger.info("Health check server started on port 8001")\n\
+            self.httpd.serve_forever()\n\
+        except Exception as e:\n\
+            logger.error(f"Error in health check server: {str(e)}")\n\
+            sys.exit(1)\n\
+\n\
+if __name__ == "__main__":\n\
+    server = HealthCheckServer()\n\
+    signal.signal(signal.SIGTERM, server.handle_signal)\n\
+    signal.signal(signal.SIGINT, server.handle_signal)\n\
+    server.run()\n\
+' > /app/healthcheck.py && chmod +x /app/healthcheck.py
+
 # 创建启动脚本
 RUN echo '#!/bin/sh\n\
 echo "=== Starting application setup ==="\n\
@@ -84,14 +173,16 @@ pip list\n\
 echo "Environment variables:"\n\
 env | grep -v "DATABASE_URL"\n\
 echo "Starting container with DATABASE_URL=<hidden>"\n\
-echo "\n=== Checking database connection ==="\n\
+\n\
+# 启动健康检查服务器\n\
+python /app/healthcheck.py &\n\
+\n\
+# 等待数据库连接\n\
 python -c "\
-import time\n\
-import sys\n\
-import os\n\
+import time, sys, os\n\
 from sqlalchemy import create_engine\n\
 from sqlalchemy.exc import OperationalError\n\
-print(f\"Attempting to connect to database...\")\n\
+print(\"Attempting to connect to database...\")\n\
 retries = 0\n\
 while True:\n\
     try:\n\
@@ -104,7 +195,7 @@ while True:\n\
     except OperationalError as e:\n\
         retries += 1\n\
         print(f\"Database connection attempt {retries} failed: {e}\")\n\
-        if retries >= 30:  # 1分钟后超时\n\
+        if retries >= 30:\n\
             print(\"Database connection timeout after 30 attempts\")\n\
             sys.exit(1)\n\
         time.sleep(2)\n\
@@ -112,103 +203,12 @@ while True:\n\
         print(f\"Unexpected error during database connection: {e}\")\n\
         sys.exit(1)\n\
 "\n\
+\n\
 echo "\n=== Running database migrations ==="\n\
 alembic upgrade head\n\
+\n\
 echo "\n=== Starting FastAPI application ==="\n\
 echo "Starting uvicorn with host=0.0.0.0 port=8000"\n\
-\n\
-# 创建一个简单的健康检查服务器
-python -c "\
-import http.server\n\
-import socketserver\n\
-import json\n\
-import threading\n\
-import time\n\
-import requests\n\
-import logging\n\
-import signal\n\
-import sys\n\
-\n\
-logging.basicConfig(\n\
-    level=logging.INFO,\n\
-    format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',\n\
-    datefmt='%Y-%m-%d %H:%M:%S'\n\
-)\n\
-logger = logging.getLogger('healthcheck')\n\
-\n\
-class HealthCheckServer:\n\
-    def __init__(self):\n\
-        self.httpd = None\n\
-        self.is_running = True\n\
-\n\
-    def check_main_app(self):\n\
-        try:\n\
-            response = requests.get('http://localhost:8000', timeout=2)\n\
-            logger.info(f'Main app response status: {response.status_code}')\n\
-            return response.status_code == 200\n\
-        except Exception as e:\n\
-            logger.error(f'Error checking main app: {str(e)}')\n\
-            return False\n\
-\n\
-    def handle_signal(self, signum, frame):\n\
-        logger.info(f'Received signal {signum}')\n\
-        self.is_running = False\n\
-        if self.httpd:\n\
-            self.httpd.shutdown()\n\
-\n\
-    def run(self):\n\
-        class Handler(http.server.SimpleHTTPRequestHandler):\n\
-            def do_GET(self_handler):\n\
-                if not self.is_running:\n\
-                    response = {\n\
-                        'status': 'shutting_down',\n\
-                        'message': 'Service is shutting down',\n\
-                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')\n\
-                    }\n\
-                    self_handler.send_response(503)\n\
-                    self_handler.send_header('Content-type', 'application/json')\n\
-                    self_handler.end_headers()\n\
-                    self_handler.wfile.write(json.dumps(response).encode())\n\
-                    return\n\
-\n\
-                if self_handler.path == '/':\n\
-                    try:\n\
-                        is_healthy = self.check_main_app()\n\
-                        status = 200 if is_healthy else 503\n\
-                        response = {\n\
-                            'status': 'healthy' if is_healthy else 'unhealthy',\n\
-                            'message': 'Service is running' if is_healthy else 'Service is not ready',\n\
-                            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')\n\
-                        }\n\
-                        logger.info(f'Health check response: {response}')\n\
-                        self_handler.send_response(status)\n\
-                        self_handler.send_header('Content-type', 'application/json')\n\
-                        self_handler.end_headers()\n\
-                        self_handler.wfile.write(json.dumps(response).encode())\n\
-                    except Exception as e:\n\
-                        logger.error(f'Error in health check: {str(e)}')\n\
-                        self_handler.send_error(500, str(e))\n\
-                else:\n\
-                    self_handler.send_error(404)\n\
-\n\
-        try:\n\
-            self.httpd = socketserver.TCPServer(('', 8001), Handler)\n\
-            logger.info('Health check server started on port 8001')\n\
-            self.httpd.serve_forever()\n\
-        except Exception as e:\n\
-            logger.error(f'Error in health check server: {str(e)}')\n\
-            sys.exit(1)\n\
-\n\
-server = HealthCheckServer()\n\
-signal.signal(signal.SIGTERM, server.handle_signal)\n\
-signal.signal(signal.SIGINT, server.handle_signal)\n\
-\n\
-health_thread = threading.Thread(target=server.run)\n\
-health_thread.daemon = True\n\
-health_thread.start()\n\
-" &\n\
-\n\
-# 启动主应用\n\
 exec gunicorn -c /app/gunicorn.conf.py app.main:app\n\
 ' > /app/start.sh && chmod +x /app/start.sh
 
