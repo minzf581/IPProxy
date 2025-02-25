@@ -245,7 +245,7 @@ export async function adjustAgentBalance(agentId: number, amount: number, remark
   try {
     debugAgent.info('调整代理商额度:', { agentId, amount, remark });
     const response = await request.post<ApiResponse<void>>(
-      `/api/open/app/agent/${agentId}/balance`,
+      `/api/agent/${agentId}/balance/adjust`,
       { amount, remark }
     );
     debugAgent.info('调整额度响应:', response.data);
@@ -319,4 +319,17 @@ declare module '@/shared/routes' {
       STATISTICS: string;
     };
   }
+}
+
+/**
+ * 获取代理商交易记录
+ */
+async function getTransactions(params: {
+  page: number;
+  pageSize: number;
+  orderNo?: string;
+  startDate?: string;
+  endDate?: string;
+}) {
+  return request.get(API_ROUTES.AGENT.TRANSACTIONS, { params });
 }

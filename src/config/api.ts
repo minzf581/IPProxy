@@ -99,7 +99,14 @@ export const API_PATHS = {
 
   // 代理商相关
   AGENT: {
-    LIST: '/open/app/agent/list'  // 对应 agent.py
+    LIST: '/open/app/agent/list',  // 对应 agent.py
+    DETAIL: '/open/app/agent/{id}',  // 对应 agent.py
+    BALANCE: '/agent/{id}/balance/adjust',  // 使用更规范的余额调整路由
+    TRANSACTIONS: '/open/app/agent/transactions',  // 修改为匹配后端路由
+    STATISTICS: '/open/app/agent/{id}/statistics',  // 对应 agent.py
+    USERS: '/open/app/agent/{id}/users',  // 对应 agent.py
+    STATUS: '/agent/{id}/status',  // 对应 agent.py
+    BALANCE_ORDERS: '/agent/{id}/balance/orders'  // 对应 agent.py
   }
 };
 

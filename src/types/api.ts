@@ -251,3 +251,14 @@ export interface ProductPriceParams {
   proxy_types?: number[];  // 代理类型过滤参数
   sync?: boolean;  // 是否同步产品库存
 }
+
+export interface AgentAPI {
+  LIST: string;
+  DETAIL: string;
+  BALANCE: string;
+  TRANSACTIONS: string;
+  STATISTICS: string;
+  USERS: string;
+  STATUS: string;
+  BALANCE_ORDERS: string;
+}
