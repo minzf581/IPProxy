@@ -3,7 +3,7 @@ builder = "DOCKERFILE"
 dockerfilePath = "backenddockerfile"
 
 [deploy]
-startCommand = "gunicorn app.main:app --workers 1 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 --timeout 300 --graceful-timeout 60 --keep-alive 5 --log-level debug --access-logfile - --error-logfile - --capture-output --preload"
+startCommand = "gunicorn app.main:app --bind 0.0.0.0:8000 --workers 1 --worker-class uvicorn.workers.UvicornWorker --timeout 120 --graceful-timeout 30 --log-level debug --access-logfile - --error-logfile - --capture-output --enable-stdio-inheritance"
 healthcheckPath = "/health"
 healthcheckPort = 8000
 restartPolicyType = "ON_FAILURE"
@@ -12,10 +12,10 @@ restartPolicyMaxRetries = 3
 [deploy.healthcheck]
 path = "/health"
 port = 8000
-interval = "10s"
-timeout = "5s"
+interval = "20s"
+timeout = "15s"
 retries = 3
-startPeriod = "30s"
+startPeriod = "90s"
 
 # 环境变量配置
 [env]
@@ -25,4 +25,5 @@ PORT = "8000"
 WORKERS = "1"
 WORKER_CLASS = "uvicorn.workers.UvicornWorker"
 LOG_LEVEL = "debug"
+PYTHONUNBUFFERED = "1"
 DATABASE_URL = "postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway" 
