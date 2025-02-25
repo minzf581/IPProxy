@@ -223,22 +223,26 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 detail={"code": 500, "message": f"认证过程发生错误: {str(e)}"}
             )
 
-# 配置中间件
+# 首先配置 CORS 中间件
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://zippy-communication-production.up.railway.app",  # 前端域名
-        "http://localhost:3000",  # 本地开发
-        "https://backend-production-127a.up.railway.app"  # 后端域名
+        "https://zippy-communication-production.up.railway.app",
+        "http://localhost:3000",
+        "https://backend-production-127a.up.railway.app"
     ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
-# 按照正确的顺序添加中间件
-app.add_middleware(AuthMiddleware)  # 认证中间件后执行
-app.add_middleware(DBSessionMiddleware)  # 数据库中间件先执行
+# 然后是数据库中间件
+app.add_middleware(DBSessionMiddleware)
+
+# 最后是认证中间件
+app.add_middleware(AuthMiddleware)
 
 async def ensure_default_users():
     """确保默认用户存在"""
@@ -324,7 +328,7 @@ async def print_routes():
     logger.info(f"Total routes: {len(routes)}")
     logger.info("=== End Routes ===\n")
 
-# 全局异常处理器
+# 添加全局异常处理
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """处理HTTP异常"""
@@ -334,17 +338,41 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             "code": exc.status_code,
             "message": exc.detail.get("message", str(exc.detail)) if isinstance(exc.detail, dict) else str(exc.detail)
         },
-        headers=exc.headers
+        headers={
+            "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
+            "Access-Control-Allow-Credentials": "true",
+            **(exc.headers if exc.headers else {})
+        }
     )
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     """处理其他异常"""
+    logger.error(f"未处理的异常: {str(exc)}")
+    logger.error(traceback.format_exc())
     return JSONResponse(
         status_code=500,
         content={
             "code": 500,
             "message": "服务器内部错误"
+        },
+        headers={
+            "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
+            "Access-Control-Allow-Credentials": "true"
+        }
+    )
+
+# 添加预检请求处理
+@app.options("/{rest_of_path:path}")
+async def preflight_handler(request: Request, rest_of_path: str):
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "3600"
         }
     )
 
