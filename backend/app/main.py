@@ -226,7 +226,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 # 配置中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[os.getenv("CORS_ORIGINS", "https://zippy-communication-production.up.railway.app")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
