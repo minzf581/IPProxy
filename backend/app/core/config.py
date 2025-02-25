@@ -29,18 +29,13 @@ class Settings(BaseSettings):
     def DATABASE_URL(self) -> str:
         """根据环境返回对应的数据库 URL"""
         if self.ENV == "production":
-            # 生产环境使用 PostgreSQL
-            db_url = os.getenv(
-                "DATABASE_URL",
-                "postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
-            )
-            # 确保 PostgreSQL URL 格式正确
-            if db_url.startswith("postgres://"):
-                db_url = db_url.replace("postgres://", "postgresql://")
+            # 生产环境使用 Railway 的 PostgreSQL
+            db_url = "postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
         else:
-            # 开发环境使用 SQLite
+            # 开发环境使用本地 SQLite
             db_url = f"sqlite:///{BASE_DIR}/app.db"
         
+        logger.info(f"使用数据库 URL: {db_url} (环境: {self.ENV})")
         return db_url
     
     # IPIPV API 配置

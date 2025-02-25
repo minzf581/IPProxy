@@ -11,13 +11,40 @@ from app.models.base import Base, TimestampMixin
 logger = logging.getLogger(__name__)
 
 # 创建数据库引擎
+def get_engine_config():
+    """获取数据库引擎配置"""
+    config = {
+        "pool_pre_ping": True,
+    }
+    
+    if settings.ENV == "production":
+        # PostgreSQL 生产环境配置
+        config.update({
+            "pool_size": 5,
+            "max_overflow": 10,
+            "pool_timeout": 30,
+            "pool_recycle": 1800,
+            "connect_args": {
+                "connect_timeout": 10,
+                "keepalives": 1,
+                "keepalives_idle": 30,
+                "keepalives_interval": 10,
+                "keepalives_count": 5
+            }
+        })
+    else:
+        # SQLite 开发环境配置
+        config.update({
+            "pool_size": 1,
+            "max_overflow": 0,
+            "connect_args": {"check_same_thread": False}
+        })
+    
+    return config
+
 engine = create_engine(
     settings.DATABASE_URL,
-    pool_size=3,
-    max_overflow=5,
-    pool_timeout=10,
-    pool_recycle=300,
-    pool_pre_ping=True
+    **get_engine_config()
 )
 
 # 创建会话工厂

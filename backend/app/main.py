@@ -294,14 +294,17 @@ async def ensure_default_users():
             # 为代理商创建价格配置
             agent_price = db.query(AgentPrice).filter_by(agent_id=agent.id).first()
             if not agent_price:
-                agent_price = AgentPrice(
-                    agent_id=agent.id,
-                    dynamic_proxy_price=Decimal('0.1'),
-                    static_proxy_price=Decimal('0.2')
-                )
-                db.add(agent_price)
-                db.commit()
-                logger.info("代理商价格配置创建成功")
+                # 首先获取默认产品
+                default_product = db.query(ProductInventory).first()
+                if default_product:
+                    agent_price = AgentPrice(
+                        agent_id=agent.id,
+                        product_id=default_product.id,
+                        price=Decimal('0.1')
+                    )
+                    db.add(agent_price)
+                    db.commit()
+                    logger.info("代理商价格配置创建成功")
 
     except Exception as e:
         logger.error(f"确保默认用户存在时发生错误: {str(e)}")
