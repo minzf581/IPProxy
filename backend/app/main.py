@@ -86,6 +86,7 @@ from datetime import datetime
 from sqlalchemy import create_engine
 import os
 from sqlalchemy.sql import text
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 # 使用core/config.py中的配置
 from app.core.config import settings
@@ -342,35 +343,47 @@ async def general_exception_handler(request: Request, exc: Exception):
         }
     )
 
-@app.get("/")
-async def root():
-    """根路径健康检查"""
-    return {"status": "ok"}
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
+async def check_db_connection():
+    """检查数据库连接，带重试机制"""
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return True
+    except Exception as e:
+        logger.error(f"数据库连接检查失败: {str(e)}")
+        raise
 
 @app.get("/health")
 async def health_check():
     """健康检查端点"""
     try:
-        # 测试数据库连接
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-            
+        # 检查数据库连接
+        db_healthy = await check_db_connection()
+        
         return {
             "status": "healthy",
-            "database": "connected",
+            "database": "connected" if db_healthy else "disconnected",
             "timestamp": datetime.now().isoformat(),
-            "environment": os.getenv("ENV", "development")
+            "environment": os.getenv("ENV", "development"),
+            "version": "1.0.0"
         }
     except Exception as e:
         logger.error(f"健康检查失败: {str(e)}")
-        raise HTTPException(
+        return JSONResponse(
             status_code=500,
-            detail={
+            content={
                 "status": "unhealthy",
                 "database": "disconnected",
-                "error": str(e)
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
             }
         )
+
+@app.get("/")
+async def root():
+    """根路径健康检查"""
+    return await health_check()
 
 @app.get("/healthz")
 async def detailed_health_check():
