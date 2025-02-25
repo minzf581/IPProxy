@@ -3,13 +3,13 @@ builder = "DOCKERFILE"
 dockerfilePath = "backenddockerfile"
 
 [deploy]
-healthcheckPath = "/health"
+healthcheckPath = "/"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
 [deploy.healthcheck]
-path = "/health"
+path = "/"
 interval = "30s"
 timeout = "10s"
 retries = 3
