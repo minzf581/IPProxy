@@ -126,53 +126,84 @@ import threading\n\
 import time\n\
 import requests\n\
 import logging\n\
+import signal\n\
+import sys\n\
 \n\
-logging.basicConfig(level=logging.DEBUG)\n\
-logger = logging.getLogger(\"healthcheck\")\n\
+logging.basicConfig(\n\
+    level=logging.INFO,\n\
+    format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',\n\
+    datefmt='%Y-%m-%d %H:%M:%S'\n\
+)\n\
+logger = logging.getLogger('healthcheck')\n\
 \n\
-def check_main_app():\n\
-    try:\n\
-        response = requests.get(\"http://localhost:8000\")\n\
-        logger.info(f\"Main app response status: {response.status_code}\")\n\
-        logger.info(f\"Main app response body: {response.text}\")\n\
-        return response.status_code == 200\n\
-    except Exception as e:\n\
-        logger.error(f\"Error checking main app: {str(e)}\")\n\
-        return False\n\
+class HealthCheckServer:\n\
+    def __init__(self):\n\
+        self.httpd = None\n\
+        self.is_running = True\n\
 \n\
-class HealthCheckHandler(http.server.SimpleHTTPRequestHandler):\n\
-    def do_GET(self):\n\
-        logger.info(f\"Received health check request: {self.path}\")\n\
-        if self.path == \"/\":\n\
-            try:\n\
-                is_healthy = check_main_app()\n\
-                status = 200 if is_healthy else 503\n\
-                response = {\n\
-                    \"status\": \"healthy\" if is_healthy else \"unhealthy\",\n\
-                    \"message\": \"Service is running\" if is_healthy else \"Service is not ready\",\n\
-                    \"timestamp\": time.strftime(\"%Y-%m-%d %H:%M:%S\")\n\
-                }\n\
-                logger.info(f\"Sending response: {response}\")\n\
-                self.send_response(status)\n\
-                self.send_header(\"Content-type\", \"application/json\")\n\
-                self.end_headers()\n\
-                self.wfile.write(json.dumps(response).encode())\n\
-            except Exception as e:\n\
-                logger.error(f\"Error in health check: {str(e)}\")\n\
-                self.send_error(500, str(e))\n\
-        else:\n\
-            self.send_error(404)\n\
+    def check_main_app(self):\n\
+        try:\n\
+            response = requests.get('http://localhost:8000', timeout=2)\n\
+            logger.info(f'Main app response status: {response.status_code}')\n\
+            return response.status_code == 200\n\
+        except Exception as e:\n\
+            logger.error(f'Error checking main app: {str(e)}')\n\
+            return False\n\
 \n\
-def run_health_check_server():\n\
-    try:\n\
-        with socketserver.TCPServer((\"\", 8001), HealthCheckHandler) as httpd:\n\
-            logger.info(\"Health check server started on port 8001\")\n\
-            httpd.serve_forever()\n\
-    except Exception as e:\n\
-        logger.error(f\"Error starting health check server: {str(e)}\")\n\
+    def handle_signal(self, signum, frame):\n\
+        logger.info(f'Received signal {signum}')\n\
+        self.is_running = False\n\
+        if self.httpd:\n\
+            self.httpd.shutdown()\n\
 \n\
-# 在后台启动健康检查服务器\n\
-health_thread = threading.Thread(target=run_health_check_server)\n\
+    def run(self):\n\
+        class Handler(http.server.SimpleHTTPRequestHandler):\n\
+            def do_GET(self_handler):\n\
+                if not self.is_running:\n\
+                    response = {\n\
+                        'status': 'shutting_down',\n\
+                        'message': 'Service is shutting down',\n\
+                        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')\n\
+                    }\n\
+                    self_handler.send_response(503)\n\
+                    self_handler.send_header('Content-type', 'application/json')\n\
+                    self_handler.end_headers()\n\
+                    self_handler.wfile.write(json.dumps(response).encode())\n\
+                    return\n\
+\n\
+                if self_handler.path == '/':\n\
+                    try:\n\
+                        is_healthy = self.check_main_app()\n\
+                        status = 200 if is_healthy else 503\n\
+                        response = {\n\
+                            'status': 'healthy' if is_healthy else 'unhealthy',\n\
+                            'message': 'Service is running' if is_healthy else 'Service is not ready',\n\
+                            'timestamp': time.strftime('%Y-%m-%d %H:%M:%S')\n\
+                        }\n\
+                        logger.info(f'Health check response: {response}')\n\
+                        self_handler.send_response(status)\n\
+                        self_handler.send_header('Content-type', 'application/json')\n\
+                        self_handler.end_headers()\n\
+                        self_handler.wfile.write(json.dumps(response).encode())\n\
+                    except Exception as e:\n\
+                        logger.error(f'Error in health check: {str(e)}')\n\
+                        self_handler.send_error(500, str(e))\n\
+                else:\n\
+                    self_handler.send_error(404)\n\
+\n\
+        try:\n\
+            self.httpd = socketserver.TCPServer(('', 8001), Handler)\n\
+            logger.info('Health check server started on port 8001')\n\
+            self.httpd.serve_forever()\n\
+        except Exception as e:\n\
+            logger.error(f'Error in health check server: {str(e)}')\n\
+            sys.exit(1)\n\
+\n\
+server = HealthCheckServer()\n\
+signal.signal(signal.SIGTERM, server.handle_signal)\n\
+signal.signal(signal.SIGINT, server.handle_signal)\n\
+\n\
+health_thread = threading.Thread(target=server.run)\n\
 health_thread.daemon = True\n\
 health_thread.start()\n\
 " &\n\
