@@ -10,15 +10,6 @@ from app.models.base import Base, TimestampMixin
 
 logger = logging.getLogger(__name__)
 
-# 获取当前文件所在目录
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# 数据库文件路径
-DB_FILE = os.path.join(BASE_DIR, "app.db")
-
-# 数据库URL
-SQLALCHEMY_DATABASE_URL = f"sqlite:///{DB_FILE}"
-
 # 创建数据库引擎
 engine = create_engine(
     settings.DATABASE_URL,

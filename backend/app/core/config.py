@@ -27,16 +27,19 @@ class Settings(BaseSettings):
     # 数据库配置
     @property
     def DATABASE_URL(self) -> str:
+        """根据环境返回对应的数据库 URL"""
         if self.ENV == "production":
-            # Railway 生产环境
-            db_url = "postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
+            # 生产环境使用 PostgreSQL
+            db_url = os.getenv(
+                "DATABASE_URL",
+                "postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
+            )
+            # 确保 PostgreSQL URL 格式正确
+            if db_url.startswith("postgres://"):
+                db_url = db_url.replace("postgres://", "postgresql://")
         else:
             # 开发环境使用 SQLite
-            db_url = f"sqlite:///{BASE_DIR}/backend/app.db"
-        
-        # 确保 PostgreSQL URL 格式正确
-        if db_url.startswith("postgres://"):
-            db_url = db_url.replace("postgres://", "postgresql://")
+            db_url = f"sqlite:///{BASE_DIR}/app.db"
         
         return db_url
     
@@ -91,24 +94,9 @@ class Settings(BaseSettings):
                 'handlers': ['console', 'file'],
                 'level': 'INFO',
             },
-            'app': {  # 应用日志
+            'app': {
                 'handlers': ['console', 'file'],
                 'level': 'DEBUG',
-                'propagate': False
-            },
-            'app.services': {  # 服务层日志
-                'handlers': ['console', 'file'],
-                'level': 'DEBUG',
-                'propagate': False
-            },
-            'app.services.ipipv_base_api': {
-                'level': 'DEBUG',
-                'handlers': ['console', 'file'],
-                'propagate': False
-            },
-            'app.services.static_order_service': {
-                'level': 'DEBUG',
-                'handlers': ['console', 'file'],
                 'propagate': False
             }
         }
@@ -117,35 +105,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
-        extra = "allow"  # 允许额外的字段
-
-        @classmethod
-        def customise_sources(
-            cls,
-            init_settings,
-            env_settings,
-            file_secret_settings,
-        ):
-            def get_database_url():
-                if ENV == "production":
-                    # Railway 生产环境
-                    db_url = "postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway"
-                else:
-                    # 开发环境使用 SQLite
-                    db_url = f"sqlite:///{BASE_DIR}/app.db"
-                
-                # 确保 PostgreSQL URL 格式正确
-                if db_url.startswith("postgres://"):
-                    db_url = db_url.replace("postgres://", "postgresql://")
-                
-                return {"DATABASE_URL": db_url}
-
-            return (
-                init_settings,
-                get_database_url,
-                env_settings,
-                file_secret_settings,
-            )
+        extra = "allow"
 
 settings = Settings()
 
