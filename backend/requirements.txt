@@ -75,3 +75,6 @@ supervisor==4.2.5  # 进程管理
 # 文档
 mkdocs==1.5.3  # 文档生成
 mkdocs-material==9.5.3  # 文档主题
+
+# 添加 tenacity 包到依赖列表
+tenacity==8.2.3
