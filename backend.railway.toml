@@ -3,20 +3,22 @@ builder = "DOCKERFILE"
 dockerfilePath = "backenddockerfile"
 
 [deploy]
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port 8000"
-healthcheckPath = "/"
+startCommand = "gunicorn app.main:app --workers 2 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120 --keep-alive 5 --log-level debug --access-logfile - --error-logfile - --capture-output"
+healthcheckPath = "/api/health"
 healthcheckPort = "8000"
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 3
+restartPolicyMaxRetries = 5
 
 [deploy.healthcheck]
-path = "/"
+path = "/api/health"
 port = "8000"
-interval = "30s"
-timeout = "10s"
-retries = 3
-startPeriod = "30s"
+interval = "15s"
+timeout = "30s"
+retries = 5
+startPeriod = "60s"
 
-# 数据库配置
+# 环境变量配置
 [env]
+ENV = "production"
+PYTHONPATH = "/app/backend"
 DATABASE_URL = "postgresql://postgres:VklXzDrDMygoJNZjzzSlNLMjmqKIPaYQ@postgres.railway.internal:5432/railway" 
