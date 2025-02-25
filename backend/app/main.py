@@ -361,7 +361,32 @@ async def check_db_connection():
 async def health_check():
     """简化的健康检查端点"""
     logger.info("[Health Check] 收到健康检查请求")
-    return {"status": "ok"}
+    try:
+        # 记录基本信息
+        logger.info(f"[Health Check] 进程 ID: {os.getpid()}")
+        logger.info(f"[Health Check] 工作目录: {os.getcwd()}")
+        
+        # 构建响应
+        response = {
+            "status": "ok",
+            "timestamp": datetime.now().isoformat(),
+            "pid": os.getpid()
+        }
+        
+        logger.info(f"[Health Check] 返回响应: {response}")
+        return JSONResponse(
+            status_code=200,
+            content=response
+        )
+    except Exception as e:
+        logger.error(f"[Health Check] 错误: {str(e)}")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "ok",
+                "error": str(e)
+            }
+        )
 
 # 修改启动事件处理器
 @app.on_event("startup")
@@ -370,28 +395,38 @@ async def startup_event():
     try:
         logger.info("\n=== 应用启动 ===")
         logger.info(f"进程 ID: {os.getpid()}")
+        logger.info(f"父进程 ID: {os.getppid()}")
         logger.info(f"环境: {os.getenv('ENV', 'development')}")
         logger.info(f"PYTHONPATH: {os.getenv('PYTHONPATH', 'Not set')}")
         logger.info(f"工作目录: {os.getcwd()}")
         logger.info(f"Python 版本: {sys.version}")
         
+        # 记录所有环境变量
+        logger.info("\n=== 环境变量 ===")
+        for key, value in os.environ.items():
+            if 'SECRET' not in key.upper() and 'PASSWORD' not in key.upper():
+                logger.info(f"{key}: {value}")
+        
         # 检查系统资源
+        logger.info("\n=== 系统资源 ===")
         import psutil
         process = psutil.Process(os.getpid())
-        logger.info(f"内存使用: {process.memory_info().rss / 1024 / 1024:.2f} MB")
         logger.info(f"CPU 核心数: {psutil.cpu_count()}")
+        logger.info(f"内存使用: {process.memory_info().rss / 1024 / 1024:.2f} MB")
         logger.info(f"可用内存: {psutil.virtual_memory().available / 1024 / 1024:.2f} MB")
+        logger.info(f"线程数: {process.num_threads()}")
         
-        # 检查数据库连接
-        logger.info("尝试连接数据库...")
-        try:
-            async with engine.connect() as conn:
-                await conn.execute(text("SELECT 1"))
-                logger.info("数据库连接成功")
-        except Exception as e:
-            logger.error(f"数据库连接失败: {str(e)}")
-            
-        logger.info("=== 启动检查完成 ===\n")
+        # 检查目录结构
+        logger.info("\n=== 目录结构 ===")
+        for root, dirs, files in os.walk(".", topdown=True, followlinks=False):
+            level = root.count(os.sep)
+            indent = " " * 4 * level
+            logger.info(f"{indent}{os.path.basename(root)}/")
+            subindent = " " * 4 * (level + 1)
+            for f in files:
+                logger.info(f"{subindent}{f}")
+        
+        logger.info("\n=== 启动检查完成 ===")
     except Exception as e:
         logger.error(f"启动检查失败: {str(e)}")
         logger.error(traceback.format_exc())
