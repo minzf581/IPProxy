@@ -34,8 +34,14 @@ warn() {
     echo "$message" | tee -a "$LOG_FILE"
 }
 
+# 检查环境变量
+if [ -z "$ENV" ]; then
+    export ENV="development"
+fi
+
 # 记录启动信息
 log "开始启动服务..."
+log "当前环境: $ENV"
 log "日志文件位置: $LOG_FILE"
 
 # 停止现有服务
@@ -51,32 +57,43 @@ fi
 # 进入后端目录
 cd backend || error "无法进入后端目录"
 
-# 设置开发环境变量
-export ENV="development"
+# 设置环境变量
 export PYTHONPATH="$PWD"
-export DATABASE_URL="sqlite:///$PWD/app.db"
+
+# 根据环境设置数据库连接
+if [ "$ENV" = "production" ]; then
+    if [ -z "$DATABASE_URL" ]; then
+        error "生产环境需要设置 DATABASE_URL 环境变量"
+    fi
+    log "使用生产环境数据库: PostgreSQL"
+else
+    export DATABASE_URL="sqlite:///$PWD/app.db"
+    log "使用开发环境数据库: SQLite"
+fi
 
 log "环境变量设置:"
 log "ENV=$ENV"
 log "PYTHONPATH=$PYTHONPATH"
 log "DATABASE_URL=$DATABASE_URL"
 
-# 检查数据库是否存在
-DB_FILE="app.db"
-INIT_DB=false
+# 检查数据库配置
+if [ "$ENV" = "development" ]; then
+    DB_FILE="app.db"
+    INIT_DB=false
 
-if [ ! -f "$DB_FILE" ]; then
-    log "数据库文件不存在，将进行初始化..."
-    INIT_DB=true
-else
-    # 检查数据库是否为空（检查users表是否有数据）
-    USER_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM users;" 2>/dev/null || echo "0")
-    if [ "$USER_COUNT" = "0" ] || [ -z "$USER_COUNT" ]; then
-        log "数据库为空，将进行初始化..."
-        rm -f "$DB_FILE"
+    if [ ! -f "$DB_FILE" ]; then
+        log "数据库文件不存在，将进行初始化..."
         INIT_DB=true
     else
-        log "数据库已存在且包含数据，跳过初始化..."
+        # 检查数据库是否为空（检查users表是否有数据）
+        USER_COUNT=$(sqlite3 "$DB_FILE" "SELECT COUNT(*) FROM users;" 2>/dev/null || echo "0")
+        if [ "$USER_COUNT" = "0" ] || [ -z "$USER_COUNT" ]; then
+            log "数据库为空，将进行初始化..."
+            rm -f "$DB_FILE"
+            INIT_DB=true
+        else
+            log "数据库已存在且包含数据，跳过初始化..."
+        fi
     fi
 fi
 
@@ -89,7 +106,7 @@ fi
 pip3 install -r requirements.txt 2>&1 | tee -a "$LOG_FILE"
 
 # 根据需要初始化数据库
-if [ "$INIT_DB" = true ]; then
+if [ "$ENV" = "development" ] && [ "$INIT_DB" = true ]; then
     # 初始化数据库
     log "初始化数据库..."
     python3 scripts/init_db.py 2>&1 | tee -a "$LOG_FILE"
@@ -101,21 +118,29 @@ fi
 
 # 启动后端服务
 log "启动后端服务..."
-ENV=development DATABASE_URL="sqlite:///$PWD/app.db" python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 2>&1 | tee -a "$LOG_FILE" &
-
-# 返回根目录并安装前端依赖
-log "安装前端依赖..."
-cd ..
-
-if [ ! -f "package.json" ]; then
-    error "package.json 不存在"
+if [ "$ENV" = "production" ]; then
+    # 生产环境使用 gunicorn
+    gunicorn app.main:app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000 2>&1 | tee -a "$LOG_FILE" &
+else
+    # 开发环境使用 uvicorn 的热重载模式
+    python3 -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 2>&1 | tee -a "$LOG_FILE" &
 fi
 
-npm install 2>&1 | tee -a "$LOG_FILE"
+# 返回根目录并安装前端依赖
+cd ..
 
-# 启动前端服务
-log "启动前端服务..."
-npm run dev 2>&1 | tee -a "$LOG_FILE" &
+if [ "$ENV" = "development" ]; then
+    log "安装前端依赖..."
+    if [ ! -f "package.json" ]; then
+        error "package.json 不存在"
+    fi
+
+    npm install 2>&1 | tee -a "$LOG_FILE"
+
+    # 启动前端服务
+    log "启动前端服务..."
+    npm run dev 2>&1 | tee -a "$LOG_FILE" &
+fi
 
 # 等待服务启动
 sleep 2
@@ -123,8 +148,10 @@ sleep 2
 # 显示服务信息
 log "服务已启动！"
 log "后端服务运行在: http://localhost:8000"
-log "前端服务运行在: http://localhost:3000"
-log "开发环境已配置"
+if [ "$ENV" = "development" ]; then
+    log "前端服务运行在: http://localhost:3000"
+    log "开发环境已配置"
+fi
 log "按 Ctrl+C 停止所有服务"
 
 # 等待用户中断
